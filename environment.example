@@ -1,0 +1,65 @@
+# =================================================================
+# SupplyNexus Fulfillment Service Environment Configuration
+# =================================================================
+
+# Application Settings
+PROJECT_NAME="SupplyNexus Fulfillment Service"
+ENVIRONMENT=development
+SECRET_KEY=your-super-secret-key-change-this-in-production
+API_V1_STR=/api/v1
+
+# Database Configuration
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/fulfillment_service
+
+# Redis Configuration
+REDIS_URL=redis://localhost:6379/0
+
+# Celery Configuration
+CELERY_BROKER_URL=redis://localhost:6379/1
+CELERY_RESULT_BACKEND=redis://localhost:6379/2
+
+# Shopify API Configuration
+SHOPIFY_API_KEY=your-shopify-api-key
+SHOPIFY_API_SECRET=your-shopify-api-secret
+SHOPIFY_API_VERSION=2023-10
+
+# Printify API Configuration
+PRINTIFY_API_TOKEN=your-printify-api-token
+PRINTIFY_API_BASE_URL=https://api.printify.com/v1
+
+# Security Settings
+WEBHOOK_SECRET=your-webhook-secret-for-shopify-and-printify
+ACCESS_TOKEN_EXPIRE_MINUTES=10080  # 7 days
+ALGORITHM=HS256
+
+# CORS Settings
+ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001
+ALLOWED_HOSTS=localhost,127.0.0.1
+
+# Monitoring (Optional)
+SENTRY_DSN=your-sentry-dsn-for-error-tracking
+
+# Email Configuration (Optional)
+SMTP_TLS=true
+SMTP_PORT=587
+SMTP_HOST=smtp.gmail.com
+SMTP_USER=your-email@gmail.com
+SMTP_PASSWORD=your-email-password
+EMAILS_FROM_EMAIL=noreply@supplynexus.store
+EMAILS_FROM_NAME=SupplyNexus
+
+# Frontend Configuration
+NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_APP_NAME=SupplyNexus Fulfillment Service
+
+# =================================================================
+# Production Environment Overrides
+# =================================================================
+# For production, update the following:
+# - Change SECRET_KEY to a strong random key
+# - Update DATABASE_URL to production database
+# - Update REDIS_URL to production Redis
+# - Set real Shopify and Printify API credentials
+# - Configure proper ALLOWED_ORIGINS and ALLOWED_HOSTS
+# - Set up Sentry DSN for error tracking
+# - Configure email settings for notifications
