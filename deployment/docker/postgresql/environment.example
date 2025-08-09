@@ -1,0 +1,16 @@
+# PostgreSQL 配置
+POSTGRES_DB=supplynexus
+POSTGRES_USER=supplynexus_admin
+POSTGRES_PASSWORD=your-secure-password-here-change-this
+
+# 容器配置
+CONTAINER_NAME=supplynexus-postgres-dev
+
+# 端口配置
+POSTGRES_PORT=5433
+
+# 数据目录配置
+DATA_DIR=./data-dev
+
+# 可选：调试和性能配置
+POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C
