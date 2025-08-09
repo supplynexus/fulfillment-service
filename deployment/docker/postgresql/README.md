@@ -26,17 +26,41 @@ cd ~/docker/postgresql
 # 复制环境配置
 cp environment.example .env
 
-# 编辑配置文件，修改密码
+# 编辑配置文件，修改密码和环境设置
 vi .env
+
+# 根据部署环境调整容器名称：
+# 开发环境：CONTAINER_NAME=supplynexus-postgres-dev
+# 测试环境：CONTAINER_NAME=supplynexus-postgres-staging  
+# 生产环境：CONTAINER_NAME=supplynexus-postgres-prod
 ```
 
 ### 3. 启动服务
 
+#### **推荐方式：使用部署脚本**
 ```bash
-# 启动 PostgreSQL
-docker-compose up -d
+# 一键部署指定环境
+./deploy.sh dev      # 开发环境
+./deploy.sh staging  # 测试环境
+./deploy.sh prod     # 生产环境
+```
 
-# 检查状态
+#### **手动方式：使用默认 .env 文件**
+```bash
+# 复制对应环境的配置
+cp environment.dev .env     # 开发环境
+cp environment.staging .env # 测试环境  
+cp environment.prod .env    # 生产环境
+
+# 编辑密码（重要！）
+vi .env
+
+# 启动服务
+docker-compose up -d
+```
+
+#### **检查状态**
+```bash
 docker-compose ps
 docker-compose logs postgresql
 ```
@@ -57,7 +81,15 @@ docker-compose exec postgresql psql -U supplynexus_admin -d supplynexus
 
 ## 📁 数据持久化
 
-数据存储在 `./data` 目录中，确保：
+数据存储在环境特定目录中，避免冲突：
+
+- **开发环境**: `./data-dev/`
+- **测试环境**: `./data-staging/`  
+- **生产环境**: `./data-prod/`
+
+每个环境的数据完全独立，可以在同一服务器上安全运行多个环境。
+
+确保：
 - 定期备份数据目录
 - 设置适当的文件权限
 - 监控磁盘空间
