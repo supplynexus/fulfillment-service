@@ -9,7 +9,7 @@ SECRET_KEY=your-super-secret-key-change-this-in-production
 API_V1_STR=/api/v1
 
 # Database Configuration
-DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/fulfillment_service
+DATABASE_URL=postgresql+asyncpg://supplynexus_admin:your-password@localhost:5433/supplynexus
 
 # Redis Configuration
 REDIS_URL=redis://localhost:6379/0

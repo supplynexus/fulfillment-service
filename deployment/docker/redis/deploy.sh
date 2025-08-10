@@ -1,5 +1,5 @@
 #!/bin/bash
-# SupplyNexus PostgreSQL 部署脚本
+# SupplyNexus Redis 部署脚本
 
 set -e
 
@@ -27,10 +27,10 @@ show_usage() {
     echo "用法: $0 <environment>"
     echo ""
     echo "支持的环境:"
-    echo "  local    - 本地环境 (端口: 5432)"
-    echo "  dev      - 开发环境 (端口: 5433)"
-    echo "  staging  - 测试环境 (端口: 5434)"
-    echo "  prod     - 生产环境 (端口: 5435)"
+    echo "  local    - 本地环境 (端口: 6379)"
+    echo "  dev      - 开发环境 (端口: 6380)"
+    echo "  staging  - 测试环境 (端口: 6381)"
+    echo "  prod     - 生产环境 (端口: 6382)"
     echo ""
     echo "示例:"
     echo "  $0 local"
@@ -67,7 +67,7 @@ if [ ! -f "$CONFIG_FILE" ]; then
     exit 1
 fi
 
-print_status "开始部署 SupplyNexus PostgreSQL ($ENVIRONMENT 环境)"
+print_status "开始部署 SupplyNexus Redis ($ENVIRONMENT 环境)"
 
 # 复制环境配置
 print_status "复制环境配置: $CONFIG_FILE -> .env"
@@ -81,8 +81,8 @@ if [ ! -d "$DATA_DIR" ]; then
 fi
 
 # 检查密码是否已修改
-if grep -q "your-secure-password-here-change-this" .env; then
-    print_warning "检测到默认密码，请修改 .env 文件中的 POSTGRES_PASSWORD"
+if grep -q "your-secure-redis-password-here-change-this" .env; then
+    print_warning "检测到默认密码，请修改 .env 文件中的 REDIS_PASSWORD"
     print_warning "按任意键继续，或 Ctrl+C 退出..."
     read -n 1 -s
 fi
@@ -94,7 +94,7 @@ if [ "$(docker-compose ps -q)" ]; then
 fi
 
 # 启动服务
-print_status "启动 PostgreSQL 服务..."
+print_status "启动 Redis 服务..."
 docker-compose up -d
 
 # 等待服务启动
@@ -103,18 +103,17 @@ sleep 5
 
 # 检查服务状态
 if docker-compose ps | grep -q "Up"; then
-    print_status "✅ PostgreSQL 服务启动成功！"
+    print_status "✅ Redis 服务启动成功！"
     echo ""
     print_status "服务信息:"
     docker-compose ps
     echo ""
     print_status "连接信息:"
     CONTAINER_NAME=$(grep CONTAINER_NAME .env | cut -d'=' -f2)
-    POSTGRES_PORT=$(grep POSTGRES_PORT .env | cut -d'=' -f2)
+    REDIS_PORT=$(grep REDIS_PORT .env | cut -d'=' -f2)
     echo "  容器名称: $CONTAINER_NAME"
-    echo "  端口: $POSTGRES_PORT"
-    echo "  数据库: supplynexus"
-    echo "  用户: supplynexus_admin"
+    echo "  端口: $REDIS_PORT"
+    echo "  密码: (在 .env 文件中配置)"
 else
     print_error "❌ 服务启动失败"
     print_status "查看日志:"

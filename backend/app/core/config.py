@@ -1,88 +1,51 @@
 """
-Application configuration settings
+应用配置设置
 """
-
-from typing import List, Optional
-from pydantic_settings import BaseSettings
-from pydantic import Field, validator
 import os
+from typing import Optional
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    """Application settings"""
+    """应用设置"""
     
-    # Basic App Settings
-    PROJECT_NAME: str = "SupplyNexus Fulfillment Service"
-    API_V1_STR: str = "/api/v1"
-    ENVIRONMENT: str = Field(default="development", env="ENVIRONMENT")
+    # 数据库配置
+    DATABASE_URL: str = "postgresql+asyncpg://supplynexus_admin:aabbccdd@localhost:5433/supplynexus"
     
-    # Security
-    SECRET_KEY: str = Field(..., env="SECRET_KEY")
+    # Redis 配置
+    REDIS_URL: str = "redis://localhost:6379/0"
+    CELERY_BROKER_URL: str = "redis://localhost:6379/1"
+    CELERY_RESULT_BACKEND: str = "redis://localhost:6379/2"
+    
+    # Shopify API 配置
+    SHOPIFY_SHOP_NAME: Optional[str] = os.getenv("SHOPIFY_SHOP_NAME")
+    SHOPIFY_ACCESS_TOKEN: Optional[str] = os.getenv("SHOPIFY_ACCESS_TOKEN")
+    SHOPIFY_API_KEY: Optional[str] = os.getenv("SHOPIFY_API_KEY")
+    SHOPIFY_API_SECRET: Optional[str] = os.getenv("SHOPIFY_API_SECRET")
+    
+    # Printify API 配置
+    PRINTIFY_API_TOKEN: Optional[str] = os.getenv("PRINTIFY_API_TOKEN")
+    
+    # 安全配置
+    SECRET_KEY: str = "dev-jwt-secret-key-change-in-production"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8  # 8 days
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    WEBHOOK_SECRET: str = "dev-webhook-secret-change-in-production"
     
-    # Database
-    DATABASE_URL: str = Field(..., env="DATABASE_URL")
+    # 应用配置
+    ENVIRONMENT: str = "development"
+    ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:3001"
+    ALLOWED_HOSTS: str = "localhost,127.0.0.1"
     
-    # Redis
-    REDIS_URL: str = Field(..., env="REDIS_URL")
+    # API 配置
+    API_V1_STR: str = "/api/v1"
     
-    # Celery
-    CELERY_BROKER_URL: str = Field(..., env="CELERY_BROKER_URL")
-    CELERY_RESULT_BACKEND: str = Field(..., env="CELERY_RESULT_BACKEND")
-    
-    # Shopify API
-    SHOPIFY_API_KEY: str = Field(..., env="SHOPIFY_API_KEY")
-    SHOPIFY_API_SECRET: str = Field(..., env="SHOPIFY_API_SECRET")
-    SHOPIFY_API_VERSION: str = Field(default="2023-10", env="SHOPIFY_API_VERSION")
-    
-    # Printify API
-    PRINTIFY_API_TOKEN: str = Field(..., env="PRINTIFY_API_TOKEN")
-    PRINTIFY_API_BASE_URL: str = Field(
-        default="https://api.printify.com/v1",
-        env="PRINTIFY_API_BASE_URL"
-    )
-    
-    # CORS
-    ALLOWED_ORIGINS: List[str] = Field(
-        default=["http://localhost:3000", "http://localhost:3001"],
-        env="ALLOWED_ORIGINS"
-    )
-    ALLOWED_HOSTS: List[str] = Field(
-        default=["localhost", "127.0.0.1"],
-        env="ALLOWED_HOSTS"
-    )
-    
-    # Monitoring
-    SENTRY_DSN: Optional[str] = Field(default=None, env="SENTRY_DSN")
-    
-    # Email (for notifications)
-    SMTP_TLS: bool = Field(default=True, env="SMTP_TLS")
-    SMTP_PORT: Optional[int] = Field(default=587, env="SMTP_PORT")
-    SMTP_HOST: Optional[str] = Field(default=None, env="SMTP_HOST")
-    SMTP_USER: Optional[str] = Field(default=None, env="SMTP_USER")
-    SMTP_PASSWORD: Optional[str] = Field(default=None, env="SMTP_PASSWORD")
-    EMAILS_FROM_EMAIL: Optional[str] = Field(default=None, env="EMAILS_FROM_EMAIL")
-    EMAILS_FROM_NAME: Optional[str] = Field(default=None, env="EMAILS_FROM_NAME")
-    
-    # Webhook
-    WEBHOOK_SECRET: str = Field(..., env="WEBHOOK_SECRET")
-    
-    @validator("ALLOWED_ORIGINS", pre=True)
-    def assemble_cors_origins(cls, v):
-        if isinstance(v, str):
-            return [i.strip() for i in v.split(",")]
-        return v
-    
-    @validator("ALLOWED_HOSTS", pre=True)
-    def assemble_allowed_hosts(cls, v):
-        if isinstance(v, str):
-            return [i.strip() for i in v.split(",")]
-        return v
+    # Sentry 配置（可选）
+    SENTRY_DSN: Optional[str] = os.getenv("SENTRY_DSN")
     
     class Config:
-        env_file = ".env"
-        case_sensitive = True
+        env_file = os.getenv("ENV_FILE", ".env")
+        extra = "ignore"  # Ignore extra fields instead of raising validation error
 
 
 settings = Settings()

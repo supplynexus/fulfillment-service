@@ -1,0 +1,18 @@
+# 本地开发环境配置
+DATABASE_URL=postgresql+asyncpg://supplynexus_admin:IVzrm2bKlWyxWzhU3KVJUOdwU6IEwG32@localhost:5433/supplynexus
+REDIS_URL=redis://localhost:6379/0
+
+# Alembic 使用的同步数据库 URL  
+DATABASE_URL_SYNC=postgresql://supplynexus_admin:IVzrm2bKlWyxWzhU3KVJUOdwU6IEwG32@localhost:5433/supplynexus
+
+# API 密钥（开发环境）
+SHOPIFY_API_KEY=dev-shopify-api-key
+SHOPIFY_API_SECRET=dev-shopify-api-secret
+PRINTIFY_API_TOKEN=dev-printify-api-token
+WEBHOOK_SECRET=dev-webhook-secret
+JWT_SECRET=dev-jwt-secret-key
+
+# 开发环境设置
+ENVIRONMENT=development
+ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001
+ALLOWED_HOSTS=localhost,127.0.0.1

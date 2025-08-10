@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.core.database import get_async_db
 from app.core.security import create_access_token, get_current_active_user
 from app.models.user import User
+from app.schemas.auth import Token, UserCreate, UserResponse
 from app.services.user_service import UserService
 
 router = APIRouter()
@@ -74,7 +75,7 @@ async def register(
             detail="The user with this email already exists in the system.",
         )
     
-    user = await user_service.create(obj_in=user_in)
+    user = await user_service.create(obj_in=user_in.dict())
     return user
 
 

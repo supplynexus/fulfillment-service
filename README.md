@@ -140,9 +140,15 @@ fulfillment-service/
 │   ├── package.json          # Node 依赖
 │   └── Dockerfile           # Docker 配置
 ├── shared/                    # 共享类型和工具
-├── database/                  # 数据库相关
-│   ├── migrations/           # Alembic 迁移
-│   └── seeds/               # 初始数据
+├── backend/                  # 后端服务
+│   ├── migrations/           # 数据库迁移
+│   └── scripts/             # 数据库管理脚本
+├── deployment/               # 部署配置
+│   ├── docker/              # Docker 配置
+│   ├── environments/        # 环境配置文件（不提交到 git）
+│   └── scripts/             # 部署脚本
+│       ├── db-setup.sh      # 数据库设置脚本
+│       └── deploy.sh        # 部署管理脚本
 ├── deployment/               # 部署配置
 ├── docs/                    # 项目文档
 ├── scripts/                 # 开发脚本
@@ -185,6 +191,21 @@ REDIS_URL=redis://host:port/db
 
 ## 🛠️ 开发指南
 
+### 快速开始
+
+```bash
+# 1. 设置数据库
+cp deployment/environments/env.example deployment/environments/env.local
+vim deployment/environments/env.local  # 编辑配置
+./deployment/scripts/db-setup.sh local start
+
+# 2. 运行数据库迁移
+ENV_FILE=deployment/environments/env.local python backend/scripts/db.py upgrade
+
+# 3. 启动开发环境
+./scripts/development/start.sh
+```
+
 ### 开发命令
 
 ```bash
@@ -205,13 +226,18 @@ docker-compose -f docker-compose.dev.yml exec frontend_dev sh
 ### 数据库操作
 
 ```bash
-# 创建新的迁移
+# 数据库管理（推荐）
+./deployment/scripts/db-setup.sh local start    # 启动本地数据库
+./deployment/scripts/db-setup.sh local status   # 查看状态
+./deployment/scripts/db-setup.sh local backup   # 备份数据库
+
+# 数据库迁移
+ENV_FILE=deployment/environments/env.local python backend/scripts/db.py autogen "描述"
+ENV_FILE=deployment/environments/env.local python backend/scripts/db.py upgrade
+
+# 传统方式（已弃用）
 alembic revision --autogenerate -m "Description"
-
-# 应用迁移
 alembic upgrade head
-
-# 查看迁移历史
 alembic history
 ```
 

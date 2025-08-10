@@ -2,7 +2,7 @@
 Webhook endpoints for Shopify and Printify
 """
 
-from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Request, HTTPException, BackgroundTasks, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 import json
 import hmac
