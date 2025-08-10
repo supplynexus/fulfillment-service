@@ -15,35 +15,19 @@ from datetime import datetime
 
 from app.core.config import settings
 from app.core.database import init_db
+from app.core.logging import setup_logging, get_logger
 from app.api.v1.api import api_router
 
-# Configure structured logging
-structlog.configure(
-    processors=[
-        structlog.stdlib.filter_by_level,
-        structlog.stdlib.add_logger_name,
-        structlog.stdlib.add_log_level,
-        structlog.stdlib.PositionalArgumentsFormatter(),
-        structlog.processors.TimeStamper(fmt="iso"),
-        structlog.processors.StackInfoRenderer(),
-        structlog.processors.format_exc_info,
-        structlog.processors.UnicodeDecoder(),
-        structlog.processors.JSONRenderer()
-    ],
-    context_class=dict,
-    logger_factory=structlog.stdlib.LoggerFactory(),
-    wrapper_class=structlog.stdlib.BoundLogger,
-    cache_logger_on_first_use=True,
-)
-
-logger = structlog.get_logger()
+# 设置日志配置
+setup_logging()
+logger = get_logger(__name__)
 
 # Initialize Sentry for error tracking
 if settings.SENTRY_DSN:
     sentry_sdk.init(
         dsn=settings.SENTRY_DSN,
         integrations=[
-            FastApiIntegration(auto_enabling_integrations=False),
+            FastApiIntegration(),
             SqlalchemyIntegration(),
         ],
         environment=settings.ENVIRONMENT,
