@@ -100,10 +100,14 @@ run_alembic_docker() {
         -v "$ENV_FILE_PATH:/app/.env" \
         -w /app \
         --env-file "$ENV_FILE_PATH" \
+        --add-host=host.docker.internal:host-gateway \
         python:3.11-slim \
         bash -c "
             apt-get update && apt-get install -y gcc g++ libpq-dev curl
             pip install --no-cache-dir -r requirements.txt
+            # Replace localhost with host.docker.internal for database connections
+            export DATABASE_URL=\${DATABASE_URL/localhost/host.docker.internal}
+            export DATABASE_URL_SYNC=\${DATABASE_URL_SYNC/localhost/host.docker.internal}
             alembic $alembic_command
         "
 }
