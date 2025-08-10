@@ -11,6 +11,10 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BACKEND_DIR="$(dirname "$SCRIPT_DIR")"
+
 echo -e "${BLUE}🚀 SupplyNexus Backend Docker Quick Start${NC}"
 echo -e "${BLUE}========================================${NC}"
 
@@ -20,11 +24,11 @@ if ! docker info > /dev/null 2>&1; then
     exit 1
 fi
 
-# Check if .env file exists in parent directory
-if [ ! -f "../.env" ]; then
+# Check if .env file exists in backend directory
+if [ ! -f "${BACKEND_DIR}/.env" ]; then
     echo -e "${YELLOW}⚠️  .env file not found. Creating from .env.example...${NC}"
-    if [ -f "../.env.example" ]; then
-        cp ../.env.example ../.env
+    if [ -f "${BACKEND_DIR}/.env.example" ]; then
+        cp "${BACKEND_DIR}/.env.example" "${BACKEND_DIR}/.env"
         echo -e "${GREEN}✅ Created .env file from .env.example${NC}"
         echo -e "${YELLOW}⚠️  Please edit .env file with your configuration${NC}"
     else
@@ -34,11 +38,11 @@ if [ ! -f "../.env" ]; then
 fi
 
 # Create logs directory if not exists
-mkdir -p ../logs-local
+mkdir -p "${BACKEND_DIR}/logs-local"
 
 # Build and start the service
 echo -e "${YELLOW}🔨 Building and starting backend service...${NC}"
-cd .. && docker-compose up --build -d
+cd "${BACKEND_DIR}" && docker-compose up --build -d
 
 # Wait for service to be ready
 echo -e "${YELLOW}⏳ Waiting for service to be ready...${NC}"

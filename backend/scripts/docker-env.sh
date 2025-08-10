@@ -11,6 +11,10 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BACKEND_DIR="$(dirname "$SCRIPT_DIR")"
+
 # Configuration
 ENVIRONMENT=${1:-local}
 BACKEND_PORT=${BACKEND_PORT:-8000}
@@ -29,7 +33,7 @@ fi
 
 # Check if environment file exists
 ENV_FILE=".env.${ENVIRONMENT}"
-if [ ! -f "../${ENV_FILE}" ]; then
+if [ ! -f "${BACKEND_DIR}/${ENV_FILE}" ]; then
     echo -e "${RED}❌ Environment file ${ENV_FILE} not found${NC}"
     echo -e "${YELLOW}Available environments: local, development, staging, production${NC}"
     exit 1
@@ -37,7 +41,7 @@ fi
 
 # Create logs directory if not exists
 LOGS_DIR="logs-${ENVIRONMENT}"
-mkdir -p "../${LOGS_DIR}"
+mkdir -p "${BACKEND_DIR}/${LOGS_DIR}"
 
 # Set environment variables
 export ENVIRONMENT=${ENVIRONMENT}
@@ -45,7 +49,7 @@ export BACKEND_PORT=${BACKEND_PORT}
 
 # Build and start the service
 echo -e "${YELLOW}🔨 Building and starting backend service (${ENVIRONMENT})...${NC}"
-cd .. && docker-compose --env-file ${ENV_FILE} up --build -d
+cd "${BACKEND_DIR}" && docker-compose --env-file ${ENV_FILE} up --build -d
 
 # Wait for service to be ready
 echo -e "${YELLOW}⏳ Waiting for service to be ready...${NC}"
