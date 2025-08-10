@@ -161,23 +161,48 @@ show_logs() {
 # Function to run database migrations
 run_db_migrations() {
     print_status "Running database migrations for environment: $ENVIRONMENT"
-    cd ..
-    ENV_FILE="$ENV_FILE" python scripts/db.py upgrade
+    
+    # Check if Python is available
+    if command -v python &> /dev/null; then
+        print_status "Using local Python environment"
+        cd ..
+        ENV_FILE="$ENV_FILE" python scripts/db.py upgrade
+    else
+        print_status "Python not found, using Docker for database operations"
+        ./db-docker.sh "$ENVIRONMENT" upgrade
+    fi
+    
     print_success "Database migrations completed"
 }
 
 # Function to check database status
 check_db_status() {
     print_status "Checking database migration status for environment: $ENVIRONMENT"
-    cd ..
-    ENV_FILE="$ENV_FILE" python scripts/db.py current
+    
+    # Check if Python is available
+    if command -v python &> /dev/null; then
+        print_status "Using local Python environment"
+        cd ..
+        ENV_FILE="$ENV_FILE" python scripts/db.py current
+    else
+        print_status "Python not found, using Docker for database operations"
+        ./db-docker.sh "$ENVIRONMENT" current
+    fi
 }
 
 # Function to show database history
 show_db_history() {
     print_status "Showing database migration history for environment: $ENVIRONMENT"
-    cd ..
-    ENV_FILE="$ENV_FILE" python scripts/db.py history
+    
+    # Check if Python is available
+    if command -v python &> /dev/null; then
+        print_status "Using local Python environment"
+        cd ..
+        ENV_FILE="$ENV_FILE" python scripts/db.py history
+    else
+        print_status "Python not found, using Docker for database operations"
+        ./db-docker.sh "$ENVIRONMENT" history
+    fi
 }
 
 # Main command handling
