@@ -17,9 +17,9 @@ cd backend
 
 # 或者指定环境启动
 ./scripts/docker-env.sh local
-./scripts/docker-env.sh development
-./scripts/docker-env.sh staging
-./scripts/docker-env.sh production
+./scripts/docker-env.sh dev
+./scripts/docker-env.sh stg
+./scripts/docker-env.sh prod
 ```
 
 ### 2. 使用 docker-compose
@@ -45,9 +45,9 @@ docker-compose restart backend
 项目支持多个环境配置文件：
 
 - `.env` - 本地开发环境（默认）
-- `.env.development` - 开发环境
-- `.env.staging` - 测试环境
-- `.env.production` - 生产环境
+- `.env.dev` - 开发环境
+- `.env.stg` - 测试环境
+- `.env.prod` - 生产环境
 
 ### 日志目录
 
@@ -55,7 +55,7 @@ docker-compose restart backend
 
 - `logs-local/` - 本地环境日志
 - `logs-dev/` - 开发环境日志
-- `logs-staging/` - 测试环境日志
+- `logs-stg/` - 测试环境日志
 - `logs-prod/` - 生产环境日志
 
 ### 必需的环境变量
@@ -84,10 +84,10 @@ HEALTH_CHECK_RATE_WINDOW=60
 ./scripts/docker-start.sh
 
 # 指定环境启动
-./scripts/docker-env.sh development
+./scripts/docker-env.sh dev
 
 # 或手动启动
-docker-compose --env-file .env.development up --build -d
+docker-compose --env-file .env.dev up --build -d
 ```
 
 ### 服务器部署
@@ -95,7 +95,7 @@ docker-compose --env-file .env.development up --build -d
 ```bash
 # 使用部署脚本
 cd deployment/docker/backend
-./deploy.sh development  # 或 staging, production
+./deploy.sh dev  # 或 stg, prod
 ```
 
 ## 域名配置
@@ -106,9 +106,9 @@ cd deployment/docker/backend
 - **前端应用**: `app.dev.supplynexus.store`
 
 ### 测试环境
-- **API**: `api.staging.supplynexus.store`
-- **管理后台**: `admin.staging.supplynexus.store`
-- **前端应用**: `app.staging.supplynexus.store`
+- **API**: `api.stg.supplynexus.store`
+- **管理后台**: `admin.stg.supplynexus.store`
+- **前端应用**: `app.stg.supplynexus.store`
 
 ### 生产环境
 - **API**: `api.supplynexus.store`

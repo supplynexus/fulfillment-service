@@ -37,7 +37,7 @@ show_usage() {
     echo ""
     echo "环境 (environment):"
     echo "  local     - 本地开发环境 (端口: 5433)"
-    echo "  staging   - 测试环境 (端口: 5434)"
+    echo "  stg   - 测试环境 (端口: 5434)"
     echo "  prod      - 生产环境 (端口: 5435)"
     echo ""
     echo "操作 (action):"
@@ -52,7 +52,7 @@ show_usage() {
     echo ""
     echo "示例:"
     echo "  $0 local start      # 启动本地数据库"
-    echo "  $0 staging status   # 查看测试环境状态"
+    echo "  $0 stg status   # 查看测试环境状态"
     echo "  $0 prod stop        # 停止生产数据库"
     echo ""
     echo "首次使用:"
@@ -73,7 +73,7 @@ ACTION=${2:-start}
 
 # 验证环境参数
 case $ENVIRONMENT in
-    local|staging|prod)
+    local|stg|prod)
         print_status "目标环境: $ENVIRONMENT"
         ;;
     *)
@@ -91,11 +91,11 @@ case $ENVIRONMENT in
         CONTAINER_NAME=supplynexus-postgres-local
         DATA_DIR=./deployment/docker/postgresql/data-local
         ;;
-    staging)
+    stg)
         DB_PORT=5434
-        DB_NAME=supplynexus_staging
-        CONTAINER_NAME=supplynexus-postgres-staging
-        DATA_DIR=./deployment/docker/postgresql/data-staging
+        DB_NAME=supplynexus_stg
+        CONTAINER_NAME=supplynexus-postgres-stg
+DATA_DIR=./deployment/docker/postgresql/data-stg
         ;;
     prod)
         DB_PORT=5435

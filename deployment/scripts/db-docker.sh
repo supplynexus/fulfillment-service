@@ -34,9 +34,9 @@ show_usage() {
     echo ""
     echo "Environments:"
     echo "  local        - Local development environment"
-    echo "  development  - Development environment"
-    echo "  staging      - Staging environment"
-    echo "  production   - Production environment"
+    echo "  dev          - Dev environment"
+    echo "  stg          - Staging environment"
+    echo "  prod         - Production environment"
     echo ""
     echo "Commands:"
     echo "  current     - Show current migration version"
@@ -47,9 +47,9 @@ show_usage() {
     echo "  autogen     - Auto-generate migration from models"
     echo ""
     echo "Examples:"
-    echo "  ./db-docker.sh development current"
-    echo "  ./db-docker.sh development upgrade"
-    echo "  ./db-docker.sh production autogen 'add new table'"
+    echo "  ./db-docker.sh dev current"
+    echo "  ./db-docker.sh dev upgrade"
+    echo "  ./db-docker.sh prod autogen 'add new table'"
 }
 
 # Parse arguments
@@ -63,12 +63,12 @@ COMMAND="$2"
 
 # Validate environment
 case "$ENVIRONMENT" in
-    local|development|staging|production)
+    local|dev|stg|prod)
         ENV_FILE="env.$ENVIRONMENT"
         ;;
     *)
         print_error "Invalid environment: $ENVIRONMENT"
-        echo "Valid environments: local, development, staging, production"
+        echo "Valid environments: local, dev, stg, prod"
         exit 1
         ;;
 esac

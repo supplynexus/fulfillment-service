@@ -29,13 +29,13 @@ show_usage() {
     echo "支持的环境:"
     echo "  local    - 本地环境 (端口: 6379)"
     echo "  dev      - 开发环境 (端口: 6380)"
-    echo "  staging  - 测试环境 (端口: 6381)"
+    echo "  stg  - 测试环境 (端口: 6381)"
     echo "  prod     - 生产环境 (端口: 6382)"
     echo ""
     echo "示例:"
     echo "  $0 local"
     echo "  $0 dev"
-    echo "  $0 staging"
+    echo "  $0 stg"
     echo "  $0 prod"
 }
 
@@ -50,7 +50,7 @@ ENVIRONMENT=$1
 
 # 验证环境参数
 case $ENVIRONMENT in
-    local|dev|staging|prod)
+    local|dev|stg|prod)
         print_status "部署环境: $ENVIRONMENT"
         ;;
     *)

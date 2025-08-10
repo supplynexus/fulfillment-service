@@ -57,7 +57,7 @@ git clone https://github.com/supplynexus/fulfillment-service.git
 cd fulfillment-service
 
 # 运行自动安装脚本
-./scripts/development/setup.sh
+./scripts/dev/setup.sh
 ```
 
 安装脚本将：
@@ -203,17 +203,17 @@ vim deployment/environments/env.local  # 编辑配置
 ENV_FILE=deployment/environments/env.local python backend/scripts/db.py upgrade
 
 # 3. 启动开发环境
-./scripts/development/start.sh
+./scripts/dev/start.sh
 ```
 
 ### 开发命令
 
 ```bash
 # 启动开发环境
-./scripts/development/start.sh
+./scripts/dev/start.sh
 
 # 停止开发环境
-./scripts/development/stop.sh
+./scripts/dev/stop.sh
 
 # 查看日志
 docker-compose -f docker-compose.dev.yml logs -f [service_name]

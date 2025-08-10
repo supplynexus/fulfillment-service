@@ -37,7 +37,7 @@ show_usage() {
     echo ""
     echo "环境 (environment):"
     echo "  dev      - 开发环境"
-    echo "  staging  - 测试环境"
+    echo "  stg  - 测试环境"
     echo "  prod     - 生产环境"
     echo ""
     echo "服务 (service):"
@@ -57,7 +57,7 @@ show_usage() {
     echo "  $0 dev postgres start     # 启动开发环境 PostgreSQL"
     echo "  $0 dev redis start        # 启动开发环境 Redis"
     echo "  $0 dev all start          # 启动开发环境所有服务"
-    echo "  $0 staging all status     # 查看测试环境所有服务状态"
+    echo "  $0 stg all status     # 查看测试环境所有服务状态"
     echo ""
     echo "首次使用:"
     echo "  1. 配置 PostgreSQL: cd deployment/docker/postgresql && cp environment.example environment.dev"
@@ -79,7 +79,7 @@ ACTION=${3:-start}
 
 # 验证环境参数
 case $ENVIRONMENT in
-    dev|staging|prod)
+    dev|stg|prod)
         print_status "目标环境: $ENVIRONMENT"
         ;;
     *)

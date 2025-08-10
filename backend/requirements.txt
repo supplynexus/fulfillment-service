@@ -40,7 +40,7 @@ python-dotenv==1.0.0
 structlog==23.2.0
 sentry-sdk[fastapi]==1.38.0
 
-# Development and Testing
+# Dev and Testing
 pytest==7.4.3
 pytest-asyncio==0.21.1
 pytest-cov==4.1.0

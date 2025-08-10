@@ -26,7 +26,7 @@ services:
     networks:
       - fulfillment_dev_network
 
-  # Backend API (Development)
+  # Backend API (Dev)
   backend_dev:
     build:
       context: ./backend
@@ -37,12 +37,12 @@ services:
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
-      SECRET_KEY: dev-secret-key-not-for-production
+      SECRET_KEY: dev-secret-key-not-for-prod
       SHOPIFY_API_KEY: dev-shopify-api-key
       SHOPIFY_API_SECRET: dev-shopify-api-secret
       PRINTIFY_API_TOKEN: dev-printify-api-token
       WEBHOOK_SECRET: dev-webhook-secret
-      ENVIRONMENT: development
+      ENVIRONMENT: dev
       ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001
       ALLOWED_HOSTS: localhost,127.0.0.1,backend_dev
     volumes:
@@ -56,7 +56,7 @@ services:
       - fulfillment_dev_network
     restart: unless-stopped
 
-  # Celery Worker (Development)
+  # Celery Worker (Dev)
   celery_worker_dev:
     build:
       context: ./backend
@@ -67,11 +67,11 @@ services:
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
-      SECRET_KEY: dev-secret-key-not-for-production
+      SECRET_KEY: dev-secret-key-not-for-prod
       SHOPIFY_API_KEY: dev-shopify-api-key
       SHOPIFY_API_SECRET: dev-shopify-api-secret
       PRINTIFY_API_TOKEN: dev-printify-api-token
-      ENVIRONMENT: development
+      ENVIRONMENT: dev
     volumes:
       - ./backend:/app
     depends_on:
@@ -98,7 +98,7 @@ services:
       - fulfillment_dev_network
     restart: unless-stopped
 
-  # Frontend (Development)
+  # Frontend (Dev)
   frontend_dev:
     build:
       context: ./frontend
@@ -107,7 +107,7 @@ services:
     command: npm run dev
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8000
-      NODE_ENV: development
+      NODE_ENV: dev
     volumes:
       - ./frontend:/app
       - /app/node_modules

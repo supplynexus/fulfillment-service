@@ -7,7 +7,7 @@ services:
     environment:
       POSTGRES_DB: supplynexus
       POSTGRES_USER: supplynexus_admin
-      POSTGRES_PASSWORD: change-in-production
+      POSTGRES_PASSWORD: change-in-prod
     volumes:
       - postgres_data:/var/lib/postgresql/data
       # - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql  # Removed - no init.sql file
@@ -43,16 +43,16 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     environment:
-      DATABASE_URL: postgresql+asyncpg://supplynexus_admin:change-in-production@postgres:5432/supplynexus
+      DATABASE_URL: postgresql+asyncpg://supplynexus_admin:change-in-prod@postgres:5432/supplynexus
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
-      SECRET_KEY: your-secret-key-change-in-production
+      SECRET_KEY: your-secret-key-change-in-prod
       SHOPIFY_API_KEY: your-shopify-api-key
       SHOPIFY_API_SECRET: your-shopify-api-secret
       PRINTIFY_API_TOKEN: your-printify-api-token
       WEBHOOK_SECRET: your-webhook-secret
-      ENVIRONMENT: development
+      ENVIRONMENT: dev
       ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001
       ALLOWED_HOSTS: localhost,127.0.0.1,backend
     volumes:
@@ -82,15 +82,15 @@ services:
       dockerfile: Dockerfile
     command: celery -A app.tasks.celery_app worker --loglevel=info
     environment:
-      DATABASE_URL: postgresql+asyncpg://supplynexus_admin:change-in-production@postgres:5432/supplynexus
+      DATABASE_URL: postgresql+asyncpg://supplynexus_admin:change-in-prod@postgres:5432/supplynexus
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
-      SECRET_KEY: your-secret-key-change-in-production
+      SECRET_KEY: your-secret-key-change-in-prod
       SHOPIFY_API_KEY: your-shopify-api-key
       SHOPIFY_API_SECRET: your-shopify-api-secret
       PRINTIFY_API_TOKEN: your-printify-api-token
-      ENVIRONMENT: development
+      ENVIRONMENT: dev
     volumes:
       - ./backend:/app
       - worker_logs:/app/logs
@@ -110,15 +110,15 @@ services:
       dockerfile: Dockerfile
     command: celery -A app.tasks.celery_app beat --loglevel=info
     environment:
-      DATABASE_URL: postgresql+asyncpg://supplynexus_admin:change-in-production@postgres:5432/supplynexus
+      DATABASE_URL: postgresql+asyncpg://supplynexus_admin:change-in-prod@postgres:5432/supplynexus
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
-      SECRET_KEY: your-secret-key-change-in-production
+      SECRET_KEY: your-secret-key-change-in-prod
       SHOPIFY_API_KEY: your-shopify-api-key
       SHOPIFY_API_SECRET: your-shopify-api-secret
       PRINTIFY_API_TOKEN: your-printify-api-token
-      ENVIRONMENT: development
+      ENVIRONMENT: dev
     volumes:
       - ./backend:/app
       - beat_logs:/app/logs

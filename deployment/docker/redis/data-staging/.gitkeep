@@ -1,3 +1,0 @@
-# This file keeps the data-staging directory in git
-# The actual data files are ignored by .gitignore
-# This ensures the directory structure exists for new developers

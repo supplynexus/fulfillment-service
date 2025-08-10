@@ -9,7 +9,7 @@
 ./deployment/scripts/deploy.sh local start
 
 # 启动开发环境
-./deployment/scripts/deploy.sh development start
+./deployment/scripts/deploy.sh dev start
 
 # 运行数据库迁移
 ./deployment/scripts/deploy.sh local db-upgrade
@@ -29,9 +29,9 @@
 1. **复制环境配置文件**：
 ```bash
 cp deployment/environments/env.example deployment/environments/env.local
-cp deployment/environments/env.example deployment/environments/env.development
-cp deployment/environments/env.example deployment/environments/env.staging
-cp deployment/environments/env.example deployment/environments/env.production
+cp deployment/environments/env.example deployment/environments/env.dev
+cp deployment/environments/env.example deployment/environments/env.stg
+cp deployment/environments/env.example deployment/environments/env.prod
 ```
 
 2. **编辑配置文件**：
@@ -76,7 +76,7 @@ PRINTIFY_API_TOKEN=your-printify-api-token
 ## 🌍 环境说明
 
 - **local** - 本地开发环境（端口 5432）
-- **development** - 开发服务器环境（端口 5433）
+- **dev** - 开发服务器环境（端口 5433）
 - **staging** - 测试环境
 - **production** - 生产环境
 
@@ -89,7 +89,7 @@ PRINTIFY_API_TOKEN=your-printify-api-token
 git pull origin develop
 
 # 2. 配置环境文件
-cp deployment/environments/env.example deployment/environments/env.development
+cp deployment/environments/env.example deployment/environments/env.dev
 # 编辑配置文件...
 
 # 3. 启动基础设施（PostgreSQL, Redis）
@@ -97,10 +97,10 @@ cd deployment/docker/postgresql && ./deploy.sh dev
 cd deployment/docker/redis && ./deploy.sh dev
 
 # 4. 运行数据库迁移
-./deployment/scripts/deploy.sh development db-upgrade
+./deployment/scripts/deploy.sh dev db-upgrade
 
 # 5. 启动应用服务
-./deployment/scripts/deploy.sh development start
+./deployment/scripts/deploy.sh dev start
 ```
 
 ### 2. 日常部署
@@ -110,10 +110,10 @@ cd deployment/docker/redis && ./deploy.sh dev
 git pull origin develop
 
 # 2. 运行数据库迁移（如果有）
-./deployment/scripts/deploy.sh development db-upgrade
+./deployment/scripts/deploy.sh dev db-upgrade
 
 # 3. 重启服务
-./deployment/scripts/deploy.sh development restart
+./deployment/scripts/deploy.sh dev restart
 ```
 
 ### 3. 生产环境部署
@@ -124,10 +124,10 @@ git checkout main
 git pull origin main
 
 # 2. 运行生产环境迁移
-./deployment/scripts/deploy.sh production db-upgrade
+./deployment/scripts/deploy.sh prod db-upgrade
 
 # 3. 启动生产服务
-./deployment/scripts/deploy.sh production start
+./deployment/scripts/deploy.sh prod start
 ```
 
 ## 🔍 故障排查
@@ -135,19 +135,19 @@ git pull origin main
 ### 查看服务状态
 ```bash
 # 查看所有服务日志
-./deployment/scripts/deploy.sh development logs
+./deployment/scripts/deploy.sh dev logs
 
 # 查看特定服务日志
-./deployment/scripts/deploy.sh development logs backend
+./deployment/scripts/deploy.sh dev logs backend
 ```
 
 ### 数据库问题
 ```bash
 # 检查迁移状态
-./deployment/scripts/deploy.sh development db-status
+./deployment/scripts/deploy.sh dev db-status
 
 # 查看迁移历史
-./deployment/scripts/deploy.sh development db-history
+./deployment/scripts/deploy.sh dev db-history
 ```
 
 ### 重置数据库（谨慎使用）
@@ -170,8 +170,8 @@ python deployment/scripts/db.py reset
 
 ```bash
 # 旧方式（仍然可用）
-ENV_FILE=env.development ./deployment/scripts/deploy.sh start
-ENV_FILE=env.development ./deployment/scripts/deploy.sh db-upgrade
+ENV_FILE=env.dev ./deployment/scripts/deploy.sh start
+ENV_FILE=env.dev ./deployment/scripts/deploy.sh db-upgrade
 ```
 
 ## 📞 支持

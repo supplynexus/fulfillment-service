@@ -41,7 +41,7 @@ def setup_logging():
             structlog.processors.format_exc_info,
             structlog.processors.UnicodeDecoder(),
             # 根据环境选择输出格式
-            structlog.processors.JSONRenderer() if settings.ENVIRONMENT in ["production", "staging"] 
+            structlog.processors.JSONRenderer() if settings.ENVIRONMENT in ["prod", "stg"] 
             else structlog.dev.ConsoleRenderer()
         ],
         context_class=dict,

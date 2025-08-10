@@ -155,9 +155,9 @@ web_modules/
 .env
 .env.test
 .env.local
-.env.development.local
+.env.dev.local
 .env.test.local
-.env.production.local
+.env.prod.local
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
@@ -219,7 +219,7 @@ dump.rdb
 *.backup
 *.old
 
-# Local development files
+# Local dev files
 .local/
 local_settings.py
 
@@ -252,23 +252,23 @@ webhook_logs/
 
 # Environment-specific overrides
 .env.override
-.env.staging
-.env.production
+.env.stg
+.env.prod
 
 # Deployment environment files (DO NOT commit actual environment files)
 deployment/environments/env.local
-deployment/environments/env.development
-deployment/environments/env.staging
-deployment/environments/env.production
+deployment/environments/env.dev
+deployment/environments/env.stg
+deployment/environments/env.prod
 
 # Infrastructure environment files (DO NOT commit actual environment files)
 deployment/docker/postgresql/environment.local
 deployment/docker/postgresql/environment.dev
-deployment/docker/postgresql/environment.staging
+deployment/docker/postgresql/environment.stg
 deployment/docker/postgresql/environment.prod
 deployment/docker/redis/environment.local
 deployment/docker/redis/environment.dev
-deployment/docker/redis/environment.staging
+deployment/docker/redis/environment.stg
 deployment/docker/redis/environment.prod
 
 # Database data directories (DO NOT commit data files)

@@ -12,7 +12,7 @@ from app.core.config import settings
 # Create async engine for main application
 async_engine = create_async_engine(
     settings.DATABASE_URL,
-    echo=True if settings.ENVIRONMENT == "development" else False,
+    echo=True if settings.ENVIRONMENT == "dev" else False,
     pool_pre_ping=True,
     pool_recycle=300,
 )
@@ -27,7 +27,7 @@ AsyncSessionLocal = async_sessionmaker(
 # Create sync engine for Alembic migrations
 sync_engine = create_engine(
     settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://"),
-    echo=True if settings.ENVIRONMENT == "development" else False,
+    echo=True if settings.ENVIRONMENT == "dev" else False,
     pool_pre_ping=True,
     pool_recycle=300,
 )

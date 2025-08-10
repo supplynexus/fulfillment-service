@@ -33,9 +33,9 @@ show_usage() {
     echo ""
     echo "Environments:"
     echo "  local        - Local development environment"
-    echo "  development  - Development environment"
-    echo "  staging      - Staging environment"
-    echo "  production   - Production environment"
+    echo "  dev          - Dev environment"
+    echo "  stg          - Staging environment"
+    echo "  prod         - Production environment"
     echo ""
     echo "Commands:"
     echo "  start        - Start all services"
@@ -48,12 +48,12 @@ show_usage() {
     echo ""
     echo "Examples:"
     echo "  ./deploy.sh local start"
-    echo "  ./deploy.sh development start"
-    echo "  ./deploy.sh production db-upgrade"
-    echo "  ./deploy.sh staging logs backend"
+    echo "  ./deploy.sh dev start"
+    echo "  ./deploy.sh prod db-upgrade"
+    echo "  ./deploy.sh stg logs backend"
     echo ""
     echo "Legacy usage (still supported):"
-    echo "  ENV_FILE=env.development ./deploy.sh start"
+    echo "  ENV_FILE=env.dev ./deploy.sh start"
 }
 
 # Parse arguments
@@ -87,12 +87,12 @@ fi
 
 # Validate environment
 case "$ENVIRONMENT" in
-    local|development|staging|production)
+    local|dev|stg|prod)
         ENV_FILE="env.$ENVIRONMENT"
         ;;
     *)
         print_error "Invalid environment: $ENVIRONMENT"
-        echo "Valid environments: local, development, staging, production"
+        echo "Valid environments: local, dev, stg, prod"
         exit 1
         ;;
 esac

@@ -112,8 +112,8 @@ python scripts/db.py revision "手动迁移描述"
 
 ```
 backend/
-├── env.development    # 开发环境配置
-├── env.staging       # 测试环境配置
+├── env.dev    # 开发环境配置
+├── env.stg       # 测试环境配置
 └── .env              # 默认环境配置（如果存在）
 ```
 
@@ -121,10 +121,10 @@ backend/
 
 ```bash
 # 使用开发环境
-ENV_FILE=../deployment/environments/env.development python scripts/db.py current
+ENV_FILE=../deployment/environments/env.dev python scripts/db.py current
 
 # 使用测试环境
-ENV_FILE=../deployment/environments/env.staging python scripts/db.py upgrade
+ENV_FILE=../deployment/environments/env.stg python scripts/db.py upgrade
 
 # 使用默认环境（不指定 ENV_FILE）
 python scripts/db.py current
@@ -147,7 +147,7 @@ export DATABASE_URL="postgresql+asyncpg://user:pass@localhost:5433/db"
 export DATABASE_URL_SYNC="postgresql://user:pass@localhost:5433/db"
 
 # 或使用环境文件
-ENV_FILE=../deployment/environments/env.development python scripts/db.py <command>
+ENV_FILE=../deployment/environments/env.dev python scripts/db.py <command>
 ```
 
 ## 故障排除

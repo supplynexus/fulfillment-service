@@ -7,13 +7,13 @@
 ```bash
 # 复制环境配置模板
 cp deployment/environments/env.example deployment/environments/env.local
-cp deployment/environments/env.example deployment/environments/env.staging
-cp deployment/environments/env.example deployment/environments/env.production
+cp deployment/environments/env.example deployment/environments/env.stg
+cp deployment/environments/env.example deployment/environments/env.prod
 
 # 编辑配置文件（手动编辑，不提交到 git）
 vim deployment/environments/env.local
-vim deployment/environments/env.staging
-vim deployment/environments/env.production
+vim deployment/environments/env.stg
+vim deployment/environments/env.prod
 ```
 
 ### 2. 启动数据库
@@ -23,7 +23,7 @@ vim deployment/environments/env.production
 ./deployment/scripts/db-setup.sh local start
 
 # 启动测试环境数据库
-./deployment/scripts/db-setup.sh staging start
+./deployment/scripts/db-setup.sh stg start
 
 # 启动生产环境数据库
 ./deployment/scripts/db-setup.sh prod start
@@ -36,10 +36,10 @@ vim deployment/environments/env.production
 ENV_FILE=deployment/environments/env.local python backend/scripts/db.py upgrade
 
 # 测试环境迁移
-ENV_FILE=deployment/environments/env.staging python backend/scripts/db.py upgrade
+ENV_FILE=deployment/environments/env.stg python backend/scripts/db.py upgrade
 
 # 生产环境迁移
-ENV_FILE=deployment/environments/env.production python backend/scripts/db.py upgrade
+ENV_FILE=deployment/environments/env.prod python backend/scripts/db.py upgrade
 ```
 
 ## 📋 详细说明
@@ -49,7 +49,7 @@ ENV_FILE=deployment/environments/env.production python backend/scripts/db.py upg
 | 环境 | 端口 | 数据库名 | 容器名 | 数据目录 |
 |------|------|----------|--------|----------|
 | local | 5433 | supplynexus_local | supplynexus-postgres-local | data-local |
-| staging | 5434 | supplynexus_staging | supplynexus-postgres-staging | data-staging |
+| stg | 5434 | supplynexus_stg | supplynexus-postgres-stg | data-stg |
 | prod | 5435 | supplynexus_prod | supplynexus-postgres-prod | data-prod |
 
 ### 数据库管理命令
@@ -106,8 +106,8 @@ SHOPIFY_API_SECRET=your-shopify-api-secret
 PRINTIFY_API_TOKEN=your-printify-api-token
 
 # 安全配置
-SECRET_KEY=your-secret-key-change-in-production
-WEBHOOK_SECRET=your-webhook-secret-change-in-production
+SECRET_KEY=your-secret-key-change-in-prod
+WEBHOOK_SECRET=your-webhook-secret-change-in-prod
 
 # 应用配置
 ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001
@@ -141,7 +141,7 @@ git commit -m "Add new migration"
 git push
 
 # 2. 在目标环境执行迁移
-ENV_FILE=deployment/environments/env.staging python backend/scripts/db.py upgrade
+ENV_FILE=deployment/environments/env.stg python backend/scripts/db.py upgrade
 ```
 
 ## 🔧 故障排除
