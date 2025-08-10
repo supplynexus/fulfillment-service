@@ -109,12 +109,10 @@ fi
 
 print_status "Using environment: $ENVIRONMENT (file: $ENV_FILE)"
 
-# Change to docker directory
-cd docker
-
 # Function to start services
 start_services() {
     print_status "Starting services with environment: $ENVIRONMENT"
+    cd docker
     docker-compose up -d
     print_success "Services started successfully"
     
@@ -134,6 +132,7 @@ start_services() {
 # Function to stop services
 stop_services() {
     print_status "Stopping services..."
+    cd docker
     docker-compose down
     print_success "Services stopped successfully"
 }
@@ -141,6 +140,7 @@ stop_services() {
 # Function to restart services
 restart_services() {
     print_status "Restarting services..."
+    cd docker
     docker-compose down
     docker-compose up -d
     print_success "Services restarted successfully"
@@ -148,6 +148,7 @@ restart_services() {
 
 # Function to show logs
 show_logs() {
+    cd docker
     if [ -z "$SERVICE_NAME" ]; then
         print_status "Showing logs for all services..."
         docker-compose logs -f
