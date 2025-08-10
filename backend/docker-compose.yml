@@ -6,7 +6,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: supplynexus-backend
+    container_name: supplynexus-backend-${ENVIRONMENT:-local}
     env_file:
       - .env
     environment:

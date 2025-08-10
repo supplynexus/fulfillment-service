@@ -40,6 +40,9 @@ fi
 # Create logs directory if not exists
 mkdir -p "${BACKEND_DIR}/logs-local"
 
+# Set environment to local
+export ENVIRONMENT=local
+
 # Build and start the service
 echo -e "${YELLOW}🔨 Building and starting backend service...${NC}"
 cd "${BACKEND_DIR}" && docker-compose up --build -d
