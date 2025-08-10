@@ -100,7 +100,11 @@ cd deployment/docker/backend
 ## Nginx 配置
 
 ### 配置文件位置
-- `deployment/nginx/backend.conf` - 后端 API Nginx 配置
+- `deployment/nginx/backend.conf` - 后端 API Nginx 配置样本
+- `deployment/nginx/README.md` - Nginx 部署详细说明
+
+### 重要说明
+⚠️ **Nginx 配置是独立的样本文件**，适用于 Ubuntu 系统上直接安装的 Nginx，不是 Docker 容器。
 
 ### 主要特性
 - SSL/TLS 支持
@@ -113,21 +117,28 @@ cd deployment/docker/backend
 
 1. **复制配置文件**
 ```bash
-sudo cp deployment/nginx/backend.conf /etc/nginx/sites-available/
-sudo ln -s /etc/nginx/sites-available/backend.conf /etc/nginx/sites-enabled/
+sudo cp deployment/nginx/backend.conf /etc/nginx/sites-available/supplynexus-backend
+sudo ln -s /etc/nginx/sites-available/supplynexus-backend /etc/nginx/sites-enabled/
 ```
 
-2. **配置 SSL 证书**
+2. **修改配置**
 ```bash
-# 使用 Let's Encrypt
+sudo nano /etc/nginx/sites-available/supplynexus-backend
+# 根据实际情况修改域名、SSL 证书路径等
+```
+
+3. **申请 SSL 证书**
+```bash
 sudo certbot --nginx -d api.dev.supplynexus.store
 ```
 
-3. **重启 Nginx**
+4. **测试并重启 Nginx**
 ```bash
 sudo nginx -t
-sudo systemctl restart nginx
+sudo systemctl reload nginx
 ```
+
+详细说明请参考：`deployment/nginx/README.md`
 
 ## 健康检查
 
