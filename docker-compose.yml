@@ -5,12 +5,12 @@ services:
   postgres:
     image: postgres:15-alpine
     environment:
-      POSTGRES_DB: fulfillment_service
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: supplynexus
+      POSTGRES_USER: supplynexus_admin
+      POSTGRES_PASSWORD: change-in-production
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+      # - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql  # Removed - no init.sql file
     ports:
       - "5432:5432"
     networks:
@@ -43,7 +43,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/fulfillment_service
+      DATABASE_URL: postgresql+asyncpg://supplynexus_admin:change-in-production@postgres:5432/supplynexus
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
@@ -82,7 +82,7 @@ services:
       dockerfile: Dockerfile
     command: celery -A app.tasks.celery_app worker --loglevel=info
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/fulfillment_service
+      DATABASE_URL: postgresql+asyncpg://supplynexus_admin:change-in-production@postgres:5432/supplynexus
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
@@ -110,7 +110,7 @@ services:
       dockerfile: Dockerfile
     command: celery -A app.tasks.celery_app beat --loglevel=info
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/fulfillment_service
+      DATABASE_URL: postgresql+asyncpg://supplynexus_admin:change-in-production@postgres:5432/supplynexus
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2

@@ -119,8 +119,8 @@ setup_database() {
     source venv/bin/activate
     
     # Initialize Alembic if not already done
-    if [ ! -d "../database/migrations/versions" ]; then
-        mkdir -p ../database/migrations/versions
+    if [ ! -d "migrations/versions" ]; then
+        mkdir -p migrations/versions
         alembic revision --autogenerate -m "Initial migration"
         print_status "Created initial database migration"
     fi

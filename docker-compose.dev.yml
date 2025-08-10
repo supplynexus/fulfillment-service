@@ -5,13 +5,13 @@ services:
   postgres:
     image: postgres:15-alpine
     environment:
-      POSTGRES_DB: fulfillment_service_dev
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: supplynexus
+      POSTGRES_USER: supplynexus_admin
+      POSTGRES_PASSWORD: aabbccdd
     volumes:
       - postgres_dev_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "5433:5432"
     networks:
       - fulfillment_dev_network
 
@@ -33,7 +33,7 @@ services:
       dockerfile: Dockerfile
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/fulfillment_service_dev
+      DATABASE_URL: postgresql+asyncpg://supplynexus_admin:aabbccdd@postgres:5432/supplynexus
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
@@ -63,7 +63,7 @@ services:
       dockerfile: Dockerfile
     command: celery -A app.tasks.celery_app worker --loglevel=debug --reload
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/fulfillment_service_dev
+      DATABASE_URL: postgresql+asyncpg://supplynexus_admin:aabbccdd@postgres:5432/supplynexus
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2

@@ -255,6 +255,27 @@ webhook_logs/
 .env.staging
 .env.production
 
+# Deployment environment files (DO NOT commit actual environment files)
+deployment/environments/env.local
+deployment/environments/env.development
+deployment/environments/env.staging
+deployment/environments/env.production
+
+# Infrastructure environment files (DO NOT commit actual environment files)
+deployment/docker/postgresql/environment.local
+deployment/docker/postgresql/environment.dev
+deployment/docker/postgresql/environment.staging
+deployment/docker/postgresql/environment.prod
+deployment/docker/redis/environment.local
+deployment/docker/redis/environment.dev
+deployment/docker/redis/environment.staging
+deployment/docker/redis/environment.prod
+
+# Database data directories (DO NOT commit data files)
+deployment/docker/postgresql/data-*/
+deployment/docker/redis/data-*/
+
 # Mac specific (additional)
 .AppleDouble
-.LSOverride
+.LSOverride# Virtual environment
+.venv/

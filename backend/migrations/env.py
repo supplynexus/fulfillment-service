@@ -9,7 +9,7 @@ import os
 import sys
 
 # Add the backend directory to the path so we can import our models
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'backend'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from app.core.database import Base
 from app.core.config import settings
@@ -27,10 +27,12 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Set the SQLAlchemy URL from environment
-config.set_main_option(
-    "sqlalchemy.url",
-    settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
-)
+# Support both async and sync DATABASE_URL formats
+database_url = os.getenv("DATABASE_URL_SYNC") or os.getenv("DATABASE_URL", settings.DATABASE_URL)
+if database_url.startswith("postgresql+asyncpg://"):
+    database_url = database_url.replace("postgresql+asyncpg://", "postgresql://")
+
+config.set_main_option("sqlalchemy.url", database_url)
 
 # add your model's MetaData object here
 # for 'autogenerate' support
