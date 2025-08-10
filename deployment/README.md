@@ -5,26 +5,30 @@
 ### 新的部署方式（推荐）
 
 ```bash
+# 启动本地环境
+./deployment/scripts/deploy.sh local start
+
 # 启动开发环境
 ./deployment/scripts/deploy.sh development start
 
 # 运行数据库迁移
-./deployment/scripts/deploy.sh development db-upgrade
+./deployment/scripts/deploy.sh local db-upgrade
 
 # 查看服务状态
-./deployment/scripts/deploy.sh development db-status
+./deployment/scripts/deploy.sh local db-status
 
 # 查看日志
-./deployment/scripts/deploy.sh development logs
+./deployment/scripts/deploy.sh local logs
 
 # 停止服务
-./deployment/scripts/deploy.sh development stop
+./deployment/scripts/deploy.sh local stop
 ```
 
 ### 环境配置
 
 1. **复制环境配置文件**：
 ```bash
+cp deployment/environments/env.example deployment/environments/env.local
 cp deployment/environments/env.example deployment/environments/env.development
 cp deployment/environments/env.example deployment/environments/env.staging
 cp deployment/environments/env.example deployment/environments/env.production
@@ -32,14 +36,18 @@ cp deployment/environments/env.example deployment/environments/env.production
 
 2. **编辑配置文件**：
 ```bash
-vim deployment/environments/env.development
+vim deployment/environments/env.local
 ```
 
 3. **关键配置项**：
 ```bash
-# 数据库配置
-DATABASE_URL=postgresql+asyncpg://username:password@host:port/database
-DATABASE_URL_SYNC=postgresql://username:password@host:port/database
+# 本地环境配置 (端口: 5432)
+DATABASE_URL=postgresql+asyncpg://username:password@localhost:5432/database
+DATABASE_URL_SYNC=postgresql://username:password@localhost:5432/database
+
+# 开发环境配置 (端口: 5433)
+DATABASE_URL=postgresql+asyncpg://username:password@localhost:5433/database
+DATABASE_URL_SYNC=postgresql://username:password@localhost:5433/database
 
 # Redis 配置
 REDIS_URL=redis://:password@host:port/0
@@ -67,7 +75,8 @@ PRINTIFY_API_TOKEN=your-printify-api-token
 
 ## 🌍 环境说明
 
-- **development** - 开发环境
+- **local** - 本地开发环境（端口 5432）
+- **development** - 开发服务器环境（端口 5433）
 - **staging** - 测试环境
 - **production** - 生产环境
 

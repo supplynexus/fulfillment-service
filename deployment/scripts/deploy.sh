@@ -32,6 +32,7 @@ show_usage() {
     echo "Usage: ./deploy.sh <environment> <command> [options]"
     echo ""
     echo "Environments:"
+    echo "  local        - Local development environment"
     echo "  development  - Development environment"
     echo "  staging      - Staging environment"
     echo "  production   - Production environment"
@@ -46,6 +47,7 @@ show_usage() {
     echo "  db-history   - Show migration history"
     echo ""
     echo "Examples:"
+    echo "  ./deploy.sh local start"
     echo "  ./deploy.sh development start"
     echo "  ./deploy.sh production db-upgrade"
     echo "  ./deploy.sh staging logs backend"
@@ -85,12 +87,12 @@ fi
 
 # Validate environment
 case "$ENVIRONMENT" in
-    development|staging|production)
+    local|development|staging|production)
         ENV_FILE="env.$ENVIRONMENT"
         ;;
     *)
         print_error "Invalid environment: $ENVIRONMENT"
-        echo "Valid environments: development, staging, production"
+        echo "Valid environments: local, development, staging, production"
         exit 1
         ;;
 esac
