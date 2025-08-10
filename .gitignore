@@ -275,6 +275,9 @@ deployment/docker/redis/environment.prod
 deployment/docker/postgresql/data-*/
 deployment/docker/redis/data-*/
 
+# But keep .gitkeep files to maintain directory structure
+!deployment/docker/*/data-*/.gitkeep
+
 # Mac specific (additional)
 .AppleDouble
 .LSOverride# Virtual environment
