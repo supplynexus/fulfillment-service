@@ -169,7 +169,7 @@ run_db_migrations() {
         ENV_FILE="$ENV_FILE" python scripts/db.py upgrade
     else
         print_status "Python not found, using Docker for database operations"
-        ./db-docker.sh "$ENVIRONMENT" upgrade
+        "$(dirname "$0")/db-docker.sh" "$ENVIRONMENT" upgrade
     fi
     
     print_success "Database migrations completed"
@@ -186,7 +186,7 @@ check_db_status() {
         ENV_FILE="$ENV_FILE" python scripts/db.py current
     else
         print_status "Python not found, using Docker for database operations"
-        ./db-docker.sh "$ENVIRONMENT" current
+        "$(dirname "$0")/db-docker.sh" "$ENVIRONMENT" current
     fi
 }
 
@@ -201,7 +201,7 @@ show_db_history() {
         ENV_FILE="$ENV_FILE" python scripts/db.py history
     else
         print_status "Python not found, using Docker for database operations"
-        ./db-docker.sh "$ENVIRONMENT" history
+        "$(dirname "$0")/db-docker.sh" "$ENVIRONMENT" history
     fi
 }
 
