@@ -21,8 +21,24 @@ def set_environment():
     env_file = os.getenv("ENV_FILE", "env.development")
     print(f"📁 Using environment file: {env_file}")
     
-    os.environ.setdefault("DATABASE_URL", settings.DATABASE_URL)
-    os.environ.setdefault("DATABASE_URL_SYNC", settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://"))
+    # Load environment variables from file
+    env_file_path = Path(__file__).parent.parent / "environments" / env_file
+    if env_file_path.exists():
+        with open(env_file_path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    key, value = line.split('=', 1)
+                    os.environ[key] = value
+    
+    # Set default database URLs if not already set
+    if not os.getenv("DATABASE_URL"):
+        os.environ.setdefault("DATABASE_URL", settings.DATABASE_URL)
+    
+    if not os.getenv("DATABASE_URL_SYNC"):
+        database_url = os.getenv("DATABASE_URL", settings.DATABASE_URL)
+        sync_url = database_url.replace("postgresql+asyncpg://", "postgresql://")
+        os.environ.setdefault("DATABASE_URL_SYNC", sync_url)
 
 
 def run_alembic_command(command):
@@ -34,11 +50,17 @@ def run_alembic_command(command):
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python deployment/scripts/db.py <command> [args...]")
-        print("\nEnvironment:")
-        print("  ENV_FILE=env.development python deployment/scripts/db.py <command>  # Use development env")
-        print("  ENV_FILE=env.staging python deployment/scripts/db.py <command>      # Use staging env")
-        print("  ENV_FILE=env.production python deployment/scripts/db.py <command>   # Use production env")
+        print("Database management script for SupplyNexus Fulfillment Service")
+        print("=" * 60)
+        print("\nUsage:")
+        print("  python deployment/scripts/db.py <command> [args...]")
+        print("\nEnvironment (set ENV_FILE environment variable):")
+        print("  ENV_FILE=env.development python deployment/scripts/db.py <command>  # Development")
+        print("  ENV_FILE=env.staging python deployment/scripts/db.py <command>      # Staging")
+        print("  ENV_FILE=env.production python deployment/scripts/db.py <command>   # Production")
+        print("\nOr use the deploy.sh script (recommended):")
+        print("  ./deployment/scripts/deploy.sh development db-upgrade")
+        print("  ./deployment/scripts/deploy.sh production db-status")
         print("\nAvailable commands:")
         print("  current     - Show current migration version")
         print("  history     - Show migration history")
@@ -47,6 +69,10 @@ def main():
         print("  revision    - Create new migration")
         print("  autogen     - Auto-generate migration from models")
         print("  reset       - Reset database (drop all tables)")
+        print("\nExamples:")
+        print("  python deployment/scripts/db.py current")
+        print("  python deployment/scripts/db.py upgrade")
+        print("  python deployment/scripts/db.py autogen 'add new table'")
         return 1
 
     command = sys.argv[1]
