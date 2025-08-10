@@ -11,10 +11,10 @@
   - 适合本地开发环境
   - 数据持久化在本地
 
-### 2. Development 环境 (开发服务器)
+### 2. Dev 环境 (开发服务器)
 - **端口**: PostgreSQL 5433, Redis 6380
 - **用途**: 开发服务器部署
-- **配置文件**: `deployment/environments/env.development`
+- **配置文件**: `deployment/environments/env.dev`
 - **特点**:
   - 使用非标准端口，避免与本地服务冲突
   - 适合团队开发环境
@@ -23,7 +23,7 @@
 ### 3. Staging 环境 (测试环境)
 - **端口**: PostgreSQL 5434, Redis 6381
 - **用途**: 测试和预发布
-- **配置文件**: `deployment/environments/env.staging`
+- **配置文件**: `deployment/environments/env.stg`
 - **特点**:
   - 模拟生产环境
   - 用于功能测试和集成测试
@@ -32,7 +32,7 @@
 ### 4. Production 环境 (生产环境)
 - **端口**: PostgreSQL 5435, Redis 6382
 - **用途**: 生产部署
-- **配置文件**: `deployment/environments/env.production`
+- **配置文件**: `deployment/environments/env.prod`
 - **特点**:
   - 生产环境配置
   - 高可用性和安全性
@@ -43,7 +43,7 @@
 | 环境 | PostgreSQL | Redis | 说明 |
 |------|------------|-------|------|
 | Local | 5432 | 6379 | 本地开发 |
-| Development | 5433 | 6380 | 开发服务器 |
+| Dev | 5433 | 6380 | 开发服务器 |
 | Staging | 5434 | 6381 | 测试环境 |
 | Production | 5435 | 6382 | 生产环境 |
 
@@ -53,9 +53,9 @@
 deployment/environments/
 ├── env.example          # 配置模板
 ├── env.local            # 本地环境配置
-├── env.development      # 开发环境配置
-├── env.staging          # 测试环境配置
-└── env.production       # 生产环境配置
+├── env.dev      # 开发环境配置
+├── env.stg          # 测试环境配置
+└── env.prod       # 生产环境配置
 ```
 
 ## 🚀 使用方式
@@ -76,14 +76,14 @@ vim deployment/environments/env.local
 ### 开发服务器
 ```bash
 # 配置开发环境
-cp deployment/environments/env.example deployment/environments/env.development
-vim deployment/environments/env.development
+cp deployment/environments/env.example deployment/environments/env.dev
+vim deployment/environments/env.dev
 
 # 启动开发服务
-./deployment/scripts/deploy.sh development start
+./deployment/scripts/deploy.sh dev start
 
 # 运行迁移
-./deployment/scripts/deploy.sh development db-upgrade
+./deployment/scripts/deploy.sh dev db-upgrade
 ```
 
 ## ⚠️ 注意事项
@@ -120,10 +120,10 @@ DATABASE_URL_SYNC=postgresql://username:password@localhost:5432/database
 REDIS_URL=redis://localhost:6379/0
 ```
 
-### Development 环境配置示例
+### Dev 环境配置示例
 ```bash
 # 开发环境配置
-ENVIRONMENT=development
+ENVIRONMENT=dev
 DATABASE_URL=postgresql+asyncpg://username:password@localhost:5433/database
 DATABASE_URL_SYNC=postgresql://username:password@localhost:5433/database
 REDIS_URL=redis://localhost:6380/0

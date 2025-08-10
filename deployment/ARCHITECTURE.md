@@ -19,12 +19,12 @@
 │                  基础设施层 (Infrastructure Layer)           │
 ├─────────────────────────────────────────────────────────────┤
 │  PostgreSQL (独立 Docker Compose)                           │
-│  - 端口: dev(5433), staging(5434), prod(5435)              │
+│  - 端口: dev(5433), stg(5434), prod(5435)              │
 │  - 独立的环境变量配置                                        │
 │  - 独立的数据持久化                                          │
 │                                                             │
 │  Redis (独立 Docker Compose)                                │
-│  - 端口: dev(6380), staging(6381), prod(6382)              │
+│  - 端口: dev(6380), stg(6381), prod(6382)              │
 │  - 独立的环境变量配置                                        │
 │  - 独立的数据持久化                                          │
 └─────────────────────────────────────────────────────────────┘
@@ -40,7 +40,7 @@ deployment/
 │   │   ├── deploy.sh               # PostgreSQL 部署脚本
 │   │   ├── environment.example     # 环境配置模板
 │   │   ├── environment.dev         # 开发环境配置（不提交到 git）
-│   │   ├── environment.staging     # 测试环境配置（不提交到 git）
+│   │   ├── environment.stg     # 测试环境配置（不提交到 git）
 │   │   ├── environment.prod        # 生产环境配置（不提交到 git）
 │   │   └── data-*/                 # 数据持久化目录
 │   │
@@ -49,15 +49,15 @@ deployment/
 │       ├── deploy.sh               # Redis 部署脚本
 │       ├── environment.example     # 环境配置模板
 │       ├── environment.dev         # 开发环境配置（不提交到 git）
-│       ├── environment.staging     # 测试环境配置（不提交到 git）
+│       ├── environment.stg     # 测试环境配置（不提交到 git）
 │       ├── environment.prod        # 生产环境配置（不提交到 git）
 │       └── data-*/                 # 数据持久化目录
 │
 ├── environments/                    # 应用层环境配置
 │   ├── env.example                 # 应用环境配置模板
 │   ├── env.local                   # 本地环境配置（不提交到 git）
-│   ├── env.staging                 # 测试环境配置（不提交到 git）
-│   └── env.production              # 生产环境配置（不提交到 git）
+│   ├── env.stg                 # 测试环境配置（不提交到 git）
+│   └── env.prod              # 生产环境配置（不提交到 git）
 │
 └── scripts/                        # 管理脚本
     ├── infra.sh                    # 基础设施管理脚本
@@ -99,7 +99,7 @@ ENV_FILE=deployment/environments/env.local python backend/scripts/db.py upgrade
 | 环境 | PostgreSQL 端口 | Redis 端口 | 数据库名 | 容器名前缀 |
 |------|----------------|------------|----------|------------|
 | dev | 5433 | 6380 | supplynexus | supplynexus-postgres-dev |
-| staging | 5434 | 6381 | supplynexus | supplynexus-postgres-staging |
+| stg | 5434 | 6381 | supplynexus | supplynexus-postgres-stg |
 | prod | 5435 | 6382 | supplynexus | supplynexus-postgres-prod |
 
 ### 应用环境配置
@@ -244,5 +244,5 @@ git commit -m "Add new migration"
 git push
 
 # 2. 在目标环境执行迁移
-ENV_FILE=deployment/environments/env.staging python backend/scripts/db.py upgrade
+ENV_FILE=deployment/environments/env.stg python backend/scripts/db.py upgrade
 ```

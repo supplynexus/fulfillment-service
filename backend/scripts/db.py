@@ -37,8 +37,8 @@ def main():
     if len(sys.argv) < 2:
         print("Usage: python scripts/db.py <command> [args...]")
         print("\nEnvironment:")
-        print("  ENV_FILE=../deployment/environments/env.development python scripts/db.py <command>  # Use development env")
-        print("  ENV_FILE=../deployment/environments/env.staging python scripts/db.py <command>      # Use staging env")
+        print("  ENV_FILE=../deployment/environments/env.dev python scripts/db.py <command>  # Use dev env")
+        print("  ENV_FILE=../deployment/environments/env.stg python scripts/db.py <command>      # Use staging env")
         print("\nAvailable commands:")
         print("  current     - Show current migration version")
         print("  history     - Show migration history")

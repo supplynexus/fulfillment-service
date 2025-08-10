@@ -27,13 +27,13 @@ class Settings(BaseSettings):
     PRINTIFY_API_TOKEN: Optional[str] = os.getenv("PRINTIFY_API_TOKEN")
     
     # 安全配置
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "dev-jwt-secret-key-change-in-production")
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "dev-jwt-secret-key-change-in-prod")
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
-    WEBHOOK_SECRET: str = os.getenv("WEBHOOK_SECRET", "dev-webhook-secret-change-in-production")
+    WEBHOOK_SECRET: str = os.getenv("WEBHOOK_SECRET", "dev-webhook-secret-change-in-prod")
     
     # 应用配置
-    ENVIRONMENT: str = "development"
+    ENVIRONMENT: str = "dev"
     ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:3001"
     ALLOWED_HOSTS: str = "localhost,127.0.0.1"
     

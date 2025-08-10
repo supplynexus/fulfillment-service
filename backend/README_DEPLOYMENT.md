@@ -5,16 +5,15 @@
 ```
 backend/
 ├── logs-dev/          # 开发环境日志目录
-├── logs-development/  # 开发环境日志目录
 ├── logs-local/        # 本地环境日志目录
 ├── logs-prod/         # 生产环境日志目录
-├── logs-staging/      # 测试环境日志目录
+├── logs-stg/          # 测试环境日志目录
 ├── .env.local         # 本地环境配置
-├── .env.development   # 开发环境配置
-├── .env.staging       # 测试环境配置
-├── .env.production    # 生产环境配置
+├── .env.dev           # 开发环境配置
+├── .env.stg           # 测试环境配置
+├── .env.prod          # 生产环境配置
 └── scripts/
-    └── run.sh         # 本地开发脚本
+    └── db.py          # 数据库管理脚本
 ```
 
 ## 🚀 部署方式
@@ -24,29 +23,31 @@ backend/
 ```bash
 # 在 deployment/docker/backend/ 目录下执行
 ./deploy.sh local        # 本地环境
-./deploy.sh development  # 开发环境
-./deploy.sh staging      # 测试环境
-./deploy.sh production   # 生产环境
+./deploy.sh dev          # 开发环境
+./deploy.sh stg          # 测试环境
+./deploy.sh prod         # 生产环境
 ```
 
 ### 方式二：使用 run.sh（推荐用于本地开发）
 
 ```bash
 # 在 backend/ 目录下执行
-./scripts/run.sh local up        # 启动本地环境
-./scripts/run.sh local down      # 停止服务
-./scripts/run.sh local restart   # 重启服务
-./scripts/run.sh local logs      # 查看日志
-./scripts/run.sh local status    # 查看状态
+# 使用 deploy.sh（推荐）
+cd ../deployment/docker/backend
+./deploy.sh local up        # 启动本地环境
+./deploy.sh local down      # 停止服务
+./deploy.sh local restart   # 重启服务
+./deploy.sh local logs      # 查看日志
+./deploy.sh local status    # 查看状态
 ```
 
 ## 📋 环境文件配置
 
 ### 环境文件位置
 - 本地环境：`backend/.env.local`
-- 开发环境：`backend/.env.development`
-- 测试环境：`backend/.env.staging`
-- 生产环境：`backend/.env.production`
+- 开发环境：`backend/.env.dev`
+- 测试环境：`backend/.env.stg`
+- 生产环境：`backend/.env.prod`
 
 ### 环境文件内容示例
 ```bash
@@ -87,8 +88,9 @@ vim .env.local
 
 ### 2. 启动服务
 ```bash
-# 使用 run.sh（推荐）
-./scripts/run.sh local up
+# 使用 deploy.sh（推荐）
+cd ../deployment/docker/backend
+./deploy.sh local up
 
 # 或使用 deploy.sh
 ../deployment/docker/backend/deploy.sh local
@@ -114,14 +116,15 @@ open http://localhost:8000/api/v1/docs
 
 日志文件存储在对应的环境目录中：
 - 本地环境：`logs-local/`
-- 开发环境：`logs-development/`
-- 测试环境：`logs-staging/`
+- 开发环境：`logs-dev/`
+- 测试环境：`logs-stg/`
 - 生产环境：`logs-prod/`
 
 查看日志：
 ```bash
-# 使用 run.sh
-./scripts/run.sh local logs
+# 使用 deploy.sh
+cd ../deployment/docker/backend
+./deploy.sh local logs
 
 # 或直接查看文件
 tail -f logs-local/app.log
@@ -135,7 +138,8 @@ tail -f logs-local/app.log
 docker-compose logs backend
 
 # 重新构建
-./scripts/run.sh local build
+cd ../deployment/docker/backend
+./deploy.sh local build
 ```
 
 ### 2. 环境文件问题

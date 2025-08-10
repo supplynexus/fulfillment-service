@@ -29,9 +29,9 @@ show_usage() {
     echo ""
     echo "支持的环境:"
     echo "  local       - 本地环境 (端口: 8000)"
-    echo "  development - 开发环境 (端口: 8001)"
-    echo "  staging     - 测试环境 (端口: 8002)"
-    echo "  production  - 生产环境 (端口: 8003)"
+    echo "  dev         - 开发环境 (端口: 8001)"
+    echo "  stg         - 测试环境 (端口: 8002)"
+    echo "  prod        - 生产环境 (端口: 8003)"
     echo ""
     echo "支持的操作:"
     echo "  up          - 启动服务 (默认)"
@@ -42,6 +42,9 @@ show_usage() {
     echo ""
     echo "示例:"
     echo "  $0 local up        # 启动本地环境"
+    echo "  $0 dev up          # 启动开发环境"
+    echo "  $0 stg up          # 启动测试环境"
+    echo "  $0 prod up         # 启动生产环境"
     echo "  $0 local down      # 停止本地环境"
     echo "  $0 local restart   # 重启本地环境"
     echo "  $0 local logs      # 查看本地环境日志"
@@ -72,7 +75,7 @@ esac
 
 # 验证环境参数
 case $ENVIRONMENT in
-    local|development|staging|production)
+    local|dev|stg|prod)
         print_status "部署环境: $ENVIRONMENT"
         ;;
     *)

@@ -14,9 +14,9 @@ app.dev.supplynexus.store     # 前端应用
 
 ### 测试环境 (Staging)
 ```
-api.staging.supplynexus.store     # 后端 API
-admin.staging.supplynexus.store   # 管理后台
-app.staging.supplynexus.store     # 前端应用
+api.stg.supplynexus.store     # 后端 API
+admin.stg.supplynexus.store   # 管理后台
+app.stg.supplynexus.store     # 前端应用
 ```
 
 ### 生产环境 (Production)
@@ -34,9 +34,9 @@ app.supplynexus.store         # 前端应用
 - **管理后台**: `localhost:3001` → `admin.dev.supplynexus.store`
 
 ### 测试环境
-- **后端 API**: `staging-server:8000` → `api.staging.supplynexus.store`
-- **前端应用**: `staging-server:3000` → `app.staging.supplynexus.store`
-- **管理后台**: `staging-server:3001` → `admin.staging.supplynexus.store`
+- **后端 API**: `stg-server:8000` → `api.stg.supplynexus.store`
+- **前端应用**: `stg-server:3000` → `app.stg.supplynexus.store`
+- **管理后台**: `stg-server:3001` → `admin.stg.supplynexus.store`
 
 ### 生产环境
 - **后端 API**: `prod-server:8000` → `api.supplynexus.store`
@@ -61,9 +61,9 @@ dev-server-ip app.dev.supplynexus.store
 dev-server-ip admin.dev.supplynexus.store
 
 # 测试服务器
-staging-server-ip api.staging.supplynexus.store
-staging-server-ip app.staging.supplynexus.store
-staging-server-ip admin.staging.supplynexus.store
+stg-server-ip api.stg.supplynexus.store
+stg-server-ip app.stg.supplynexus.store
+stg-server-ip admin.stg.supplynexus.store
 
 # 生产服务器
 prod-server-ip api.supplynexus.store
@@ -77,7 +77,7 @@ prod-server-ip admin.supplynexus.store
 建议使用通配符证书覆盖所有子域名：
 - `*.supplynexus.store` - 覆盖所有子域名
 - `*.dev.supplynexus.store` - 开发环境子域名
-- `*.staging.supplynexus.store` - 测试环境子域名
+- `*.stg.supplynexus.store` - 测试环境子域名
 
 ### Let's Encrypt 配置
 ```bash
@@ -85,7 +85,7 @@ prod-server-ip admin.supplynexus.store
 certbot certonly --manual --preferred-challenges=dns \
   -d *.supplynexus.store \
   -d *.dev.supplynexus.store \
-  -d *.staging.supplynexus.store
+  -d *.stg.supplynexus.store
 ```
 
 ## 负载均衡配置
@@ -128,8 +128,8 @@ upstream backend_api {
 ALLOWED_ORIGINS = [
     "https://app.dev.supplynexus.store",
     "https://admin.dev.supplynexus.store",
-    "https://app.staging.supplynexus.store",
-    "https://admin.staging.supplynexus.store",
+    "https://app.stg.supplynexus.store",
+"https://admin.stg.supplynexus.store",
     "https://app.supplynexus.store",
     "https://admin.supplynexus.store",
 ]

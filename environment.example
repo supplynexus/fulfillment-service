@@ -4,8 +4,8 @@
 
 # Application Settings
 PROJECT_NAME="SupplyNexus Fulfillment Service"
-ENVIRONMENT=development
-SECRET_KEY=your-super-secret-key-change-this-in-production
+ENVIRONMENT=dev
+SECRET_KEY=your-super-secret-key-change-this-in-prod
 API_V1_STR=/api/v1
 
 # Database Configuration
@@ -40,7 +40,7 @@ ALLOWED_HOSTS=localhost,127.0.0.1
 SENTRY_DSN=your-sentry-dsn-for-error-tracking
 
 # Health Check Configuration
-HEALTH_CHECK_API_KEY=your-health-check-api-key-change-this-in-production
+HEALTH_CHECK_API_KEY=your-health-check-api-key-change-this-in-prod
 HEALTH_CHECK_RATE_LIMIT=10
 HEALTH_CHECK_RATE_WINDOW=60
 

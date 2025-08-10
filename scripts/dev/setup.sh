@@ -1,9 +1,9 @@
 #!/bin/bash
-# Setup script for SupplyNexus Fulfillment Service development environment
+# Setup script for SupplyNexus Fulfillment Service dev environment
 
 set -e
 
-echo "🚀 Setting up SupplyNexus Fulfillment Service Development Environment"
+echo "🚀 Setting up SupplyNexus Fulfillment Service Dev Environment"
 
 # Colors for output
 RED='\033[0;31m'
@@ -132,16 +132,16 @@ setup_database() {
     cd ..
 }
 
-# Start development services
+# Start dev services
 start_development() {
-    print_status "Starting development services..."
+    print_status "Starting dev services..."
     
-    # Start all development services
+    # Start all dev services
     docker-compose -f docker-compose.dev.yml up -d
     
-    print_status "Development environment is ready!"
+    print_status "Dev environment is ready!"
     echo ""
-    echo "🎉 Setup complete! Your development environment is running:"
+    echo "🎉 Setup complete! Your dev environment is running:"
     echo ""
     echo "  📊 Backend API:        http://localhost:8000"
     echo "  📊 API Documentation:  http://localhost:8000/api/v1/docs"
@@ -150,7 +150,7 @@ start_development() {
     echo "  🗃️  PostgreSQL:        localhost:5432"
     echo "  ⚡ Redis:             localhost:6379"
     echo ""
-    echo "To stop the development environment, run:"
+    echo "To stop the dev environment, run:"
     echo "  docker-compose -f docker-compose.dev.yml down"
     echo ""
     echo "To view logs, run:"

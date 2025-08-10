@@ -1,11 +1,11 @@
 #!/bin/bash
-# Start development environment
+# Start dev environment
 
-echo "🚀 Starting SupplyNexus Fulfillment Service Development Environment"
+echo "🚀 Starting SupplyNexus Fulfillment Service Dev Environment"
 
 docker-compose -f docker-compose.dev.yml up -d
 
-echo "✅ Development environment started!"
+echo "✅ Dev environment started!"
 echo ""
 echo "Services available at:"
 echo "  📊 Backend API:        http://localhost:8000"

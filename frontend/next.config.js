@@ -22,7 +22,7 @@ const nextConfig = {
       'images.printify.com',
     ],
   },
-  // Enable strict mode for better development experience
+  // Enable strict mode for better dev experience
   reactStrictMode: true,
   
   // Optimize fonts

@@ -18,7 +18,7 @@ from app.core.config import settings
 def set_environment():
     """Set environment variables for database operations"""
     # Use environment file if specified
-    env_file = os.getenv("ENV_FILE", "env.development")
+    env_file = os.getenv("ENV_FILE", "env.dev")
     print(f"📁 Using environment file: {env_file}")
     
     # Load environment variables from file
@@ -55,12 +55,12 @@ def main():
         print("\nUsage:")
         print("  python deployment/scripts/db.py <command> [args...]")
         print("\nEnvironment (set ENV_FILE environment variable):")
-        print("  ENV_FILE=env.development python deployment/scripts/db.py <command>  # Development")
-        print("  ENV_FILE=env.staging python deployment/scripts/db.py <command>      # Staging")
-        print("  ENV_FILE=env.production python deployment/scripts/db.py <command>   # Production")
+        print("  ENV_FILE=env.dev python deployment/scripts/db.py <command>  # Dev")
+        print("  ENV_FILE=env.stg python deployment/scripts/db.py <command>      # Staging")
+        print("  ENV_FILE=env.prod python deployment/scripts/db.py <command>   # Production")
         print("\nOr use the deploy.sh script (recommended):")
-        print("  ./deployment/scripts/deploy.sh development db-upgrade")
-        print("  ./deployment/scripts/deploy.sh production db-status")
+        print("  ./deployment/scripts/deploy.sh dev db-upgrade")
+        print("  ./deployment/scripts/deploy.sh prod db-status")
         print("\nAvailable commands:")
         print("  current     - Show current migration version")
         print("  history     - Show migration history")
