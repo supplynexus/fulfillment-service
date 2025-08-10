@@ -2,49 +2,60 @@
 # SupplyNexus Fulfillment Service Environment Configuration
 # =================================================================
 
+# =================================================================
+# REQUIRED CONFIGURATIONS (必须配置)
+# =================================================================
+
 # Application Settings
 PROJECT_NAME="SupplyNexus Fulfillment Service"
 ENVIRONMENT=dev
 SECRET_KEY=your-super-secret-key-change-this-in-prod
 API_V1_STR=/api/v1
 
-# Database Configuration
+# Database Configuration (必需)
 DATABASE_URL=postgresql+asyncpg://supplynexus_admin:your-password@localhost:5433/supplynexus
 
-# Redis Configuration
+# Redis Configuration (必需)
 REDIS_URL=redis://localhost:6379/0
 
-# Celery Configuration
-CELERY_BROKER_URL=redis://localhost:6379/1
-CELERY_RESULT_BACKEND=redis://localhost:6379/2
-
-# Shopify API Configuration
-SHOPIFY_API_KEY=your-shopify-api-key
-SHOPIFY_API_SECRET=your-shopify-api-secret
-SHOPIFY_API_VERSION=2023-10
-
-# Printify API Configuration
-PRINTIFY_API_TOKEN=your-printify-api-token
-PRINTIFY_API_BASE_URL=https://api.printify.com/v1
-
-# Security Settings
-WEBHOOK_SECRET=your-webhook-secret-for-shopify-and-printify
-ACCESS_TOKEN_EXPIRE_MINUTES=10080  # 7 days
-ALGORITHM=HS256
-
-# CORS Settings
-ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001
-ALLOWED_HOSTS=localhost,127.0.0.1
-
-# Monitoring (Optional)
-SENTRY_DSN=your-sentry-dsn-for-error-tracking
-
-# Health Check Configuration
+# Health Check Configuration (必需)
 HEALTH_CHECK_API_KEY=your-health-check-api-key-change-this-in-prod
 HEALTH_CHECK_RATE_LIMIT=10
 HEALTH_CHECK_RATE_WINDOW=60
 
-# Email Configuration (Optional)
+# Port Configuration (必需)
+BACKEND_PORT=8000
+
+# =================================================================
+# OPTIONAL CONFIGURATIONS (可选配置)
+# =================================================================
+
+# Celery Configuration (可选 - 用于异步任务)
+CELERY_BROKER_URL=redis://localhost:6379/1
+CELERY_RESULT_BACKEND=redis://localhost:6379/2
+
+# Shopify API Configuration (可选 - 用于 Shopify 集成)
+SHOPIFY_API_KEY=your-shopify-api-key
+SHOPIFY_API_SECRET=your-shopify-api-secret
+SHOPIFY_API_VERSION=2023-10
+
+# Printify API Configuration (可选 - 用于 Printify 集成)
+PRINTIFY_API_TOKEN=your-printify-api-token
+PRINTIFY_API_BASE_URL=https://api.printify.com/v1
+
+# Security Settings (可选 - 用于高级安全功能)
+WEBHOOK_SECRET=your-webhook-secret-for-shopify-and-printify
+ACCESS_TOKEN_EXPIRE_MINUTES=10080  # 7 days
+ALGORITHM=HS256
+
+# CORS Settings (可选 - 用于跨域请求)
+ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001
+ALLOWED_HOSTS=localhost,127.0.0.1
+
+# Monitoring (可选 - 用于错误监控)
+SENTRY_DSN=your-sentry-dsn-for-error-tracking
+
+# Email Configuration (可选 - 用于邮件通知)
 SMTP_TLS=true
 SMTP_PORT=587
 SMTP_HOST=smtp.gmail.com
@@ -53,18 +64,37 @@ SMTP_PASSWORD=your-email-password
 EMAILS_FROM_EMAIL=noreply@supplynexus.store
 EMAILS_FROM_NAME=SupplyNexus
 
-# Frontend Configuration
+# Frontend Configuration (可选 - 用于前端集成)
 NEXT_PUBLIC_API_URL=http://localhost:8000
 NEXT_PUBLIC_APP_NAME=SupplyNexus Fulfillment Service
 
 # =================================================================
-# Production Environment Overrides
+# DEVELOPMENT ENVIRONMENT SETTINGS (开发环境设置)
 # =================================================================
-# For production, update the following:
-# - Change SECRET_KEY to a strong random key
-# - Update DATABASE_URL to production database
-# - Update REDIS_URL to production Redis
-# - Set real Shopify and Printify API credentials
-# - Configure proper ALLOWED_ORIGINS and ALLOWED_HOSTS
-# - Set up Sentry DSN for error tracking
-# - Configure email settings for notifications
+# 开发环境可以禁用某些功能：
+# SENTRY_DSN=                    # 开发环境可以留空，禁用错误监控
+# SHOPIFY_API_KEY=               # 开发环境可以留空，禁用 Shopify 集成
+# PRINTIFY_API_TOKEN=            # 开发环境可以留空，禁用 Printify 集成
+
+# =================================================================
+# PRODUCTION ENVIRONMENT OVERRIDES (生产环境覆盖)
+# =================================================================
+# 生产环境必须更新以下配置：
+# - 更改 SECRET_KEY 为强随机密钥
+# - 更新 DATABASE_URL 为生产数据库
+# - 更新 REDIS_URL 为生产 Redis
+# - 设置真实的 Shopify 和 Printify API 凭据
+# - 配置正确的 ALLOWED_ORIGINS 和 ALLOWED_HOSTS
+# - 设置 Sentry DSN 进行错误跟踪
+# - 配置邮件设置用于通知
+# - 确保所有必需配置都已正确设置
+
+# =================================================================
+# DOCKER ENVIRONMENT NOTES (Docker 环境说明)
+# =================================================================
+# 在 Docker 环境中，使用以下地址访问宿主机服务：
+# - 数据库: host.docker.internal:5433
+# - Redis: host.docker.internal:6379
+# 示例：
+# DATABASE_URL=postgresql+asyncpg://supplynexus_admin:password@host.docker.internal:5433/supplynexus
+# REDIS_URL=redis://host.docker.internal:6379/0
