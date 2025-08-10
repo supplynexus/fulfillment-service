@@ -16,3 +16,8 @@ JWT_SECRET=dev-jwt-secret-key
 ENVIRONMENT=development
 ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001
 ALLOWED_HOSTS=localhost,127.0.0.1
+
+# 健康检查配置
+HEALTH_CHECK_API_KEY=4df1b63b84f3d0d15eb4bcbe2d443efb
+HEALTH_CHECK_RATE_LIMIT=10
+HEALTH_CHECK_RATE_WINDOW=60

@@ -6,42 +6,28 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.openapi.utils import get_openapi
 import structlog
 import sentry_sdk
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+from datetime import datetime
 
 from app.core.config import settings
 from app.core.database import init_db
+from app.core.logging import setup_logging, get_logger
 from app.api.v1.api import api_router
 
-# Configure structured logging
-structlog.configure(
-    processors=[
-        structlog.stdlib.filter_by_level,
-        structlog.stdlib.add_logger_name,
-        structlog.stdlib.add_log_level,
-        structlog.stdlib.PositionalArgumentsFormatter(),
-        structlog.processors.TimeStamper(fmt="iso"),
-        structlog.processors.StackInfoRenderer(),
-        structlog.processors.format_exc_info,
-        structlog.processors.UnicodeDecoder(),
-        structlog.processors.JSONRenderer()
-    ],
-    context_class=dict,
-    logger_factory=structlog.stdlib.LoggerFactory(),
-    wrapper_class=structlog.stdlib.BoundLogger,
-    cache_logger_on_first_use=True,
-)
-
-logger = structlog.get_logger()
+# 设置日志配置
+setup_logging()
+logger = get_logger(__name__)
 
 # Initialize Sentry for error tracking
 if settings.SENTRY_DSN:
     sentry_sdk.init(
         dsn=settings.SENTRY_DSN,
         integrations=[
-            FastApiIntegration(auto_enabling_integrations=False),
+            FastApiIntegration(),
             SqlalchemyIntegration(),
         ],
         environment=settings.ENVIRONMENT,
@@ -122,14 +108,45 @@ async def root():
     }
 
 
-@app.get("/health")
-async def health_check():
-    """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "service": "fulfillment-service",
-        "version": "1.0.0"
+# Health check endpoints are now handled by the dedicated health router
+# See /api/v1/health for detailed health checks
+
+def custom_openapi():
+    """自定义 OpenAPI 配置，添加 API Key 安全模式"""
+    if app.openapi_schema:
+        return app.openapi_schema
+    
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+    
+    # 确保 components 存在
+    if "components" not in openapi_schema:
+        openapi_schema["components"] = {}
+    
+    # 添加 API Key 安全模式
+    openapi_schema["components"]["securitySchemes"] = {
+        "ApiKeyAuth": {
+            "type": "apiKey",
+            "in": "header",
+            "name": "X-API-Key",
+            "description": "API Key for health check endpoints"
+        }
     }
+    
+    # 为健康检查端点添加安全要求
+    for path in openapi_schema["paths"]:
+        if path.startswith("/api/v1/health/") and path != "/api/v1/health":
+            if "get" in openapi_schema["paths"][path]:
+                openapi_schema["paths"][path]["get"]["security"] = [{"ApiKeyAuth": []}]
+    
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+app.openapi = custom_openapi
 
 # Include API router
 app.include_router(api_router, prefix=settings.API_V1_STR)
