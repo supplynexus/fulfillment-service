@@ -4,11 +4,11 @@ services:
   # Backend API Service
   backend:
     build:
-      context: ..
+      context: .
       dockerfile: Dockerfile
     container_name: supplynexus-backend
     env_file:
-      - ../.env
+      - .env
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL}
@@ -17,6 +17,8 @@ services:
       - HEALTH_CHECK_RATE_WINDOW=${HEALTH_CHECK_RATE_WINDOW:-60}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - ./logs-${ENVIRONMENT:-local}:/app/logs
     networks:
       - backend_network
     restart: unless-stopped

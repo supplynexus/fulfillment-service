@@ -12,24 +12,30 @@
 # 进入 backend 目录
 cd backend
 
-# 快速启动（自动创建 .env 文件）
+# 快速启动（使用默认 local 环境）
 ./scripts/docker-start.sh
+
+# 或者指定环境启动
+./scripts/docker-env.sh local
+./scripts/docker-env.sh development
+./scripts/docker-env.sh staging
+./scripts/docker-env.sh production
 ```
 
 ### 2. 使用 docker-compose
 
 ```bash
 # 构建并启动
-cd scripts && docker-compose up --build -d
+docker-compose up --build -d
 
 # 查看日志
-cd scripts && docker-compose logs -f backend
+docker-compose logs -f backend
 
 # 停止服务
-cd scripts && docker-compose down
+docker-compose down
 
 # 重启服务
-cd scripts && docker-compose restart backend
+docker-compose restart backend
 ```
 
 ## 环境配置
@@ -38,10 +44,19 @@ cd scripts && docker-compose restart backend
 
 项目支持多个环境配置文件：
 
-- `.env` - 本地开发环境
-- `deployment/environments/env.development` - 开发服务器
-- `deployment/environments/env.staging` - 测试环境
-- `deployment/environments/env.production` - 生产环境
+- `.env` - 本地开发环境（默认）
+- `.env.development` - 开发环境
+- `.env.staging` - 测试环境
+- `.env.production` - 生产环境
+
+### 日志目录
+
+每个环境都有对应的日志目录：
+
+- `logs-local/` - 本地环境日志
+- `logs-dev/` - 开发环境日志
+- `logs-staging/` - 测试环境日志
+- `logs-prod/` - 生产环境日志
 
 ### 必需的环境变量
 
@@ -65,11 +80,14 @@ HEALTH_CHECK_RATE_WINDOW=60
 ### 本地开发
 
 ```bash
-# 使用快速启动脚本
+# 使用快速启动脚本（默认 local 环境）
 ./scripts/docker-start.sh
 
+# 指定环境启动
+./scripts/docker-env.sh development
+
 # 或手动启动
-cd scripts && docker-compose up --build -d
+docker-compose --env-file .env.development up --build -d
 ```
 
 ### 服务器部署

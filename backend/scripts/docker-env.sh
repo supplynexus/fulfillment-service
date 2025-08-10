@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SupplyNexus Backend Docker Quick Start Script
+# SupplyNexus Backend Docker Environment Start Script
 
 set -e
 
@@ -11,8 +11,15 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}🚀 SupplyNexus Backend Docker Quick Start${NC}"
-echo -e "${BLUE}========================================${NC}"
+# Configuration
+ENVIRONMENT=${1:-local}
+BACKEND_PORT=${BACKEND_PORT:-8000}
+
+echo -e "${BLUE}🚀 SupplyNexus Backend Docker Start (${ENVIRONMENT})${NC}"
+echo -e "${BLUE}==============================================${NC}"
+echo -e "Environment: ${GREEN}${ENVIRONMENT}${NC}"
+echo -e "Port: ${GREEN}${BACKEND_PORT}${NC}"
+echo ""
 
 # Check if Docker is running
 if ! docker info > /dev/null 2>&1; then
@@ -20,32 +27,32 @@ if ! docker info > /dev/null 2>&1; then
     exit 1
 fi
 
-# Check if .env file exists in parent directory
-if [ ! -f "../.env" ]; then
-    echo -e "${YELLOW}⚠️  .env file not found. Creating from .env.example...${NC}"
-    if [ -f "../.env.example" ]; then
-        cp ../.env.example ../.env
-        echo -e "${GREEN}✅ Created .env file from .env.example${NC}"
-        echo -e "${YELLOW}⚠️  Please edit .env file with your configuration${NC}"
-    else
-        echo -e "${RED}❌ .env.example not found. Please create .env file manually.${NC}"
-        exit 1
-    fi
+# Check if environment file exists
+ENV_FILE=".env.${ENVIRONMENT}"
+if [ ! -f "../${ENV_FILE}" ]; then
+    echo -e "${RED}❌ Environment file ${ENV_FILE} not found${NC}"
+    echo -e "${YELLOW}Available environments: local, development, staging, production${NC}"
+    exit 1
 fi
 
 # Create logs directory if not exists
-mkdir -p ../logs-local
+LOGS_DIR="logs-${ENVIRONMENT}"
+mkdir -p "../${LOGS_DIR}"
+
+# Set environment variables
+export ENVIRONMENT=${ENVIRONMENT}
+export BACKEND_PORT=${BACKEND_PORT}
 
 # Build and start the service
-echo -e "${YELLOW}🔨 Building and starting backend service...${NC}"
-cd .. && docker-compose up --build -d
+echo -e "${YELLOW}🔨 Building and starting backend service (${ENVIRONMENT})...${NC}"
+cd .. && docker-compose --env-file ${ENV_FILE} up --build -d
 
 # Wait for service to be ready
 echo -e "${YELLOW}⏳ Waiting for service to be ready...${NC}"
 timeout=60
 counter=0
 while [ $counter -lt $timeout ]; do
-    if curl -f http://localhost:8000/api/v1/health > /dev/null 2>&1; then
+    if curl -f http://localhost:${BACKEND_PORT}/api/v1/health > /dev/null 2>&1; then
         echo -e "${GREEN}✅ Service is ready!${NC}"
         break
     fi
@@ -65,9 +72,9 @@ fi
 echo -e "${GREEN}🎉 Backend service started successfully!${NC}"
 echo ""
 echo -e "${BLUE}📍 Service URLs:${NC}"
-echo -e "   API: ${GREEN}http://localhost:8000${NC}"
-echo -e "   API Docs: ${GREEN}http://localhost:8000/api/v1/docs${NC}"
-echo -e "   Health Check: ${GREEN}http://localhost:8000/api/v1/health${NC}"
+echo -e "   API: ${GREEN}http://localhost:${BACKEND_PORT}${NC}"
+echo -e "   API Docs: ${GREEN}http://localhost:${BACKEND_PORT}/api/v1/docs${NC}"
+echo -e "   Health Check: ${GREEN}http://localhost:${BACKEND_PORT}/api/v1/health${NC}"
 echo ""
 echo -e "${BLUE}🔧 Useful Commands:${NC}"
 echo -e "   View logs: ${YELLOW}docker-compose logs -f backend${NC}"
