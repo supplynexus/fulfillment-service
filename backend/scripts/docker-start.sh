@@ -20,11 +20,11 @@ if ! docker info > /dev/null 2>&1; then
     exit 1
 fi
 
-# Check if .env file exists
-if [ ! -f ".env" ]; then
+# Check if .env file exists in parent directory
+if [ ! -f "../.env" ]; then
     echo -e "${YELLOW}⚠️  .env file not found. Creating from .env.example...${NC}"
-    if [ -f ".env.example" ]; then
-        cp .env.example .env
+    if [ -f "../.env.example" ]; then
+        cp ../.env.example ../.env
         echo -e "${GREEN}✅ Created .env file from .env.example${NC}"
         echo -e "${YELLOW}⚠️  Please edit .env file with your configuration${NC}"
     else

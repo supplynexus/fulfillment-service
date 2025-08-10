@@ -13,23 +13,23 @@
 cd backend
 
 # 快速启动（自动创建 .env 文件）
-./docker-start.sh
+./scripts/docker-start.sh
 ```
 
 ### 2. 使用 docker-compose
 
 ```bash
 # 构建并启动
-docker-compose up --build -d
+cd scripts && docker-compose up --build -d
 
 # 查看日志
-docker-compose logs -f backend
+cd scripts && docker-compose logs -f backend
 
 # 停止服务
-docker-compose down
+cd scripts && docker-compose down
 
 # 重启服务
-docker-compose restart backend
+cd scripts && docker-compose restart backend
 ```
 
 ## 环境配置
@@ -66,10 +66,10 @@ HEALTH_CHECK_RATE_WINDOW=60
 
 ```bash
 # 使用快速启动脚本
-./docker-start.sh
+./scripts/docker-start.sh
 
 # 或手动启动
-docker-compose up --build -d
+cd scripts && docker-compose up --build -d
 ```
 
 ### 服务器部署

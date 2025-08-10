@@ -4,11 +4,11 @@ services:
   # Backend API Service
   backend:
     build:
-      context: .
+      context: ..
       dockerfile: Dockerfile
     container_name: supplynexus-backend
     env_file:
-      - .env
+      - ../.env
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL}
