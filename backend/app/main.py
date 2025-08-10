@@ -23,7 +23,7 @@ setup_logging()
 logger = get_logger(__name__)
 
 # Initialize Sentry for error tracking
-if settings.SENTRY_DSN:
+if settings.SENTRY_DSN and settings.SENTRY_DSN.strip():
     sentry_sdk.init(
         dsn=settings.SENTRY_DSN,
         integrations=[
