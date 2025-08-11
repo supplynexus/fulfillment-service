@@ -2,11 +2,19 @@
 API Key model for external system authentication
 """
 
-from sqlalchemy import Boolean, Column, Integer, String, DateTime, ForeignKey, Text, JSON
+from sqlalchemy import Boolean, Column, Integer, String, DateTime, ForeignKey, Text, JSON, Enum
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
+import enum
 
 from app.core.database import Base
+
+
+class ApiKeyType(enum.Enum):
+    """API Key types for different access levels"""
+    FRONTEND_SERVER = "frontend_server"  # Frontend Next.js server-side
+    BUSINESS_PARTNER = "business_partner"  # External business partners
+    SYSTEM = "system"  # Internal system integration
 
 
 class ApiKey(Base):
@@ -21,6 +29,7 @@ class ApiKey(Base):
     
     # Ownership and permissions
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
+    key_type = Column(Enum(ApiKeyType), nullable=False, default=ApiKeyType.BUSINESS_PARTNER)
     name = Column(String, nullable=False)  # Human readable name
     description = Column(Text, nullable=True)
     

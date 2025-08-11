@@ -8,11 +8,13 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.core.config import settings
 from app.core.database import get_async_db
 from app.core.security import create_access_token, get_current_active_user
 from app.models.user import User
+from app.models.customer import Customer
 from app.schemas.auth import Token, UserCreate, UserResponse
 from app.services.user_service import UserService
 
@@ -48,11 +50,27 @@ async def login_for_access_token(
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     refresh_token_expires = timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     
+    # Get user's customer (tenant) information
+    # For now, we'll use the first customer associated with the user
+    # In a real system, you might want to allow users to switch between tenants
+    customer_result = await db.execute(
+        select(Customer).where(Customer.owner_id == user.id).limit(1)
+    )
+    customer = customer_result.scalar_one_or_none()
+    
+    if not customer:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User has no associated customer/tenant",
+        )
+    
     access_token = create_access_token(
-        data={"sub": str(user.id)}, expires_delta=access_token_expires
+        data={"sub": str(user.id), "tenant_id": customer.id}, 
+        expires_delta=access_token_expires
     )
     refresh_token = create_refresh_token(
-        data={"sub": str(user.id)}, expires_delta=refresh_token_expires
+        data={"sub": str(user.id), "tenant_id": customer.id}, 
+        expires_delta=refresh_token_expires
     )
     
     return {

@@ -103,6 +103,42 @@ async def get_current_user(
     return user
 
 
+async def get_current_user_with_tenant(
+    db: AsyncSession = Depends(get_async_db),
+    token: str = Depends(oauth2_scheme)
+) -> tuple[User, int]:
+    """Get the current authenticated user with tenant ID"""
+    from sqlalchemy import select
+    
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    
+    try:
+        payload = jwt.decode(
+            token, 
+            settings.SECRET_KEY, 
+            algorithms=[settings.ALGORITHM]
+        )
+        user_id: str = payload.get("sub")
+        tenant_id: int = payload.get("tenant_id")
+        
+        if user_id is None or tenant_id is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+    
+    # Direct database query to avoid circular import
+    result = await db.execute(select(User).where(User.id == int(user_id)))
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise credentials_exception
+    
+    return user, tenant_id
+
+
 async def get_current_active_user(
     current_user: User = Depends(get_current_user)
 ) -> User:
