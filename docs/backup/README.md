@@ -15,7 +15,7 @@
 ./deployment/scripts/deploy.sh local db-upgrade
 
 # 查看服务状态
-./deployment/scripts/deploy.sh local db-status
+./deployment/scripts/deploy.sh local status
 
 # 查看日志
 ./deployment/scripts/deploy.sh local logs
@@ -130,54 +130,9 @@ git pull origin main
 ./deployment/scripts/deploy.sh prod start
 ```
 
-## 🔍 故障排查
+## 📚 更多信息
 
-### 查看服务状态
-```bash
-# 查看所有服务日志
-./deployment/scripts/deploy.sh dev logs
-
-# 查看特定服务日志
-./deployment/scripts/deploy.sh dev logs backend
-```
-
-### 数据库问题
-```bash
-# 检查迁移状态
-./deployment/scripts/deploy.sh dev db-status
-
-# 查看迁移历史
-./deployment/scripts/deploy.sh dev db-history
-```
-
-### 重置数据库（谨慎使用）
-```bash
-cd backend
-source .venv/bin/activate
-python deployment/scripts/db.py reset
-```
-
-## 📝 注意事项
-
-1. **环境文件安全**：不要将包含真实密码的环境文件提交到 git
-2. **备份数据库**：在生产环境执行迁移前，建议先备份数据库
-3. **测试迁移**：在 staging 环境测试迁移后再部署到生产环境
-4. **权限检查**：确保脚本有执行权限：`chmod +x deployment/scripts/deploy.sh`
-
-## 🔄 旧版本兼容性
-
-旧的部署方式仍然支持：
-
-```bash
-# 旧方式（仍然可用）
-ENV_FILE=env.dev ./deployment/scripts/deploy.sh start
-ENV_FILE=env.dev ./deployment/scripts/deploy.sh db-upgrade
-```
-
-## 📞 支持
-
-如果遇到问题，请检查：
-1. 环境配置文件是否正确
-2. 数据库和 Redis 服务是否正常运行
-3. 网络连接是否正常
-4. 查看服务日志获取详细错误信息
+- [主项目文档](../README.md)
+- [系统架构文档](./ARCHITECTURE.md)
+- [环境配置指南](./ENVIRONMENTS.md)
+- [数据库设置指南](./DATABASE_SETUP.md)

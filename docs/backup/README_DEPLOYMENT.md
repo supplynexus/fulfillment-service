@@ -75,36 +75,6 @@ HEALTH_CHECK_RATE_LIMIT=10
 HEALTH_CHECK_RATE_WINDOW=60
 ```
 
-## 🔧 开发环境设置
-
-### 1. 创建环境文件
-```bash
-# 复制示例文件
-cp .env.example .env.local
-
-# 编辑配置文件
-vim .env.local
-```
-
-### 2. 启动服务
-```bash
-# 使用 deploy.sh（推荐）
-cd ../deployment/docker/backend
-./deploy.sh local up
-
-# 或使用 deploy.sh
-../deployment/docker/backend/deploy.sh local
-```
-
-### 3. 验证服务
-```bash
-# 健康检查
-curl http://localhost:8000/api/v1/health
-
-# API 文档
-open http://localhost:8000/api/v1/docs
-```
-
 ## 📊 服务信息
 
 启动成功后，服务将在以下地址可用：
@@ -130,39 +100,8 @@ cd ../deployment/docker/backend
 tail -f logs-local/app.log
 ```
 
-## 🔍 故障排除
+## 📚 更多信息
 
-### 1. 服务启动失败
-```bash
-# 查看详细日志
-docker-compose logs backend
-
-# 重新构建
-cd ../deployment/docker/backend
-./deploy.sh local build
-```
-
-### 2. 环境文件问题
-```bash
-# 检查环境文件是否存在
-ls -la .env.*
-
-# 检查环境文件内容
-cat .env.local
-```
-
-### 3. 端口冲突
-```bash
-# 检查端口占用
-lsof -i :8000
-
-# 停止冲突的服务
-docker-compose down
-```
-
-## 📝 注意事项
-
-1. **环境文件安全**: 生产环境的环境文件包含敏感信息，请妥善保管
-2. **日志轮转**: 生产环境建议配置日志轮转，避免日志文件过大
-3. **健康检查**: 服务启动后会自动进行健康检查，确保服务正常运行
-4. **数据持久化**: 数据库和 Redis 数据需要单独配置持久化存储
+- [主项目文档](../README.md)
+- [Docker 部署详细指南](./DOCKER_README.md)
+- [数据库管理指南](./README_DATABASE.md)

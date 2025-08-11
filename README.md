@@ -1,6 +1,6 @@
 # SupplyNexus Fulfillment Service
 
-Shopify 到 Printify 的订单履约自动化服务 - 为电商品牌提供无缝的按需打印订单处理。
+> Shopify 到 Printify 的订单履约自动化服务 - 为电商品牌提供无缝的按需打印订单处理
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.11+-blue.svg)
@@ -13,12 +13,12 @@ SupplyNexus Fulfillment Service 是一个全栈的 SaaS 解决方案，专为电
 
 ### 🎯 核心功能
 
-- **自动订单处理**: 接收 Shopify webhook，自动创建 Printify 订单
-- **多租户架构**: 支持多个客户，数据完全隔离
-- **实时状态同步**: 订单状态实时更新，包含跟踪信息
-- **智能重试机制**: 失败订单自动重试，错误处理
-- **管理后台**: 完整的订单监控和客户管理界面
-- **异步任务队列**: Celery 处理耗时操作，确保响应速度
+- **🔄 自动订单处理**: 接收 Shopify webhook，自动创建 Printify 订单
+- **🏢 多租户架构**: 支持多个客户，数据完全隔离
+- **📊 实时状态同步**: 订单状态实时更新，包含跟踪信息
+- **🛡️ 智能重试机制**: 失败订单自动重试，错误处理
+- **🎛️ 管理后台**: 完整的订单监控和客户管理界面
+- **⚡ 异步任务队列**: Celery 处理耗时操作，确保响应速度
 
 ### 🏗️ 技术架构
 
@@ -94,10 +94,11 @@ docker-compose -f docker-compose.dev.yml ps
 #### 3. 数据库迁移
 
 ```bash
-# 进入后端容器
-docker-compose -f docker-compose.dev.yml exec backend_dev bash
+# 使用 Docker 脚本（推荐）
+./scripts/db/alembic.sh dev upgrade
 
-# 运行迁移
+# 或者进入后端容器
+docker-compose -f docker-compose.dev.yml exec backend_dev bash
 alembic upgrade head
 ```
 
@@ -140,16 +141,10 @@ fulfillment-service/
 │   ├── package.json          # Node 依赖
 │   └── Dockerfile           # Docker 配置
 ├── shared/                    # 共享类型和工具
-├── backend/                  # 后端服务
-│   ├── migrations/           # 数据库迁移
-│   └── scripts/             # 数据库管理脚本
 ├── deployment/               # 部署配置
 │   ├── docker/              # Docker 配置
-│   ├── environments/        # 环境配置文件（不提交到 git）
+│   ├── environments/        # 环境配置文件
 │   └── scripts/             # 部署脚本
-│       ├── db-setup.sh      # 数据库设置脚本
-│       └── deploy.sh        # 部署管理脚本
-├── deployment/               # 部署配置
 ├── docs/                    # 项目文档
 ├── scripts/                 # 开发脚本
 ├── docker-compose.yml       # 生产环境
@@ -178,6 +173,11 @@ WEBHOOK_SECRET=your-webhook-secret
 # 数据库配置
 DATABASE_URL=postgresql+asyncpg://user:pass@host:port/db
 REDIS_URL=redis://host:port/db
+
+# 健康检查配置（必需）
+HEALTH_CHECK_API_KEY=your-secure-api-key
+HEALTH_CHECK_RATE_LIMIT=10
+HEALTH_CHECK_RATE_WINDOW=60
 ```
 
 ### Webhook 配置
@@ -191,22 +191,20 @@ REDIS_URL=redis://host:port/db
 
 ## 🛠️ 开发指南
 
+详细的开发指南请参考：[本地开发环境搭建指南](docs/DEVELOPMENT.md)
+
 ### 快速开始
 
 ```bash
-# 1. 设置数据库
-cp deployment/environments/env.example deployment/environments/env.local
-vim deployment/environments/env.local  # 编辑配置
-./deployment/scripts/db-setup.sh local start
+# 一键安装开发环境
+./scripts/dev/setup.sh
 
-# 2. 运行数据库迁移
-ENV_FILE=deployment/environments/env.local python backend/scripts/db.py upgrade
-
-# 3. 启动开发环境
-./scripts/dev/start.sh
+# 或者手动安装
+cp environment.example .env
+docker-compose -f docker-compose.dev.yml up -d
 ```
 
-### 开发命令
+### 常用命令
 
 ```bash
 # 启动开发环境
@@ -215,129 +213,155 @@ ENV_FILE=deployment/environments/env.local python backend/scripts/db.py upgrade
 # 停止开发环境
 ./scripts/dev/stop.sh
 
-# 查看日志
-docker-compose -f docker-compose.dev.yml logs -f [service_name]
-
-# 进入容器
-docker-compose -f docker-compose.dev.yml exec backend_dev bash
-docker-compose -f docker-compose.dev.yml exec frontend_dev sh
-```
-
-### 数据库操作
-
-```bash
-# 数据库管理（推荐）
-./deployment/scripts/db-setup.sh local start    # 启动本地数据库
-./deployment/scripts/db-setup.sh local status   # 查看状态
-./deployment/scripts/db-setup.sh local backup   # 备份数据库
-
 # 数据库迁移
-ENV_FILE=deployment/environments/env.local python backend/scripts/db.py autogen "描述"
-ENV_FILE=deployment/environments/env.local python backend/scripts/db.py upgrade
-
-# 传统方式（已弃用）
-alembic revision --autogenerate -m "Description"
-alembic upgrade head
-alembic history
-```
-
-### 后端开发
-
-```bash
-# 安装依赖
-cd backend
-pip install -r requirements.txt
+./scripts/db/alembic.sh dev upgrade
 
 # 运行测试
-pytest
-
-# 代码格式化
-black app/
-isort app/
-flake8 app/
-```
-
-### 前端开发
-
-```bash
-# 安装依赖
-cd frontend
-npm install
-
-# 开发模式
-npm run dev
-
-# 类型检查
-npm run type-check
-
-# 代码格式化
-npm run lint:fix
-```
-
-## 🧪 测试
-
-### 运行测试
-
-```bash
-# 后端测试
 docker-compose -f docker-compose.dev.yml exec backend_dev pytest
-
-# 前端测试
-docker-compose -f docker-compose.dev.yml exec frontend_dev npm test
-
-# 集成测试
-docker-compose -f docker-compose.dev.yml exec backend_dev pytest tests/integration/
-```
-
-### 测试覆盖率
-
-```bash
-# 后端覆盖率
-pytest --cov=app tests/
-
-# 前端覆盖率
-npm run test:coverage
 ```
 
 ## 🚢 部署
 
-### 生产环境部署
+详细的部署指南请参考：[环境部署指南](docs/DEPLOYMENT.md)
+
+### 快速部署
 
 ```bash
-# 构建和启动生产环境
-docker-compose up -d
+# 启动开发环境
+./deployment/scripts/deploy.sh dev start
 
-# 查看服务状态
-docker-compose ps
+# 启动生产环境
+./deployment/scripts/deploy.sh prod start
 
-# 查看日志
-docker-compose logs -f
+# 运行数据库迁移
+./deployment/scripts/deploy.sh dev db-upgrade
 ```
 
-### 环境配置
+### 环境说明
 
-生产环境需要更新的配置：
+- **local** - 本地开发环境
+- **dev** - 开发服务器环境
+- **staging** - 测试环境
+- **production** - 生产环境
 
-- ✅ 更强的 `SECRET_KEY`
-- ✅ 生产数据库连接
-- ✅ 真实的 API 凭证
-- ✅ 正确的域名和 CORS 设置
-- ✅ Sentry 错误跟踪
-- ✅ 邮件通知配置
+### 域名配置
+
+- **开发环境**: `api.dev.supplynexus.store`
+- **测试环境**: `api.stg.supplynexus.store`
+- **生产环境**: `api.supplynexus.store`
 
 ## 📊 监控
 
 ### 健康检查
 
-- **Backend**: `GET /health`
-- **Frontend**: `GET /`
-- **Celery**: 通过 Flower 界面
+- **基本健康检查**: `GET /api/v1/health`
+- **数据库健康检查**: `GET /api/v1/health/db` (需要 API Key)
+- **Redis 健康检查**: `GET /api/v1/health/redis` (需要 API Key)
+- **完整健康检查**: `GET /api/v1/health/full` (需要 API Key)
+
+### 使用示例
+
+```bash
+# 基本健康检查
+curl http://localhost:8000/api/v1/health
+
+# 需要认证的健康检查
+curl -H "X-API-Key: your-api-key" \
+     http://localhost:8000/api/v1/health/db
+```
 
 ### 日志
 
 - **应用日志**: Docker 容器日志
 - **访问日志**: Nginx 访问日志
 - **错误跟踪**: Sentry (如已配置)
+
+## 🔍 故障排除
+
+### 常见问题
+
+#### 1. 服务无法启动
+```bash
+# 检查日志
+docker-compose logs backend
+
+# 检查环境变量
+docker-compose config
+
+# 重新构建
+docker-compose build --no-cache
+```
+
+#### 2. 健康检查失败
+```bash
+# 检查数据库连接
+docker-compose exec backend python -c "
+from app.core.database import get_async_db
+import asyncio
+async def test():
+    async for db in get_async_db():
+        result = await db.execute('SELECT 1')
+        print('Database OK')
+asyncio.run(test())
+"
+```
+
+#### 3. 端口冲突
+```bash
+# 检查端口占用
+lsof -i :8000
+
+# 修改端口
+BACKEND_PORT=8001 docker-compose up -d
+```
+
+#### 4. 数据库连接问题
+```bash
+# 检查数据库服务
+docker-compose ps postgres
+
+# 检查数据库连接
+docker-compose exec postgres psql -U supplynexus_admin -d supplynexus -c "SELECT 1;"
+```
+
+#### 5. 环境文件问题
+```bash
+# 检查环境文件是否存在
+ls -la .env.*
+
+# 检查环境文件内容
+cat .env.local
+```
+
+### 调试命令
+
+```bash
+# 进入容器
+docker-compose exec backend bash
+
+# 检查网络
+docker network ls
+docker network inspect backend_backend_network
+
+# 检查容器状态
+docker-compose ps
+docker stats
+```
+
+## 📝 API 文档
+
+完整的 API 文档可在以下地址查看：
+
+- **Swagger UI**: http://localhost:8000/api/v1/docs
+- **ReDoc**: http://localhost:8000/api/v1/redoc
+
+### 主要 API 端点
+
+- `POST /api/v1/auth/login` - 用户登录
+- `GET /api/v1/customers` - 获取客户列表
+- `POST /api/v1/customers` - 创建客户
+- `GET /api/v1/orders` - 获取订单列表
+- `POST /api/v1/webhooks/shopify/orders/create` - Shopify 订单 webhook
 
 ## 🤝 贡献指南
 
@@ -354,20 +378,64 @@ docker-compose logs -f
 - 更新相关文档
 - 确保所有测试通过
 
-## 📝 API 文档
+## 📚 详细文档
 
-完整的 API 文档可在以下地址查看：
+- [系统架构文档](deployment/ARCHITECTURE.md) - 系统架构和部署设计
+- [健康检查安全配置](backend/docs/HEALTH_CHECK_SECURITY.md) - 健康检查 API 安全配置
+- [文档索引](docs/README.md) - 项目文档导航
 
-- **Swagger UI**: http://localhost:8000/api/v1/docs
-- **ReDoc**: http://localhost:8000/api/v1/redoc
+### 📋 数据库管理详细说明
 
-### 主要 API 端点
+#### 架构优势
+- ✅ **开发体验好**：所有命令都在 `backend/` 目录执行
+- ✅ **职责清晰**：数据库迁移属于后端服务
+- ✅ **符合微服务架构**：每个服务管理自己的数据库变更
+- ✅ **部署简单**：CI/CD 流程更清晰
 
-- `POST /api/v1/auth/login` - 用户登录
-- `GET /api/v1/customers` - 获取客户列表
-- `POST /api/v1/customers` - 创建客户
-- `GET /api/v1/orders` - 获取订单列表
-- `POST /api/v1/webhooks/shopify/orders/create` - Shopify 订单 webhook
+#### 多环境支持
+```bash
+# 本地环境
+./scripts/db/alembic.sh local upgrade
+
+# 开发环境
+./scripts/db/alembic.sh dev upgrade
+
+# 测试环境
+./scripts/db/alembic.sh stg upgrade
+
+# 生产环境
+./scripts/db/alembic.sh prod upgrade
+```
+
+### 🐳 Docker部署详细说明
+
+#### 环境配置
+项目支持多个环境配置文件：
+- `.env` - 本地开发环境（默认）
+- `.env.dev` - 开发环境
+- `.env.stg` - 测试环境
+- `.env.prod` - 生产环境
+
+#### 日志目录
+每个环境都有对应的日志目录：
+- `logs-local/` - 本地环境日志
+- `logs-dev/` - 开发环境日志
+- `logs-stg/` - 测试环境日志
+- `logs-prod/` - 生产环境日志
+
+#### 必需的环境变量
+```bash
+# 数据库配置
+DATABASE_URL=postgresql+asyncpg://user:password@host:port/database
+
+# Redis 配置
+REDIS_URL=redis://host:port/database
+
+# 健康检查配置（必需）
+HEALTH_CHECK_API_KEY=your-secure-api-key
+HEALTH_CHECK_RATE_LIMIT=10
+HEALTH_CHECK_RATE_WINDOW=60
+```
 
 ## 📞 支持
 

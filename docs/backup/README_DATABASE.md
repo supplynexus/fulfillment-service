@@ -34,6 +34,8 @@ source .venv/bin/activate
 
 ### 2. 使用便捷脚本（推荐）
 
+#### 本地开发环境（有 Python 环境）
+
 ```bash
 # 查看当前迁移版本
 python scripts/db.py current
@@ -57,6 +59,46 @@ python scripts/db.py downgrade
 python scripts/db.py reset
 ```
 
+#### 服务器环境（仅 Docker）
+
+```bash
+# 进入项目根目录
+cd /path/to/fulfillment-service
+
+# 查看当前迁移版本
+./scripts/db/alembic.sh dev current
+
+# 查看迁移历史
+./scripts/db/alembic.sh dev history
+
+# 升级到最新版本
+./scripts/db/alembic.sh dev upgrade
+
+# 自动生成迁移文件
+./scripts/db/alembic.sh dev autogen "添加用户表"
+
+# 创建空迁移文件
+./scripts/db/alembic.sh dev revision "手动迁移"
+
+# 回退一个版本
+./scripts/db/alembic.sh dev downgrade
+```
+
+**多环境支持**：
+```bash
+# 本地环境
+./scripts/db/alembic.sh local upgrade
+
+# 开发环境
+./scripts/db/alembic.sh dev upgrade
+
+# 测试环境
+./scripts/db/alembic.sh stg upgrade
+
+# 生产环境
+./scripts/db/alembic.sh prod upgrade
+```
+
 ### 3. 直接使用 Alembic 命令
 
 ```bash
@@ -72,6 +114,78 @@ alembic revision --autogenerate -m "描述"
 # 查看历史
 alembic history
 ```
+
+## Docker 环境数据库管理
+
+### alembic.sh 脚本使用指南
+
+在服务器环境（仅 Docker）中，使用 `alembic.sh` 脚本来管理数据库迁移。
+
+#### 脚本特性
+
+- ✅ **安全**：不影响运行中的服务
+- ✅ **快速**：优先使用已构建的 Docker 镜像
+- ✅ **多环境**：支持 local, dev, stg, prod
+- ✅ **统一配置**：读取对应环境的配置文件
+- ✅ **错误处理**：完善的错误提示和验证
+
+#### 环境文件映射
+
+| 环境 | 配置文件路径 |
+|------|-------------|
+| `local` | `backend/.env.local` |
+| `dev` | `backend/.env.dev` |
+| `stg` | `backend/.env.stg` |
+| `prod` | `backend/.env.prod` |
+
+#### 使用示例
+
+```bash
+# 进入项目根目录
+cd /path/to/fulfillment-service
+
+# 查看当前迁移版本
+./scripts/db/alembic.sh dev current
+
+# 查看迁移历史
+./scripts/db/alembic.sh dev history
+
+# 升级到最新版本
+./scripts/db/alembic.sh dev upgrade
+
+# 生成迁移文件
+./scripts/db/alembic.sh dev autogen "添加新表"
+
+# 创建手动迁移
+./scripts/db/alembic.sh dev revision "手动迁移描述"
+
+# 回退一个版本
+./scripts/db/alembic.sh dev downgrade
+```
+
+#### 多环境操作
+
+```bash
+# 本地环境
+./scripts/db/alembic.sh local upgrade
+
+# 开发环境
+./scripts/db/alembic.sh dev upgrade
+
+# 测试环境
+./scripts/db/alembic.sh stg upgrade
+
+# 生产环境
+./scripts/db/alembic.sh prod upgrade
+```
+
+#### 脚本优势
+
+1. **无需本地 Python 环境**：完全基于 Docker
+2. **使用现有镜像**：优先使用已构建的 `backend_backend:latest` 镜像
+3. **环境隔离**：不同环境使用不同的配置文件
+4. **安全执行**：不影响运行中的服务
+5. **详细日志**：提供清晰的执行状态和错误信息
 
 ## 开发流程
 
