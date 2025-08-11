@@ -3,6 +3,17 @@
 ## 📋 概述
 本文档描述了SupplyNexus OMS项目的开发工作流程，包括分支策略、任务管理和代码提交规范。
 
+## 🤝 开发约定
+
+### Git操作和PR管理约定
+- **AI助手负责**: `git commit` 和 `git push` 到feature分支
+- **开发者负责**: 在GitHub网页上创建PR、review和merge到develop分支
+- **避免操作**: AI助手避免不必要的merge操作，特别是merge feature分支到develop
+- **开发节奏**: AI助手要控制开发节奏，每个阶段完成后要询问下一步
+- **中断恢复**: 会话中断后，AI助手会检查进度并从断点继续
+
+---
+
 ## 🌿 分支策略
 
 ### 分支类型
