@@ -47,3 +47,4 @@ class Customer(Base):
     # Relationships
     owner = relationship("User", back_populates="customers")
     orders = relationship("Order", back_populates="customer")
+    api_keys = relationship("ApiKey", back_populates="customer")
