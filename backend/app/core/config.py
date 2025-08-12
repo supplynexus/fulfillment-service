@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     HEALTH_CHECK_RATE_LIMIT: int = int(os.getenv("HEALTH_CHECK_RATE_LIMIT", "10"))  # 每分钟请求数
     HEALTH_CHECK_RATE_WINDOW: int = int(os.getenv("HEALTH_CHECK_RATE_WINDOW", "60"))  # 时间窗口（秒）
     
+    # Hashids 配置
+    HASHIDS_SALT: str = os.getenv("HASHIDS_SALT", "dev-hashids-salt-change-in-prod")
+    HASHIDS_MIN_LENGTH: int = int(os.getenv("HASHIDS_MIN_LENGTH", "8"))
+    
     class Config:
         env_file = os.getenv("ENV_FILE", ".env")
         extra = "ignore"  # Ignore extra fields instead of raising validation error

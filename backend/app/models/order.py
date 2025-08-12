@@ -24,13 +24,16 @@ class Order(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     
-    # Shopify order details
-    shopify_order_id = Column(String, unique=True, index=True, nullable=False)
-    shopify_order_number = Column(String, nullable=True)
-    shopify_order_name = Column(String, nullable=True)
+    # Tenant identification
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
     
-    # Printify order details
-    printify_order_id = Column(String, nullable=True)
+    # External system identification (optional - not all orders come from external systems)
+    external_system_id = Column(Integer, ForeignKey("external_systems.id"), nullable=True)
+    external_order_id = Column(String, nullable=True)  # Order ID in external system
+    
+    # External system specific identifiers
+    external_order_number = Column(String, nullable=True)
+    external_order_name = Column(String, nullable=True)
     
     # Order information
     status = Column(String, default=OrderStatus.PENDING.value, index=True)
@@ -66,8 +69,6 @@ class Order(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
-    # Foreign keys
-    customer_id = Column(Integer, ForeignKey("customers.id"))
-
     # Relationships
-    customer = relationship("Customer", back_populates="orders")
+    tenant = relationship("Tenant", back_populates="orders")
+    external_system = relationship("ExternalSystem")

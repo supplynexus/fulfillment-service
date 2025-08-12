@@ -15,13 +15,15 @@
 ### Feature: JWT认证系统完善
 **分支**: `feature/phase-1-jwt-auth-system`
 
-#### Issue 1.1: 后端JWT认证机制
+#### Issue 1.1: 后端JWT认证机制 ✅
 - **描述**: 完善JWT token生成、验证和刷新机制
 - **任务**:
-  - 实现JWT token生成和验证
-  - 实现refresh token机制
-  - 实现token过期处理
-  - 添加JWT中间件
+  - ✅ 实现JWT token生成和验证
+  - ✅ 实现refresh token机制
+  - ✅ 实现token过期处理
+  - ✅ 添加JWT中间件
+  - ✅ 实现基于租户的时间戳签名认证
+  - ✅ 添加Hashids支持
 - **文件**: `backend/app/core/auth.py`, `backend/app/api/v1/endpoints/auth.py`
 - **测试**: `backend/tests/unit/test_auth.py`
 
@@ -57,12 +59,13 @@
 ### Feature: API Key管理系统
 **分支**: `feature/phase-1-api-key-management`
 
-#### Issue 1.5: API Key数据模型设计
+#### Issue 1.5: API Key数据模型设计 ✅
 - **描述**: 设计API Key的数据模型和权限控制
 - **任务**:
-  - 设计API Key数据模型
-  - 实现API Key权限控制
-  - 添加API Key加密存储
+  - ✅ 设计API Key数据模型
+  - ✅ 实现API Key权限控制
+  - ✅ 添加API Key加密存储
+  - ✅ 实现完整的数据库模型设计
 - **文件**: `backend/app/models/api_key.py`, `backend/app/schemas/api_key.py`
 - **测试**: `backend/tests/unit/test_api_key_model.py`
 

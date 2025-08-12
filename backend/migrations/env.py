@@ -7,6 +7,10 @@ from sqlalchemy import engine_from_config, pool
 from alembic import context
 import os
 import sys
+from dotenv import load_dotenv
+
+# Load environment.local file
+load_dotenv("../environment.local")
 
 # Add the backend directory to the path so we can import our models
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -15,7 +19,7 @@ from app.core.database import Base
 from app.core.config import settings
 
 # Import all models to ensure they are registered with SQLAlchemy
-from app.models import user, customer, order, product  # noqa
+from app.models import *  # noqa
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

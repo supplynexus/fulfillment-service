@@ -15,6 +15,7 @@ SupplyNexus Fulfillment Service 是一个全栈的 SaaS 解决方案，专为电
 
 - **🔄 自动订单处理**: 接收 Shopify webhook，自动创建 Printify 订单
 - **🏢 多租户架构**: 支持多个客户，数据完全隔离
+- **🔐 企业级认证**: 基于租户的时间戳签名认证系统
 - **📊 实时状态同步**: 订单状态实时更新，包含跟踪信息
 - **🛡️ 智能重试机制**: 失败订单自动重试，错误处理
 - **🎛️ 管理后台**: 完整的订单监控和客户管理界面
@@ -169,6 +170,8 @@ PRINTIFY_API_TOKEN=your-printify-api-token
 # 安全配置
 SECRET_KEY=your-super-secret-key
 WEBHOOK_SECRET=your-webhook-secret
+HASHIDS_SALT=your-hashids-salt-here
+HASHIDS_MIN_LENGTH=8
 
 # 数据库配置
 DATABASE_URL=postgresql+asyncpg://user:pass@host:port/db
@@ -358,9 +361,10 @@ docker stats
 ### 主要 API 端点
 
 - `POST /api/v1/auth/login` - 用户登录
-- `GET /api/v1/customers` - 获取客户列表
-- `POST /api/v1/customers` - 创建客户
-- `GET /api/v1/orders` - 获取订单列表
+- `POST /api/v1/auth/refresh` - 刷新访问令牌
+- `POST /api/v1/auth/logout` - 用户登出
+- `GET /api/v1/orders` - 获取订单列表（需要租户认证）
+- `GET /api/v1/external-systems` - 获取外部系统配置
 - `POST /api/v1/webhooks/shopify/orders/create` - Shopify 订单 webhook
 
 ## 🤝 贡献指南
@@ -382,6 +386,7 @@ docker stats
 
 - [系统架构文档](deployment/ARCHITECTURE.md) - 系统架构和部署设计
 - [健康检查安全配置](backend/docs/HEALTH_CHECK_SECURITY.md) - 健康检查 API 安全配置
+- [数据库管理指南](docs/DATABASE_MANAGEMENT.md) - 数据库迁移、备份、恢复操作
 - [文档索引](docs/README.md) - 项目文档导航
 
 ### 📋 数据库管理详细说明
@@ -406,6 +411,18 @@ docker stats
 # 生产环境
 ./scripts/db/alembic.sh prod upgrade
 ```
+
+#### 环境差异和工具选择
+| 环境 | 工具 | 环境文件路径 | 实际读取文件 | 说明 |
+|------|------|--------------|--------------|------|
+| **Local** | `./scripts/db/alembic.sh local` | `backend/.env.local` | `backend/.env.local` | 有Python虚拟环境，直接执行alembic |
+| **Develop** | `./deployment/scripts/db-docker.sh dev` | `deployment/environments/env.dev` | `deployment/environments/env.dev` | 只有Docker，需要容器化执行 |
+| **Staging** | `./deployment/scripts/db-docker.sh stg` | `deployment/environments/env.stg` | `deployment/environments/env.stg` | 只有Docker |
+| **Production** | `./deployment/scripts/db-docker.sh prod` | `deployment/environments/env.prod` | `deployment/environments/env.prod` | 只有Docker |
+
+**关键区别**:
+- **Local环境**: 有Python虚拟环境，可以直接使用alembic命令
+- **服务器环境**: 只有Docker环境，必须使用db-docker.sh脚本
 
 ### 🐳 Docker部署详细说明
 

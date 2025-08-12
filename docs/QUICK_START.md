@@ -7,7 +7,7 @@ SupplyNexus OMS是一个多租户的订单管理系统，集成Shopify和Printif
 - **后端**: FastAPI + PostgreSQL + Redis + Celery
 - **前端**: Next.js + TypeScript
 - **部署**: Docker + Kubernetes
-- **认证**: JWT + API Key 双重认证
+- **认证**: 基于租户的时间戳签名认证 + JWT + API Key
 
 ## ⚡ 快速开始
 
@@ -164,6 +164,48 @@ alembic revision --autogenerate -m "description"
 alembic upgrade head
 ```
 
+### 数据库迁移命令（按环境）
+
+#### Local环境（有Python虚拟环境）
+```bash
+# 检查当前状态
+./scripts/db/alembic.sh local current
+
+# 查看迁移历史
+./scripts/db/alembic.sh local history
+
+# 应用所有迁移
+./scripts/db/alembic.sh local upgrade
+
+# 生成新迁移
+./scripts/db/alembic.sh local autogen "add new feature"
+```
+
+#### Develop/Staging/Production环境（只有Docker）
+```bash
+# 检查当前状态
+./deployment/scripts/db-docker.sh dev current
+
+# 查看迁移历史
+./deployment/scripts/db-docker.sh dev history
+
+# 应用所有迁移
+./deployment/scripts/db-docker.sh dev upgrade
+
+# 生成新迁移
+./deployment/scripts/db-docker.sh dev autogen "add new feature"
+```
+
+**环境差异说明**:
+- **Local环境**: 有Python虚拟环境，可以直接执行alembic命令
+- **服务器环境**: 只有Docker环境，必须使用db-docker.sh脚本
+
+**环境文件读取**:
+- **Local环境**: 读取 `backend/.env.local` 文件
+- **Develop环境**: 读取 `deployment/environments/env.dev` 文件
+- **Staging环境**: 读取 `deployment/environments/env.stg` 文件
+- **Production环境**: 读取 `deployment/environments/env.prod` 文件
+
 ### 前端命令
 ```bash
 cd frontend
@@ -244,6 +286,11 @@ REDIS_URL=redis://localhost:6379/0
 # JWT
 SECRET_KEY=your-secret-key
 ACCESS_TOKEN_EXPIRE_MINUTES=30
+REFRESH_TOKEN_EXPIRE_DAYS=7
+
+# Hashids
+HASHIDS_SALT=your-hashids-salt-here
+HASHIDS_MIN_LENGTH=8
 
 # Shopify
 SHOPIFY_SHOP_NAME=your-shop-name
@@ -283,7 +330,11 @@ PRINTIFY_API_TOKEN=your-api-token
 - [x] 项目初始化
 - [x] 基础架构搭建
 - [x] 开发工作流建立
-- [ ] Phase 1: 认证和安全基础
+- [x] Phase 1: 认证和安全基础 ✅
+  - [x] 基于租户的JWT认证系统
+  - [x] 时间戳签名认证
+  - [x] Hashids支持
+  - [x] 完整的数据库模型设计
 - [ ] Phase 2: 数据获取和同步
 - [ ] Phase 3: 核心业务功能
 - [ ] Phase 4: 用户界面

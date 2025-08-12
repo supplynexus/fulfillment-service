@@ -1,9 +1,10 @@
 """
-Product model
+Product model - represents products from external systems
 """
 
-from sqlalchemy import Boolean, Column, Integer, String, DateTime, Text, JSON, Numeric
+from sqlalchemy import Boolean, Column, Integer, String, DateTime, Text, JSON, Numeric, ForeignKey
 from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship
 
 from app.core.database import Base
 
@@ -13,8 +14,14 @@ class Product(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     
+    # Tenant identification
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    
+    # External system identification (optional - not all products come from external systems)
+    external_system_id = Column(Integer, ForeignKey("external_systems.id"), nullable=True)
+    external_product_id = Column(String, nullable=True)  # Product ID in external system
+    
     # Product identifiers
-    printify_product_id = Column(String, unique=True, index=True, nullable=False)
     title = Column(String, nullable=False)
     description = Column(Text, nullable=True)
     
@@ -31,9 +38,8 @@ class Product(Base):
     is_active = Column(Boolean, default=True)
     is_available = Column(Boolean, default=True)
     
-    # Print provider information
-    print_provider_id = Column(String, nullable=True)
-    print_areas = Column(JSON, nullable=True)
+    # External system specific data
+    external_data = Column(JSON, nullable=True)  # Store system-specific data
     
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -41,3 +47,7 @@ class Product(Base):
     
     # Sync information
     last_synced_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # Relationships
+    tenant = relationship("Tenant", back_populates="products")
+    external_system = relationship("ExternalSystem")

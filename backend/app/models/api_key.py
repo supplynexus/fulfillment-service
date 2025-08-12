@@ -1,5 +1,5 @@
 """
-API Key model for external system authentication
+API Key model for tenant-based authentication
 """
 
 from sqlalchemy import Boolean, Column, Integer, String, DateTime, ForeignKey, Text, JSON, Enum
@@ -27,13 +27,13 @@ class ApiKey(Base):
     key_hash = Column(String, nullable=False)  # Hashed API key
     secret_hash = Column(String, nullable=False)  # Hashed API secret
     
-    # Ownership and permissions
-    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
+    # Tenant-based ownership
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
     key_type = Column(Enum(ApiKeyType), nullable=False, default=ApiKeyType.BUSINESS_PARTNER)
     name = Column(String, nullable=False)  # Human readable name
     description = Column(Text, nullable=True)
     
-    # Permissions (JSON format)
+    # Permissions (JSON format) - tenant-scoped
     permissions = Column(JSON, nullable=False, default=dict)  # {"orders": ["read"], "products": ["read", "write"]}
     
     # Security settings
@@ -50,7 +50,7 @@ class ApiKey(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
     # Relationships
-    customer = relationship("Customer", back_populates="api_keys")
+    tenant = relationship("Tenant", back_populates="api_keys")
     access_logs = relationship("ApiKeyAccessLog", back_populates="api_key")
 
 
