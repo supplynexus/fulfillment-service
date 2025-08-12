@@ -19,7 +19,7 @@ class JwtBlacklist(Base):
     
     # User information
     user_id = Column(Integer, nullable=False, index=True)
-    customer_id = Column(Integer, nullable=True, index=True)  # For multi-tenant
+    tenant_id = Column(Integer, nullable=False, index=True)  # For multi-tenant
     
     # Expiration
     expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
@@ -33,6 +33,6 @@ class JwtBlacklist(Base):
     class Config:
         indexes = [
             ("token_hash", "token_type"),
-            ("user_id", "customer_id"),
+            ("user_id", "tenant_id"),
             ("expires_at",)
         ]

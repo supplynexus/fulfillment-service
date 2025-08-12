@@ -22,4 +22,8 @@ class User(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # Relationships
-    customers = relationship("Customer", back_populates="owner")
+    user_tenants = relationship("UserTenant", back_populates="user")
+    customers = relationship("Customer", back_populates="user")
+    suppliers = relationship("Supplier", back_populates="user")
+    # Legacy relationship for backward compatibility
+    customers_legacy = relationship("Customer", back_populates="owner")

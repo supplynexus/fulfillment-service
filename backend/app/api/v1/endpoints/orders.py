@@ -10,6 +10,7 @@ from sqlalchemy import select
 from app.core.database import get_async_db
 from app.core.api_key_auth import get_api_key_auth, require_permission
 from app.models.api_key import ApiKey
+from app.models.tenant import Tenant
 from app.models.customer import Customer
 from app.models.order import Order
 from app.schemas.order import OrderResponse, OrderListResponse
@@ -22,17 +23,18 @@ async def get_orders(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple[ApiKey, Customer] = Depends(require_permission("orders:read"))
+    auth: tuple[ApiKey, Tenant] = Depends(require_permission("orders:read"))
 ) -> Any:
     """
     Get orders for the authenticated tenant
     """
-    api_key, customer = auth
+    api_key, tenant = auth
     
     # Query orders for the specific tenant
     result = await db.execute(
         select(Order)
-        .where(Order.customer_id == customer.id)
+        .join(Customer)
+        .where(Customer.tenant_id == tenant.id)
         .offset(skip)
         .limit(limit)
     )
@@ -50,17 +52,18 @@ async def get_orders(
 async def get_order(
     order_id: int,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple[ApiKey, Customer] = Depends(require_permission("orders:read"))
+    auth: tuple[ApiKey, Tenant] = Depends(require_permission("orders:read"))
 ) -> Any:
     """
     Get specific order for the authenticated tenant
     """
-    api_key, customer = auth
+    api_key, tenant = auth
     
     # Query order for the specific tenant
     result = await db.execute(
         select(Order)
-        .where(Order.id == order_id, Order.customer_id == customer.id)
+        .join(Customer)
+        .where(Order.id == order_id, Customer.tenant_id == tenant.id)
     )
     order = result.scalar_one_or_none()
     
@@ -77,17 +80,18 @@ async def get_order(
 async def fulfill_order(
     order_id: int,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple[ApiKey, Customer] = Depends(require_permission("orders:write"))
+    auth: tuple[ApiKey, Tenant] = Depends(require_permission("orders:write"))
 ) -> Any:
     """
     Fulfill an order (requires write permission)
     """
-    api_key, customer = auth
+    api_key, tenant = auth
     
     # Query order for the specific tenant
     result = await db.execute(
         select(Order)
-        .where(Order.id == order_id, Order.customer_id == customer.id)
+        .join(Customer)
+        .where(Order.id == order_id, Customer.tenant_id == tenant.id)
     )
     order = result.scalar_one_or_none()
     
@@ -108,12 +112,12 @@ async def fulfill_order(
 @router.get("/orders/internal/stats")
 async def get_order_stats(
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple[ApiKey, Customer] = Depends(require_frontend_server_key)
+    auth: tuple[ApiKey, Tenant] = Depends(require_frontend_server_key)
 ) -> Any:
     """
     Get internal order statistics (only accessible by frontend server)
     """
-    api_key, customer = auth
+    api_key, tenant = auth
     
     # This endpoint is only accessible by frontend server API keys
     # It can provide more detailed statistics for the frontend dashboard
@@ -121,7 +125,8 @@ async def get_order_stats(
     # Query order statistics for the tenant
     result = await db.execute(
         select(Order)
-        .where(Order.customer_id == customer.id)
+        .join(Customer)
+        .where(Customer.tenant_id == tenant.id)
     )
     orders = result.scalars().all()
     

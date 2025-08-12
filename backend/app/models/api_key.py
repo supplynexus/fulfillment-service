@@ -28,7 +28,7 @@ class ApiKey(Base):
     secret_hash = Column(String, nullable=False)  # Hashed API secret
     
     # Ownership and permissions
-    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
     key_type = Column(Enum(ApiKeyType), nullable=False, default=ApiKeyType.BUSINESS_PARTNER)
     name = Column(String, nullable=False)  # Human readable name
     description = Column(Text, nullable=True)
@@ -50,7 +50,7 @@ class ApiKey(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
     # Relationships
-    customer = relationship("Customer", back_populates="api_keys")
+    tenant = relationship("Tenant", back_populates="api_keys")
     access_logs = relationship("ApiKeyAccessLog", back_populates="api_key")
 
 

@@ -12,14 +12,14 @@ from sqlalchemy import select
 from app.core.database import get_async_db
 from app.core.redis_client import redis_client
 from app.models.api_key import ApiKey, ApiKeyType
-from app.models.customer import Customer
+from app.models.tenant import Tenant
 
 
 async def verify_api_key(
     request: Request,
     db: AsyncSession = Depends(get_async_db)
-) -> tuple[ApiKey, Customer]:
-    """Verify API Key and return the key and customer"""
+) -> tuple[ApiKey, Tenant]:
+    """Verify API Key and return the key and tenant"""
     
     # Get API Key from header
     api_key = request.headers.get("X-API-Key")
@@ -46,20 +46,20 @@ async def verify_api_key(
                 headers={"WWW-Authenticate": "ApiKey"},
             )
         
-        # Get customer from cache or database
-        customer_result = await db.execute(
-            select(Customer).where(Customer.id == cached_key["customer_id"])
+        # Get tenant from cache or database
+        tenant_result = await db.execute(
+            select(Tenant).where(Tenant.id == cached_key["tenant_id"])
         )
-        customer = customer_result.scalar_one_or_none()
+        tenant = tenant_result.scalar_one_or_none()
         
-        if not customer or not customer.is_active:
+        if not tenant or not tenant.is_active:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Customer not found or inactive",
+                detail="Tenant not found or inactive",
                 headers={"WWW-Authenticate": "ApiKey"},
             )
         
-        return cached_key, customer
+        return cached_key, tenant
     
     # If not in cache, query database
     result = await db.execute(
@@ -93,23 +93,23 @@ async def verify_api_key(
             headers={"WWW-Authenticate": "ApiKey"},
         )
     
-    # Get customer
-    customer_result = await db.execute(
-        select(Customer).where(Customer.id == api_key_obj.customer_id)
+    # Get tenant
+    tenant_result = await db.execute(
+        select(Tenant).where(Tenant.id == api_key_obj.tenant_id)
     )
-    customer = customer_result.scalar_one_or_none()
+    tenant = tenant_result.scalar_one_or_none()
     
-    if not customer or not customer.is_active:
+    if not tenant or not tenant.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Customer not found or inactive",
+            detail="Tenant not found or inactive",
             headers={"WWW-Authenticate": "ApiKey"},
         )
     
     # Cache the API key data
     key_data = {
         "id": api_key_obj.id,
-        "customer_id": api_key_obj.customer_id,
+        "tenant_id": api_key_obj.tenant_id,
         "key_type": api_key_obj.key_type.value,
         "permissions": api_key_obj.permissions,
         "secret_hash": api_key_obj.secret_hash,
@@ -118,22 +118,22 @@ async def verify_api_key(
     }
     await redis_client.cache_api_key(api_key, key_data)
     
-    return api_key_obj, customer
+    return api_key_obj, tenant
 
 
 async def get_api_key_auth(
     api_key_obj: ApiKey,
-    customer: Customer = Depends(verify_api_key)
-) -> tuple[ApiKey, Customer]:
+    tenant: Tenant = Depends(verify_api_key)
+) -> tuple[ApiKey, Tenant]:
     """Dependency for API Key authentication"""
-    return api_key_obj, customer
+    return api_key_obj, tenant
 
 
 async def require_permission(
     permission: str,
     api_key_obj: ApiKey,
-    customer: Customer = Depends(verify_api_key)
-) -> tuple[ApiKey, Customer]:
+    tenant: Tenant = Depends(verify_api_key)
+) -> tuple[ApiKey, Tenant]:
     """Dependency that requires specific permission"""
     
     # Check if API key has the required permission
@@ -143,13 +143,13 @@ async def require_permission(
             detail=f"Missing permission: {permission}",
         )
     
-    return api_key_obj, customer
+    return api_key_obj, tenant
 
 
 async def require_frontend_server_key(
     api_key_obj: ApiKey,
-    customer: Customer = Depends(verify_api_key)
-) -> tuple[ApiKey, Customer]:
+    tenant: Tenant = Depends(verify_api_key)
+) -> tuple[ApiKey, Tenant]:
     """Dependency that requires frontend server API key"""
     
     if api_key_obj.key_type != ApiKeyType.FRONTEND_SERVER:
@@ -158,4 +158,4 @@ async def require_frontend_server_key(
             detail="Frontend server API key required",
         )
     
-    return api_key_obj, customer
+    return api_key_obj, tenant

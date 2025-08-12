@@ -14,7 +14,7 @@ from app.core.config import settings
 from app.core.database import get_async_db
 from app.core.security import create_access_token, get_current_active_user
 from app.models.user import User
-from app.models.customer import Customer
+from app.models.user_tenant import UserTenant
 from app.schemas.auth import Token, UserCreate, UserResponse
 from app.services.user_service import UserService
 
@@ -50,26 +50,28 @@ async def login_for_access_token(
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     refresh_token_expires = timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     
-    # Get user's customer (tenant) information
-    # For now, we'll use the first customer associated with the user
-    # In a real system, you might want to allow users to switch between tenants
-    customer_result = await db.execute(
-        select(Customer).where(Customer.owner_id == user.id).limit(1)
+    # Get user's tenants
+    user_tenant_result = await db.execute(
+        select(UserTenant).where(UserTenant.user_id == user.id, UserTenant.is_active == True)
     )
-    customer = customer_result.scalar_one_or_none()
+    user_tenants = user_tenant_result.scalars().all()
     
-    if not customer:
+    if not user_tenants:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User has no associated customer/tenant",
+            detail="User has no associated tenants",
         )
     
+    # For now, use the first active tenant
+    # In the future, we'll add tenant selection in the login form
+    user_tenant = user_tenants[0]
+    
     access_token = create_access_token(
-        data={"sub": str(user.id), "tenant_id": customer.id}, 
+        data={"sub": str(user.id), "tenant_id": user_tenant.tenant_id}, 
         expires_delta=access_token_expires
     )
     refresh_token = create_refresh_token(
-        data={"sub": str(user.id), "tenant_id": customer.id}, 
+        data={"sub": str(user.id), "tenant_id": user_tenant.tenant_id}, 
         expires_delta=refresh_token_expires
     )
     
