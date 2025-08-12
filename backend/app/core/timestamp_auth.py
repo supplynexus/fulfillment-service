@@ -39,22 +39,24 @@ class TimestampAuthService:
         path: str,
         timestamp: int,
         nonce: str,
-        user_id: int,
+        tenant_id: int,
+        user_id: Optional[int] = None,
         body: str = ""
     ) -> str:
         """Create the string to be signed"""
-        # Format: METHOD + PATH + TIMESTAMP + NONCE + USER_ID + BODY
-        return f"{method.upper()}{path}{timestamp}{nonce}{user_id}{body}"
+        # Format: METHOD + PATH + TIMESTAMP + NONCE + TENANT_ID + USER_ID + BODY
+        user_part = f"{user_id}" if user_id else ""
+        return f"{method.upper()}{path}{timestamp}{nonce}{tenant_id}{user_part}{body}"
     
     async def verify_timestamp_signature(
         self,
         request: Request,
         signature: str,
         key_id: Optional[str] = None
-    ) -> Tuple[bool, int, str, int]:
+    ) -> Tuple[bool, int, int, str, int]:
         """
         Verify timestamp-based signature
-        Returns: (is_valid, user_id, nonce, timestamp)
+        Returns: (is_valid, tenant_id, user_id, nonce, timestamp)
         """
         """Verify timestamp-based signature"""
         
@@ -72,13 +74,14 @@ class TimestampAuthService:
             
             timestamp = signature_data.get("timestamp")
             nonce = signature_data.get("nonce")
-            user_id = signature_data.get("user_id")
+            tenant_id = signature_data.get("tenant_id")
+            user_id = signature_data.get("user_id")  # Optional
             actual_signature = signature_data.get("signature")
             
-            if not all([timestamp, nonce, user_id, actual_signature]):
+            if not all([timestamp, nonce, tenant_id, actual_signature]):
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid signature format"
+                    detail="Invalid signature format - missing required fields"
                 )
             
         except Exception as e:
@@ -99,7 +102,7 @@ class TimestampAuthService:
             )
         
         # 3. Check nonce to prevent replay attacks
-        nonce_key = f"used_nonce:{user_id}:{nonce}"
+        nonce_key = f"used_nonce:{tenant_id}:{nonce}"
         is_used = await redis_client.client.get(nonce_key)
         if is_used:
             raise HTTPException(
@@ -107,11 +110,19 @@ class TimestampAuthService:
                 detail="Nonce already used"
             )
         
-        # 4. Get user's public key
-        query = select(UserKey).where(
-            UserKey.user_id == user_id,
-            UserKey.is_active == True
-        )
+        # 4. Get user's public key (if user_id provided)
+        if user_id:
+            query = select(UserKey).where(
+                UserKey.user_id == user_id,
+                UserKey.is_active == True
+            )
+        else:
+            # For tenant-only operations, we might use a different key or API key
+            # For now, we'll require user_id for user key operations
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User ID required for user key authentication"
+            )
         
         if key_id:
             query = query.where(UserKey.key_id == key_id)
@@ -136,6 +147,7 @@ class TimestampAuthService:
             path=str(request.url.path),
             timestamp=timestamp,
             nonce=nonce,
+            tenant_id=tenant_id,
             user_id=user_id,
             body=body_str
         )
@@ -167,7 +179,7 @@ class TimestampAuthService:
             user_key.usage_count += 1
             await self.db.commit()
             
-            return True
+            return True, tenant_id, user_id, nonce, timestamp
             
         except Exception as e:
             raise HTTPException(
@@ -179,7 +191,8 @@ class TimestampAuthService:
         self,
         method: str,
         path: str,
-        user_id: int,
+        tenant_id: int,
+        user_id: Optional[int] = None,
         body: str = "",
         signature_type: SystemKeyType = SystemKeyType.API_SIGNING
     ) -> str:
@@ -211,6 +224,7 @@ class TimestampAuthService:
             path=path,
             timestamp=timestamp,
             nonce=nonce,
+            tenant_id=tenant_id,
             user_id=user_id,
             body=body
         )
@@ -233,7 +247,8 @@ class TimestampAuthService:
         signature_data = {
             "timestamp": timestamp,
             "nonce": nonce,
-            "user_id": user_id,
+            "tenant_id": tenant_id,
+            "user_id": user_id,  # Optional
             "signature": signature.hex(),
             "key_id": system_key.key_id
         }

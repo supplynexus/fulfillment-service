@@ -30,7 +30,7 @@ async def verify_timestamp_auth(
     
     # Verify signature and extract information
     auth_service = TimestampAuthService(db)
-    is_valid, user_id, nonce, timestamp = await auth_service.verify_timestamp_signature(
+    is_valid, tenant_id, user_id, nonce, timestamp = await auth_service.verify_timestamp_signature(
         request=request,
         signature=signature
     )
@@ -48,37 +48,48 @@ async def verify_timestamp_auth(
     from sqlalchemy import select
     from app.models.user_tenant import UserTenant
     
-    # Get user's active tenant (you might want to get this from the request or token)
-    user_tenant_result = await db.execute(
-        select(UserTenant).where(
-            UserTenant.user_id == user_id,
-            UserTenant.is_active == True
-        ).limit(1)
-    )
-    user_tenant = user_tenant_result.scalar_one_or_none()
-    
-    if not user_tenant:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User has no active tenant",
-            headers={"WWW-Authenticate": "TimestampSignature"},
+    # Verify user has access to this tenant (if user_id provided)
+    if user_id:
+        user_tenant_result = await db.execute(
+            select(UserTenant).where(
+                UserTenant.user_id == user_id,
+                UserTenant.tenant_id == tenant_id,
+                UserTenant.is_active == True
+            ).limit(1)
         )
+        user_tenant = user_tenant_result.scalar_one_or_none()
+        
+        if not user_tenant:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User does not have access to this tenant",
+                headers={"WWW-Authenticate": "TimestampSignature"},
+            )
     
     # Get user and tenant
-    user_result = await db.execute(
-        select(User).where(User.id == user_id)
-    )
-    user = user_result.scalar_one_or_none()
+    user = None
+    if user_id:
+        user_result = await db.execute(
+            select(User).where(User.id == user_id)
+        )
+        user = user_result.scalar_one_or_none()
+        
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not found",
+                headers={"WWW-Authenticate": "TimestampSignature"},
+            )
     
     tenant_result = await db.execute(
-        select(Tenant).where(Tenant.id == user_tenant.tenant_id)
+        select(Tenant).where(Tenant.id == tenant_id)
     )
     tenant = tenant_result.scalar_one_or_none()
     
-    if not user or not tenant:
+    if not tenant:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User or tenant not found",
+            detail="Tenant not found",
             headers={"WWW-Authenticate": "TimestampSignature"},
         )
     

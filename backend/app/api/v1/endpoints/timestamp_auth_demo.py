@@ -52,7 +52,8 @@ async def create_signature_demo(
         signature = await auth_service.create_system_signature(
             method=method,
             path=path,
-            user_id=1,  # Demo user ID
+            tenant_id=1,  # Demo tenant ID
+            user_id=1,    # Demo user ID (optional)
             body=body
         )
         
