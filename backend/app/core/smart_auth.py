@@ -42,7 +42,9 @@ async def smart_auth_selector(
             headers={"WWW-Authenticate": "TimestampSignature"},
         )
     
-    return await get_timestamp_auth(request, db)
+    # Call the verification function directly
+    from app.core.timestamp_auth_middleware import verify_timestamp_auth
+    return await verify_timestamp_auth(request, db)
 
 
 async def get_smart_auth(

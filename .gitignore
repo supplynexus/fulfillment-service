@@ -98,6 +98,12 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 # Runtime data
 pids
 *.pid
+
+# Frontend keys (never commit to git)
+frontend/keys/*.pem
+frontend/keys/*.key
+frontend/keys/*.crt
+
 *.seed
 *.pid.lock
 

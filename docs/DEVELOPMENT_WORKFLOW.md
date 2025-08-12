@@ -99,6 +99,52 @@ git push -u origin feature/phase-1-jwt-auth-system
 
 **PR分支**: `feature/phase-{phase}-{task-name}` → `develop`
 
+## 🔐 密钥管理规范
+
+### 密钥文件管理
+- **私钥文件**: 永远不要提交到Git仓库
+- **公钥文件**: 可以提交到Git仓库（用于文档）
+- **密钥目录**: `frontend/keys/` 目录已添加到 `.gitignore`
+
+### 环境密钥配置
+每个环境都需要独立的密钥对：
+
+#### 本地开发环境
+```bash
+# 生成本地密钥
+cd frontend
+mkdir -p keys
+openssl genrsa -out keys/frontend_private_key.pem 2048
+openssl rsa -in keys/frontend_private_key.pem -pubout -out keys/frontend_public_key.pem
+
+# 注册公钥到数据库
+cd ..
+python scripts/insert_test_data.py
+```
+
+#### 开发服务器环境
+- 密钥存储在服务器环境变量中
+- 公钥需要手动注册到开发数据库
+- 密钥ID: `frontend-dev-1`
+
+#### 生产环境
+- 密钥存储在服务器环境变量中
+- 公钥需要手动注册到生产数据库
+- 密钥ID: `frontend-prod-1`
+
+### 密钥轮换流程
+1. 生成新密钥对
+2. 更新环境变量
+3. 注册新公钥到数据库
+4. 验证新密钥工作正常
+5. 停用旧密钥
+
+### 安全注意事项
+- 定期轮换密钥（建议每90天）
+- 密钥文件权限设置为600
+- 生产环境密钥使用强随机生成
+- 记录密钥轮换日志
+
 **PR标题**: `feat: {phase description} - {task description}`
 
 **PR描述**:

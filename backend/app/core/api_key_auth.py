@@ -59,7 +59,20 @@ async def verify_api_key(
                 headers={"WWW-Authenticate": "ApiKey"},
             )
         
-        return cached_key, tenant
+        # Create a mock ApiKey object from cached data for consistency
+        class CachedApiKey:
+            def __init__(self, cached_data):
+                self.id = cached_data["id"]
+                self.tenant_id = cached_data["tenant_id"]
+                self.key_type = ApiKeyType(cached_data["key_type"])
+                self.permissions = cached_data["permissions"]
+                self.secret_hash = cached_data["secret_hash"]
+                self.rate_limit = cached_data["rate_limit"]
+                self.allowed_ips = cached_data["allowed_ips"]
+                self.is_active = True  # Cached keys are assumed to be active
+        
+        cached_api_key = CachedApiKey(cached_key)
+        return cached_api_key, tenant
     
     # If not in cache, query database
     result = await db.execute(
@@ -129,28 +142,34 @@ async def get_api_key_auth(
     return api_key_obj, tenant
 
 
-async def require_permission(
-    permission: str,
-    api_key_obj: ApiKey,
-    tenant: Tenant = Depends(verify_api_key)
-) -> tuple[ApiKey, Tenant]:
-    """Dependency that requires specific permission"""
+def require_permission(permission: str):
+    """Factory function that returns a dependency requiring specific permission"""
     
-    # Check if API key has the required permission
-    if permission not in api_key_obj.permissions:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Missing permission: {permission}",
-        )
+    def _require_permission(
+        auth_result: tuple[ApiKey, Tenant] = Depends(verify_api_key)
+    ) -> tuple[ApiKey, Tenant]:
+        """Dependency that requires specific permission"""
+        
+        api_key_obj, tenant = auth_result
+        
+        # Check if API key has the required permission
+        if permission not in api_key_obj.permissions:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Missing permission: {permission}",
+            )
+        
+        return api_key_obj, tenant
     
-    return api_key_obj, tenant
+    return _require_permission
 
 
-async def require_frontend_server_key(
-    api_key_obj: ApiKey,
-    tenant: Tenant = Depends(verify_api_key)
+def require_frontend_server_key(
+    auth_result: tuple[ApiKey, Tenant] = Depends(verify_api_key)
 ) -> tuple[ApiKey, Tenant]:
     """Dependency that requires frontend server API key"""
+    
+    api_key_obj, tenant = auth_result
     
     if api_key_obj.key_type != ApiKeyType.FRONTEND_SERVER:
         raise HTTPException(
