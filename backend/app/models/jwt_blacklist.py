@@ -30,9 +30,6 @@ class JwtBlacklist(Base):
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
-    class Config:
-        indexes = [
-            ("token_hash", "token_type"),
-            ("user_id", "tenant_id"),
-            ("expires_at",)
-        ]
+    __table_args__ = (
+        # Indexes will be handled by Alembic migration
+    )

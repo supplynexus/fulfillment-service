@@ -41,8 +41,7 @@ class UserTenant(Base):
     user = relationship("User", back_populates="user_tenants")
     tenant = relationship("Tenant", back_populates="user_tenants")
     
-    class Config:
+    __table_args__ = (
         # Ensure unique user-tenant combination
-        __table_args__ = (
-            # This will be handled by Alembic migration
-        )
+        # This will be handled by Alembic migration
+    )

@@ -60,3 +60,7 @@ class ExternalData(Base):
     
     # Ensure unique external_system + external_id + data_type combination
     # This will be handled by Alembic migration
+    
+    __table_args__ = (
+        # Unique constraint will be handled by Alembic migration
+    )
