@@ -386,6 +386,7 @@ docker stats
 
 - [系统架构文档](deployment/ARCHITECTURE.md) - 系统架构和部署设计
 - [健康检查安全配置](backend/docs/HEALTH_CHECK_SECURITY.md) - 健康检查 API 安全配置
+- [数据库管理指南](docs/DATABASE_MANAGEMENT.md) - 数据库迁移、备份、恢复操作
 - [文档索引](docs/README.md) - 项目文档导航
 
 ### 📋 数据库管理详细说明
@@ -410,6 +411,18 @@ docker stats
 # 生产环境
 ./scripts/db/alembic.sh prod upgrade
 ```
+
+#### 环境差异和工具选择
+| 环境 | 工具 | 环境文件 | 说明 |
+|------|------|----------|------|
+| **Local** | `./scripts/db/alembic.sh local` | `backend/.env.local` | 有Python虚拟环境，直接执行alembic |
+| **Develop** | `./deployment/scripts/db-docker.sh dev` | `deployment/environments/env.dev` | 只有Docker，需要容器化执行 |
+| **Staging** | `./deployment/scripts/db-docker.sh stg` | `deployment/environments/env.stg` | 只有Docker |
+| **Production** | `./deployment/scripts/db-docker.sh prod` | `deployment/environments/env.prod` | 只有Docker |
+
+**关键区别**:
+- **Local环境**: 有Python虚拟环境，可以直接使用alembic命令
+- **服务器环境**: 只有Docker环境，必须使用db-docker.sh脚本
 
 ### 🐳 Docker部署详细说明
 

@@ -164,6 +164,42 @@ alembic revision --autogenerate -m "description"
 alembic upgrade head
 ```
 
+### 数据库迁移命令（按环境）
+
+#### Local环境（有Python虚拟环境）
+```bash
+# 检查当前状态
+./scripts/db/alembic.sh local current
+
+# 查看迁移历史
+./scripts/db/alembic.sh local history
+
+# 应用所有迁移
+./scripts/db/alembic.sh local upgrade
+
+# 生成新迁移
+./scripts/db/alembic.sh local autogen "add new feature"
+```
+
+#### Develop/Staging/Production环境（只有Docker）
+```bash
+# 检查当前状态
+./deployment/scripts/db-docker.sh dev current
+
+# 查看迁移历史
+./deployment/scripts/db-docker.sh dev history
+
+# 应用所有迁移
+./deployment/scripts/db-docker.sh dev upgrade
+
+# 生成新迁移
+./deployment/scripts/db-docker.sh dev autogen "add new feature"
+```
+
+**环境差异说明**:
+- **Local环境**: 有Python虚拟环境，可以直接执行alembic命令
+- **服务器环境**: 只有Docker环境，必须使用db-docker.sh脚本
+
 ### 前端命令
 ```bash
 cd frontend
