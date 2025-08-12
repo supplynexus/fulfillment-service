@@ -38,15 +38,8 @@ class Customer(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
-    # Foreign keys - Customer belongs to a specific User+Tenant combination
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    # Foreign keys - Customer belongs to a specific ExternalSystem
+    external_system_id = Column(Integer, ForeignKey("external_systems.id"), nullable=False)
 
     # Relationships
-    user = relationship("User", back_populates="customers")
-    tenant = relationship("Tenant", back_populates="customers")
-    orders = relationship("Order", back_populates="customer")
-    
-    # Legacy relationships for backward compatibility
-    owner = relationship("User", foreign_keys=[user_id])
-    api_keys = relationship("ApiKey", back_populates="customer")
+    external_system = relationship("ExternalSystem", back_populates="customers")

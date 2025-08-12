@@ -27,8 +27,8 @@ class Tenant(Base):
     
     # Relationships
     user_tenants = relationship("UserTenant", back_populates="tenant")
-    customers = relationship("Customer", back_populates="tenant")
-    suppliers = relationship("Supplier", back_populates="tenant")
     api_keys = relationship("ApiKey", back_populates="tenant")
     external_systems = relationship("ExternalSystem", back_populates="tenant")
     external_data = relationship("ExternalData", back_populates="tenant")
+    products = relationship("Product", back_populates="tenant")
+    orders = relationship("Order", back_populates="tenant")

@@ -14,6 +14,9 @@ class Product(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     
+    # Tenant identification
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    
     # External system identification (optional - not all products come from external systems)
     external_system_id = Column(Integer, ForeignKey("external_systems.id"), nullable=True)
     external_product_id = Column(String, nullable=True)  # Product ID in external system
@@ -46,4 +49,5 @@ class Product(Base):
     last_synced_at = Column(DateTime(timezone=True), nullable=True)
     
     # Relationships
+    tenant = relationship("Tenant", back_populates="products")
     external_system = relationship("ExternalSystem")

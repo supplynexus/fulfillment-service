@@ -41,10 +41,8 @@ class Supplier(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
-    # Foreign keys - Supplier belongs to a specific User+Tenant combination
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    # Foreign keys - Supplier belongs to a specific ExternalSystem
+    external_system_id = Column(Integer, ForeignKey("external_systems.id"), nullable=False)
 
     # Relationships
-    user = relationship("User", back_populates="suppliers")
-    tenant = relationship("Tenant", back_populates="suppliers")
+    external_system = relationship("ExternalSystem", back_populates="suppliers")
