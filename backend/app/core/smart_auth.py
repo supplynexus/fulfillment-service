@@ -19,40 +19,21 @@ async def smart_auth_selector(
     db: AsyncSession = Depends(get_async_db)
 ) -> Tuple[User, Tenant]:
     """
-    Smart authentication selector that chooses the appropriate auth method
-    based on environment and request headers
+    Smart authentication selector - always uses timestamp signature authentication
     """
     
-    # Check if development headers are present
-    dev_user_id = request.headers.get("X-Dev-User-ID")
-    dev_tenant_id = request.headers.get("X-Dev-Tenant-ID")
-    
-    # Check if timestamp signature headers are present
+    # Always use timestamp signature authentication
     signature = request.headers.get("X-Signature")
-    timestamp = request.headers.get("X-Timestamp")
-    nonce = request.headers.get("X-Nonce")
-    user_id = request.headers.get("X-User-ID")
     
-    # Development mode with dev headers
-    if settings.DEBUG and dev_user_id and dev_tenant_id:
-        return await get_dev_auth(request, db)
-    
-    # Production mode with timestamp signature
-    elif signature and timestamp and nonce and user_id:
-        return await get_timestamp_auth(request, db)
-    
-    # Fallback: try development auth if in debug mode
-    elif settings.DEBUG:
-        return await get_dev_auth(request, db)
-    
-    else:
-        # No valid authentication found
+    if not signature:
         from fastapi import HTTPException, status
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="No valid authentication method found. In development, use X-Dev-User-ID and X-Dev-Tenant-ID headers. In production, use timestamp signature authentication.",
-            headers={"WWW-Authenticate": "SmartAuth"},
+            detail="Missing required authentication header: X-Signature",
+            headers={"WWW-Authenticate": "TimestampSignature"},
         )
+    
+    return await get_timestamp_auth(request, db)
 
 
 async def get_smart_auth(

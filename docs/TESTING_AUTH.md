@@ -2,24 +2,13 @@
 
 ## 概述
 
-本系统支持多种认证方式，在开发和生产环境中提供不同的测试便利性。
+本系统使用统一的时间戳签名认证方式，在所有环境（开发、测试、生产）中保持一致。
 
 ## 认证方式
 
-### 1. 开发环境认证 (推荐用于测试)
+### 时间戳签名认证 (所有环境)
 
-在开发环境中，可以使用简化的认证方式：
-
-```bash
-# 使用开发认证头
-curl -X GET "http://localhost:8000/api/v1/orders" \
-  -H "X-Dev-User-ID: 1" \
-  -H "X-Dev-Tenant-ID: 1"
-```
-
-### 2. 时间戳签名认证 (生产环境)
-
-在生产环境中，使用完整的时间戳签名认证：
+所有环境都使用相同的时间戳签名认证：
 
 ```bash
 # 使用时间戳签名认证
@@ -29,48 +18,36 @@ curl -X GET "http://localhost:8000/api/v1/orders" \
 
 ## 测试工具
 
-### 使用测试辅助脚本
+### 使用签名生成器
 
 ```bash
-# 生成开发环境认证头
-python scripts/test_auth_helper.py --method GET --path /api/v1/orders
+# 快速测试
+cd backend
+python tests/tools/quick_test.py
 
-# 生成curl命令
-python scripts/test_auth_helper.py --method GET --path /api/v1/orders --format curl
-
-# 生成JSON格式的认证头
-python scripts/test_auth_helper.py --method GET --path /api/v1/orders --format json
-
-# 使用生产模式认证
-python scripts/test_auth_helper.py --method GET --path /api/v1/orders --dev-mode false
+# 完整工具
+python tests/tools/signature_generator.py
 ```
 
 ### 示例输出
 
-**开发模式认证头：**
+**签名认证：**
 ```
-Headers:
-X-Dev-User-ID: 1
-X-Dev-Tenant-ID: 1
-Content-Type: application/json
+X-Signature: eyJ0aW1lc3RhbXAiOiAxNzU0OTc3ODE2LCAibm9uY2UiOiAiZWU3ZjgyMmU4YjY0ZTVmZmJkZjI3YWY2ZTcwYTQzNjUiLCAidGVuYW50X2lkIjogMSwgInVzZXJfaWQiOiAxLCAic2lnbmF0dXJlIjogImM1MDEwM2U1Yjk5NjFhZGZiNjMxM2I5NjAwMjAwOTExNzYyZWRjNTBjMzIwZjMwYWVjMWY1YmU0OWUxMzg4YzcyNDg1OWI1ZjJiOTJiZTA4YWY1ZWUzODFkODU4MDA0NTgwODc0YWZlZmI3NDU2M2FhMjk0MzgwNjk4NjBjMjJhZTMwYzY3Mjg1YjJlOTBlZTFiMzUzYzc3ZWRkNzY4OGIyNGI0ZDk5MGZjM2QxNmM4ZGVlMDZkNmUzZjMyZGUwMzk4Yzc1MjY1MGIxM2I0MGE1Nzg0NjIwMTk1MzVkNTUyMWVkMzVjYzdiNmE0MTgyYjQ4ZmQwNzNiZTYzM2JmOGM3NDg1MjI5YTE0MDc2YjE4ODM0ODI2MDFjMmQ5NjYxY2M0NmNmYzAyY2YyZjc5NzdlZGRmZGRlYjYyNGYzMDFmNDUwMTFkZjdkOTExOGU4MzZiOGE1Yjk2ZjgwMTQ3N2VlZTY1ZjBlMTA1MGQyMzc3MTM0NTkwMGNhY2RkOWRkODk3NDBlOWZjZGUyMzllM2U5MGMxZGFjMzAyYzNhM2JhMzIwMzI1NTM5MTdjZjZjYTU2OTE2ODQyZjBiMDBmZDNmY2M4YjQ0NGI2OGJhNzllZmJjODg3ODYyZDJkODBlYjExMzIyNjg3Y2E5NjFmNjMxMmQxYmFlYjFhMGFmZTQ0IiwgImtleV9pZCI6ICJ0ZXN0X2tleV8wMDEifQ==
 ```
 
 **Curl命令：**
 ```bash
 curl -X GET 'http://localhost:8000/api/v1/orders' \
-  -H 'X-Dev-User-ID: 1' \
-  -H 'X-Dev-Tenant-ID: 1' \
-  -H 'Content-Type: application/json'
+  -H 'X-Signature: eyJ0aW1lc3RhbXAiOiAxNzU0OTc3ODE2LCAibm9uY2UiOiAiZWU3ZjgyMmU4YjY0ZTVmZmJkZjI3YWY2ZTcwYTQzNjUiLCAidGVuYW50X2lkIjogMSwgInVzZXJfaWQiOiAxLCAic2lnbmF0dXJlIjogImM1MDEwM2U1Yjk5NjFhZGZiNjMxM2I5NjAwMjAwOTExNzYyZWRjNTBjMzIwZjMwYWVjMWY1YmU0OWUxMzg4YzcyNDg1OWI1ZjJiOTJiZTA4YWY1ZWUzODFkODU4MDA0NTgwODc0YWZlZmI3NDU2M2FhMjk0MzgwNjk4NjBjMjJhZTMwYzY3Mjg1YjJlOTBlZTFiMzUzYzc3ZWRkNzY4OGIyNGI0ZDk5MGZjM2QxNmM4ZGVlMDZkNmUzZjMyZGUwMzk4Yzc1MjY1MGIxM2I0MGE1Nzg0NjIwMTk1MzVkNTUyMWVkMzVjYzdiNmE0MTgyYjQ4ZmQwNzNiZTYzM2JmOGM3NDg1MjI5YTE0MDc2YjE4ODM0ODI2MDFjMmQ5NjYxY2M0NmNmYzAyY2YyZjc5NzdlZGRmZGRlYjYyNGYzMDFmNDUwMTFkZjdkOTExOGU4MzZiOGE1Yjk2ZjgwMTQ3N2VlZTY1ZjBlMTA1MGQyMzc3MTM0NTkwMGNhY2RkOWRkODk3NDBlOWZjZGUyMzllM2U5MGMxZGFjMzAyYzNhM2JhMzIwMzI1NTM5MTdjZjZjYTU2OTE2ODQyZjBiMDBmZDNmY2M4YjQ0NGI2OGJhNzllZmJjODg3ODYyZDJkODBlYjExMzIyNjg3Y2E5NjFmNjMxMmQxYmFlYjFhMGFmZTQ0IiwgImtleV9pZCI6ICJ0ZXN0X2tleV8wMDEifQ=='
 ```
 
-## 智能认证选择
+## 统一认证机制
 
-系统会自动根据请求头选择合适的认证方式：
+系统在所有环境中都使用相同的时间戳签名认证：
 
-1. **开发环境 + 开发头** → 使用开发认证
-2. **生产环境 + 时间戳签名** → 使用时间戳签名认证
-3. **开发环境 + 无认证头** → 尝试开发认证
-4. **生产环境 + 无认证头** → 拒绝请求
+1. **所有环境** → 使用时间戳签名认证
+2. **无认证头** → 拒绝请求
 
 ## 测试场景
 
@@ -78,20 +55,21 @@ curl -X GET 'http://localhost:8000/api/v1/orders' \
 
 ```bash
 # 测试获取订单
-python scripts/test_auth_helper.py --method GET --path /api/v1/orders --format curl | bash
+cd backend
+python tests/tools/quick_test.py
 
-# 测试创建订单
-python scripts/test_auth_helper.py --method POST --path /api/v1/orders --body '{"order_id": 123}' --format curl | bash
+# 使用生成的curl命令测试
+curl -X GET 'http://localhost:8000/api/v1/orders' \
+  -H 'X-Signature: <生成的签名>'
 ```
 
 ### 多租户测试
 
 ```bash
 # 测试租户1
-python scripts/test_auth_helper.py --user-id 1 --tenant-id 1 --format curl
+python tests/tools/signature_generator.py
 
-# 测试租户2
-python scripts/test_auth_helper.py --user-id 2 --tenant-id 2 --format curl
+# 修改tenant_id参数测试不同租户
 ```
 
 ### 认证失败测试
@@ -100,44 +78,37 @@ python scripts/test_auth_helper.py --user-id 2 --tenant-id 2 --format curl
 # 测试无认证头
 curl -X GET "http://localhost:8000/api/v1/orders"
 
-# 测试无效用户ID
+# 测试无效签名
 curl -X GET "http://localhost:8000/api/v1/orders" \
-  -H "X-Dev-User-ID: 999" \
-  -H "X-Dev-Tenant-ID: 1"
+  -H "X-Signature: invalid_signature"
 ```
 
 ## 环境配置
 
-### 开发环境
+所有环境使用相同的配置：
 
 ```python
 # settings.py
-DEBUG = True
-```
-
-### 生产环境
-
-```python
-# settings.py
-DEBUG = False
+HASHIDS_SALT = "your-hashids-salt-here"
+HASHIDS_MIN_LENGTH = 8
 ```
 
 ## 安全注意事项
 
-1. **开发认证只在DEBUG=True时有效**
-2. **生产环境必须使用时间戳签名认证**
-3. **开发认证头不应在生产环境中使用**
+1. **所有环境都使用相同的时间戳签名认证**
+2. **签名包含时间戳，5分钟内有效**
+3. **每个nonce只能使用一次（防重放攻击）**
 4. **定期轮换密钥和更新认证机制**
 
 ## 故障排除
 
 ### 常见错误
 
-1. **"Development authentication not allowed in production"**
-   - 确保DEBUG=True或使用时间戳签名认证
+1. **"Missing required authentication header: X-Signature"**
+   - 确保提供了X-Signature头
 
-2. **"Missing required authentication headers"**
-   - 检查是否提供了必要的认证头
+2. **"Invalid signature format"**
+   - 检查签名格式是否正确
 
 3. **"Timestamp expired"**
    - 检查系统时间是否同步

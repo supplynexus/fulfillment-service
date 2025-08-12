@@ -63,13 +63,13 @@ curl -X GET 'http://localhost:8000/api/v1/user/profile' \
   -H 'X-Signature: <签名>'
 ```
 
-### 开发环境测试
+### 所有环境统一认证
 
-简化认证（仅用于开发）：
+所有环境（开发、测试、生产）都使用相同的签名认证：
 
 ```bash
 curl -X GET 'http://localhost:8000/api/v1/orders' \
-  -H 'X-Dev-Tenant-ID: 1'
+  -H 'X-Signature: <签名>'
 ```
 
 ## Hashids编码
@@ -92,3 +92,4 @@ HASHIDS_MIN_LENGTH=8
 2. 生成的密钥对仅用于测试
 3. 签名包含时间戳，5分钟内有效
 4. 每个nonce只能使用一次（防重放攻击）
+5. 所有环境都使用相同的签名认证机制

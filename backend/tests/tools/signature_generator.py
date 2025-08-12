@@ -224,9 +224,9 @@ def main():
     print(f"curl -X GET 'http://localhost:8000/api/v1/user/profile' \\")
     print(f"  -H 'X-Signature: {user_signature}'")
     
-    print(f"\n# 开发环境测试（简化认证）")
+    print(f"\n# 所有环境统一认证")
     print(f"curl -X GET 'http://localhost:8000/api/v1/orders' \\")
-    print(f"  -H 'X-Dev-Tenant-ID: 1'")
+    print(f"  -H 'X-Signature: {tenant_signature}'")
     
     print(f"\n=== 工具使用完成 ===")
 
