@@ -52,10 +52,16 @@ class TimestampAuthService:
         self,
         request: Request,
         signature: str,
+        tenant_hashid: str,
         key_id: Optional[str] = None
     ) -> Tuple[bool, int, int, str, int]:
         """
         Verify timestamp-based signature
+        Args:
+            request: FastAPI request object
+            signature: X-Signature header value
+            tenant_hashid: X-Tenant-ID header value (hashids encoded)
+            key_id: Optional key ID to use
         Returns: (is_valid, tenant_id, user_id, nonce, timestamp)
         """
         """Verify timestamp-based signature"""
@@ -72,13 +78,22 @@ class TimestampAuthService:
             decoded_signature = base64.b64decode(signature).decode()
             signature_data = json.loads(decoded_signature)
             
+            # Decode tenant ID from hashids
+            from app.core.hashids_utils import decode_tenant_id
+            tenant_id = decode_tenant_id(tenant_hashid)
+            
+            if not tenant_id:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid tenant ID"
+                )
+            
             timestamp = signature_data.get("timestamp")
             nonce = signature_data.get("nonce")
-            tenant_id = signature_data.get("tenant_id")
             user_id = signature_data.get("user_id")  # Optional
             actual_signature = signature_data.get("signature")
             
-            if not all([timestamp, nonce, tenant_id, actual_signature]):
+            if not all([timestamp, nonce, actual_signature]):
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Invalid signature format - missing required fields"

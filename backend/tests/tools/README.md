@@ -51,6 +51,7 @@ python tests/tools/signature_generator.py
 
 ```bash
 curl -X GET 'http://localhost:8000/api/v1/orders' \
+  -H 'X-Tenant-ID: <租户hashid>' \
   -H 'X-Signature: <签名>'
 ```
 
@@ -60,6 +61,7 @@ curl -X GET 'http://localhost:8000/api/v1/orders' \
 
 ```bash
 curl -X GET 'http://localhost:8000/api/v1/user/profile' \
+  -H 'X-Tenant-ID: <租户hashid>' \
   -H 'X-Signature: <签名>'
 ```
 

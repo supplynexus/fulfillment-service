@@ -31,7 +31,6 @@ def quick_test():
     signature = generator.create_signature(
         method="GET",
         path="/api/v1/orders",
-        tenant_id=tenant_id,
         user_id=user_id
     )
     
@@ -44,6 +43,7 @@ def quick_test():
     
     print(f"\ncurl命令:")
     print(f"curl -X GET 'http://localhost:8000/api/v1/orders' \\")
+    print(f"  -H 'X-Tenant-ID: {encode_tenant_id(tenant_id)}' \\")
     print(f"  -H 'X-Signature: {signature}'")
 
 

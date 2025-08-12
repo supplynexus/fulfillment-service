@@ -18,8 +18,9 @@ async def verify_timestamp_auth(
 ) -> Tuple[User, Tenant]:
     """Verify timestamp-based signature authentication"""
     
-    # Get authentication header - only signature is required
+    # Get authentication headers
     signature = request.headers.get("X-Signature")
+    tenant_hashid = request.headers.get("X-Tenant-ID")
     
     if not signature:
         raise HTTPException(
@@ -28,11 +29,19 @@ async def verify_timestamp_auth(
             headers={"WWW-Authenticate": "TimestampSignature"},
         )
     
+    if not tenant_hashid:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing required authentication header: X-Tenant-ID",
+            headers={"WWW-Authenticate": "TimestampSignature"},
+        )
+    
     # Verify signature and extract information
     auth_service = TimestampAuthService(db)
     is_valid, tenant_id, user_id, nonce, timestamp = await auth_service.verify_timestamp_signature(
         request=request,
-        signature=signature
+        signature=signature,
+        tenant_hashid=tenant_hashid
     )
     
     if not is_valid:

@@ -65,14 +65,14 @@ class SignatureGenerator:
         path: str,
         timestamp: int,
         nonce: str,
-        tenant_id: int,
         user_id: Optional[int] = None,
         body: str = ""
     ) -> str:
         """创建签名字符串"""
-        # Format: METHOD + PATH + TIMESTAMP + NONCE + TENANT_ID + USER_ID + BODY
+        # Format: METHOD + PATH + TIMESTAMP + NONCE + USER_ID + BODY
+        # Note: tenant_id is now provided via X-Tenant-ID header, not in signature
         user_part = f"{user_id}" if user_id else ""
-        return f"{method.upper()}{path}{timestamp}{nonce}{tenant_id}{user_part}{body}"
+        return f"{method.upper()}{path}{timestamp}{nonce}{user_part}{body}"
     
     def sign_data(self, data: str) -> str:
         """使用私钥签名数据"""
@@ -94,7 +94,6 @@ class SignatureGenerator:
         self,
         method: str,
         path: str,
-        tenant_id: int,
         user_id: Optional[int] = None,
         body: str = "",
         timestamp: Optional[int] = None,
@@ -114,7 +113,6 @@ class SignatureGenerator:
             path=path,
             timestamp=timestamp,
             nonce=nonce,
-            tenant_id=tenant_id,
             user_id=user_id,
             body=body
         )
@@ -126,7 +124,6 @@ class SignatureGenerator:
         signature_data = {
             "timestamp": timestamp,
             "nonce": nonce,
-            "tenant_id": tenant_id,
             "user_id": user_id,  # Optional
             "signature": signature,
             "key_id": self.key_id
@@ -182,27 +179,25 @@ def main():
     # 演示签名生成
     print("\n3. 生成测试签名...")
     
-    # 租户级API签名（只有tenant_id）
+    # 租户级API签名（只有user_id）
     tenant_signature = generator.create_signature(
         method="GET",
         path="/api/v1/orders",
-        tenant_id=1,  # impeach租户
         body=""
     )
     
-    print(f"租户级API签名 (tenant_id=1):")
+    print(f"租户级API签名:")
     print(f"X-Signature: {tenant_signature}")
     
-    # 用户级API签名（tenant_id + user_id）
+    # 用户级API签名（包含user_id）
     user_signature = generator.create_signature(
         method="GET",
         path="/api/v1/user/profile",
-        tenant_id=1,  # impeach租户
         user_id=1,    # 用户ID
         body=""
     )
     
-    print(f"\n用户级API签名 (tenant_id=1, user_id=1):")
+    print(f"\n用户级API签名 (user_id=1):")
     print(f"X-Signature: {user_signature}")
     
     # 使用hashids编码的ID
@@ -218,14 +213,17 @@ def main():
     
     print(f"\n# 租户级API测试")
     print(f"curl -X GET 'http://localhost:8000/api/v1/orders' \\")
+    print(f"  -H 'X-Tenant-ID: {encode_tenant_id(1)}' \\")
     print(f"  -H 'X-Signature: {tenant_signature}'")
     
     print(f"\n# 用户级API测试")
     print(f"curl -X GET 'http://localhost:8000/api/v1/user/profile' \\")
+    print(f"  -H 'X-Tenant-ID: {encode_tenant_id(1)}' \\")
     print(f"  -H 'X-Signature: {user_signature}'")
     
     print(f"\n# 所有环境统一认证")
     print(f"curl -X GET 'http://localhost:8000/api/v1/orders' \\")
+    print(f"  -H 'X-Tenant-ID: {encode_tenant_id(1)}' \\")
     print(f"  -H 'X-Signature: {tenant_signature}'")
     
     print(f"\n=== 工具使用完成 ===")

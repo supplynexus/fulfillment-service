@@ -24,12 +24,21 @@ async def smart_auth_selector(
     
     # Always use timestamp signature authentication
     signature = request.headers.get("X-Signature")
+    tenant_hashid = request.headers.get("X-Tenant-ID")
     
     if not signature:
         from fastapi import HTTPException, status
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing required authentication header: X-Signature",
+            headers={"WWW-Authenticate": "TimestampSignature"},
+        )
+    
+    if not tenant_hashid:
+        from fastapi import HTTPException, status
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing required authentication header: X-Tenant-ID",
             headers={"WWW-Authenticate": "TimestampSignature"},
         )
     

@@ -61,6 +61,7 @@ async def create_signature_demo(
             "message": "System signature created successfully",
             "signature": signature,
             "headers_to_include": {
+                "X-Tenant-ID": "PoRpOk2e",  # Demo tenant hashid
                 "X-Signature": signature
             }
         }
