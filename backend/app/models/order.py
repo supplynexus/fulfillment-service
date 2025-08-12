@@ -24,13 +24,13 @@ class Order(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     
-    # Shopify order details
-    shopify_order_id = Column(String, unique=True, index=True, nullable=False)
-    shopify_order_number = Column(String, nullable=True)
-    shopify_order_name = Column(String, nullable=True)
+    # External system identification
+    external_system_id = Column(Integer, ForeignKey("external_systems.id"), nullable=False)
+    external_order_id = Column(String, nullable=False)  # Order ID in external system
     
-    # Printify order details
-    printify_order_id = Column(String, nullable=True)
+    # External system specific identifiers
+    external_order_number = Column(String, nullable=True)
+    external_order_name = Column(String, nullable=True)
     
     # Order information
     status = Column(String, default=OrderStatus.PENDING.value, index=True)
@@ -71,3 +71,4 @@ class Order(Base):
 
     # Relationships
     customer = relationship("Customer", back_populates="orders")
+    external_system = relationship("ExternalSystem", back_populates="orders")
