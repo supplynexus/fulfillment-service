@@ -27,7 +27,6 @@ curl -X GET "http://localhost:8000/api/v1/orders" \
   -H "X-Signature: abc123def456..." \
   -H "X-Timestamp: 1640995200" \
   -H "X-Nonce: random_nonce_123" \
-  -H "X-User-ID: 1" \
   -H "X-Key-ID: user_key_456"
 ```
 

@@ -34,7 +34,7 @@ def generate_test_headers(
     else:
         # Production mode - timestamp signature
         return generate_timestamp_signature_headers(
-            method, path, body, user_id
+            method, path, body
         )
 
 
@@ -42,7 +42,7 @@ def generate_timestamp_signature_headers(
     method: str,
     path: str,
     body: str,
-    user_id: int
+    key_id: str = "test_key_123"
 ) -> dict:
     """Generate timestamp signature headers"""
     
@@ -60,7 +60,7 @@ def generate_timestamp_signature_headers(
         "X-Signature": signature,
         "X-Timestamp": str(timestamp),
         "X-Nonce": nonce,
-        "X-User-ID": str(user_id),
+        "X-Key-ID": key_id,
         "Content-Type": "application/json"
     }
 

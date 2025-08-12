@@ -51,9 +51,8 @@ class TimestampAuthService:
         signature: str,
         timestamp: int,
         nonce: str,
-        user_id: int,
         key_id: Optional[str] = None
-    ) -> bool:
+    ) -> Tuple[User, Tenant]:
         """Verify timestamp-based signature"""
         
         # 1. Check timestamp validity (prevent replay attacks)
@@ -68,7 +67,8 @@ class TimestampAuthService:
             )
         
         # 2. Check nonce to prevent replay attacks
-        nonce_key = f"used_nonce:{user_id}:{nonce}"
+        # We'll check nonce after we identify the user
+        nonce_key = f"used_nonce:{nonce}"
         is_used = await redis_client.client.get(nonce_key)
         if is_used:
             raise HTTPException(
@@ -76,25 +76,28 @@ class TimestampAuthService:
                 detail="Nonce already used"
             )
         
-        # 3. Get user's public key
-        query = select(UserKey).where(
-            UserKey.user_id == user_id,
-            UserKey.is_active == True
-        )
-        
+        # 3. Try to find user by key_id first, then by signature verification
+        user_key = None
         if key_id:
-            query = query.where(UserKey.key_id == key_id)
-        else:
-            query = query.where(UserKey.is_primary == True)
-        
-        result = await self.db.execute(query)
-        user_key = result.scalar_one_or_none()
+            # Try to find user by key_id
+            result = await self.db.execute(
+                select(UserKey).where(
+                    UserKey.key_id == key_id,
+                    UserKey.is_active == True
+                )
+            )
+            user_key = result.scalar_one_or_none()
         
         if not user_key:
+            # If no key_id or key not found, we need to verify signature first
+            # This is a more complex scenario - we might need to try multiple keys
+            # For now, we'll require key_id in production
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="User key not found"
+                detail="Key ID required for signature verification"
             )
+        
+        # user_key is already found above
         
         # 4. Create signature string
         body = await request.body()
@@ -135,7 +138,46 @@ class TimestampAuthService:
             user_key.usage_count += 1
             await self.db.commit()
             
-            return True
+            # 8. Get user and tenant information
+            user_result = await self.db.execute(
+                select(User).where(User.id == user_key.user_id)
+            )
+            user = user_result.scalar_one_or_none()
+            
+            if not user:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="User not found"
+                )
+            
+            # Get user's active tenant (you might want to get this from the request or token)
+            user_tenant_result = await self.db.execute(
+                select(UserTenant).where(
+                    UserTenant.user_id == user.id,
+                    UserTenant.is_active == True
+                ).limit(1)
+            )
+            user_tenant = user_tenant_result.scalar_one_or_none()
+            
+            if not user_tenant:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="User has no active tenant"
+                )
+            
+            # Get tenant
+            tenant_result = await self.db.execute(
+                select(Tenant).where(Tenant.id == user_tenant.tenant_id)
+            )
+            tenant = tenant_result.scalar_one_or_none()
+            
+            if not tenant:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Tenant not found"
+                )
+            
+            return user, tenant
             
         except Exception as e:
             raise HTTPException(
