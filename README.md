@@ -15,6 +15,7 @@ SupplyNexus Fulfillment Service 是一个全栈的 SaaS 解决方案，专为电
 
 - **🔄 自动订单处理**: 接收 Shopify webhook，自动创建 Printify 订单
 - **🏢 多租户架构**: 支持多个客户，数据完全隔离
+- **🔐 企业级认证**: 基于租户的时间戳签名认证系统
 - **📊 实时状态同步**: 订单状态实时更新，包含跟踪信息
 - **🛡️ 智能重试机制**: 失败订单自动重试，错误处理
 - **🎛️ 管理后台**: 完整的订单监控和客户管理界面
@@ -169,6 +170,8 @@ PRINTIFY_API_TOKEN=your-printify-api-token
 # 安全配置
 SECRET_KEY=your-super-secret-key
 WEBHOOK_SECRET=your-webhook-secret
+HASHIDS_SALT=your-hashids-salt-here
+HASHIDS_MIN_LENGTH=8
 
 # 数据库配置
 DATABASE_URL=postgresql+asyncpg://user:pass@host:port/db
@@ -358,9 +361,10 @@ docker stats
 ### 主要 API 端点
 
 - `POST /api/v1/auth/login` - 用户登录
-- `GET /api/v1/customers` - 获取客户列表
-- `POST /api/v1/customers` - 创建客户
-- `GET /api/v1/orders` - 获取订单列表
+- `POST /api/v1/auth/refresh` - 刷新访问令牌
+- `POST /api/v1/auth/logout` - 用户登出
+- `GET /api/v1/orders` - 获取订单列表（需要租户认证）
+- `GET /api/v1/external-systems` - 获取外部系统配置
 - `POST /api/v1/webhooks/shopify/orders/create` - Shopify 订单 webhook
 
 ## 🤝 贡献指南

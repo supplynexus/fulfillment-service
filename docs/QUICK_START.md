@@ -7,7 +7,7 @@ SupplyNexus OMS是一个多租户的订单管理系统，集成Shopify和Printif
 - **后端**: FastAPI + PostgreSQL + Redis + Celery
 - **前端**: Next.js + TypeScript
 - **部署**: Docker + Kubernetes
-- **认证**: JWT + API Key 双重认证
+- **认证**: 基于租户的时间戳签名认证 + JWT + API Key
 
 ## ⚡ 快速开始
 
@@ -244,6 +244,11 @@ REDIS_URL=redis://localhost:6379/0
 # JWT
 SECRET_KEY=your-secret-key
 ACCESS_TOKEN_EXPIRE_MINUTES=30
+REFRESH_TOKEN_EXPIRE_DAYS=7
+
+# Hashids
+HASHIDS_SALT=your-hashids-salt-here
+HASHIDS_MIN_LENGTH=8
 
 # Shopify
 SHOPIFY_SHOP_NAME=your-shop-name
@@ -283,7 +288,11 @@ PRINTIFY_API_TOKEN=your-api-token
 - [x] 项目初始化
 - [x] 基础架构搭建
 - [x] 开发工作流建立
-- [ ] Phase 1: 认证和安全基础
+- [x] Phase 1: 认证和安全基础 ✅
+  - [x] 基于租户的JWT认证系统
+  - [x] 时间戳签名认证
+  - [x] Hashids支持
+  - [x] 完整的数据库模型设计
 - [ ] Phase 2: 数据获取和同步
 - [ ] Phase 3: 核心业务功能
 - [ ] Phase 4: 用户界面
