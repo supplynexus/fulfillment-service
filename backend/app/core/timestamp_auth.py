@@ -39,23 +39,55 @@ class TimestampAuthService:
         path: str,
         timestamp: int,
         nonce: str,
+        user_id: int,
         body: str = ""
     ) -> str:
         """Create the string to be signed"""
-        # Format: METHOD + PATH + TIMESTAMP + NONCE + BODY
-        return f"{method.upper()}{path}{timestamp}{nonce}{body}"
+        # Format: METHOD + PATH + TIMESTAMP + NONCE + USER_ID + BODY
+        return f"{method.upper()}{path}{timestamp}{nonce}{user_id}{body}"
     
     async def verify_timestamp_signature(
         self,
         request: Request,
         signature: str,
-        timestamp: int,
-        nonce: str,
         key_id: Optional[str] = None
-    ) -> Tuple[User, Tenant]:
+    ) -> Tuple[bool, int, str, int]:
+        """
+        Verify timestamp-based signature
+        Returns: (is_valid, user_id, nonce, timestamp)
+        """
         """Verify timestamp-based signature"""
         
-        # 1. Check timestamp validity (prevent replay attacks)
+        # 1. Try to extract information from signature
+        # For now, we'll use a simple approach - in production, you might want to use JWT or other structured format
+        try:
+            # Decode signature to extract information
+            # This is a simplified approach - in real implementation, you might use JWT or structured format
+            import base64
+            import json
+            
+            # Assuming signature contains encoded information
+            decoded_signature = base64.b64decode(signature).decode()
+            signature_data = json.loads(decoded_signature)
+            
+            timestamp = signature_data.get("timestamp")
+            nonce = signature_data.get("nonce")
+            user_id = signature_data.get("user_id")
+            actual_signature = signature_data.get("signature")
+            
+            if not all([timestamp, nonce, user_id, actual_signature]):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid signature format"
+                )
+            
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Failed to decode signature: {str(e)}"
+            )
+        
+        # 2. Check timestamp validity (prevent replay attacks)
         current_time = int(time.time())
         time_diff = abs(current_time - timestamp)
         
@@ -66,9 +98,8 @@ class TimestampAuthService:
                 detail=f"Timestamp expired. Time difference: {time_diff} seconds"
             )
         
-        # 2. Check nonce to prevent replay attacks
-        # We'll check nonce after we identify the user
-        nonce_key = f"used_nonce:{nonce}"
+        # 3. Check nonce to prevent replay attacks
+        nonce_key = f"used_nonce:{user_id}:{nonce}"
         is_used = await redis_client.client.get(nonce_key)
         if is_used:
             raise HTTPException(
@@ -76,30 +107,27 @@ class TimestampAuthService:
                 detail="Nonce already used"
             )
         
-        # 3. Try to find user by key_id first, then by signature verification
-        user_key = None
+        # 4. Get user's public key
+        query = select(UserKey).where(
+            UserKey.user_id == user_id,
+            UserKey.is_active == True
+        )
+        
         if key_id:
-            # Try to find user by key_id
-            result = await self.db.execute(
-                select(UserKey).where(
-                    UserKey.key_id == key_id,
-                    UserKey.is_active == True
-                )
-            )
-            user_key = result.scalar_one_or_none()
+            query = query.where(UserKey.key_id == key_id)
+        else:
+            query = query.where(UserKey.is_primary == True)
+        
+        result = await self.db.execute(query)
+        user_key = result.scalar_one_or_none()
         
         if not user_key:
-            # If no key_id or key not found, we need to verify signature first
-            # This is a more complex scenario - we might need to try multiple keys
-            # For now, we'll require key_id in production
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Key ID required for signature verification"
+                detail="User key not found"
             )
         
-        # user_key is already found above
-        
-        # 4. Create signature string
+        # 5. Create signature string
         body = await request.body()
         body_str = body.decode() if body else ""
         
@@ -108,6 +136,7 @@ class TimestampAuthService:
             path=str(request.url.path),
             timestamp=timestamp,
             nonce=nonce,
+            user_id=user_id,
             body=body_str
         )
         
@@ -138,46 +167,7 @@ class TimestampAuthService:
             user_key.usage_count += 1
             await self.db.commit()
             
-            # 8. Get user and tenant information
-            user_result = await self.db.execute(
-                select(User).where(User.id == user_key.user_id)
-            )
-            user = user_result.scalar_one_or_none()
-            
-            if not user:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="User not found"
-                )
-            
-            # Get user's active tenant (you might want to get this from the request or token)
-            user_tenant_result = await self.db.execute(
-                select(UserTenant).where(
-                    UserTenant.user_id == user.id,
-                    UserTenant.is_active == True
-                ).limit(1)
-            )
-            user_tenant = user_tenant_result.scalar_one_or_none()
-            
-            if not user_tenant:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="User has no active tenant"
-                )
-            
-            # Get tenant
-            tenant_result = await self.db.execute(
-                select(Tenant).where(Tenant.id == user_tenant.tenant_id)
-            )
-            tenant = tenant_result.scalar_one_or_none()
-            
-            if not tenant:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Tenant not found"
-                )
-            
-            return user, tenant
+            return True
             
         except Exception as e:
             raise HTTPException(
@@ -189,9 +179,10 @@ class TimestampAuthService:
         self,
         method: str,
         path: str,
+        user_id: int,
         body: str = "",
         signature_type: SystemKeyType = SystemKeyType.API_SIGNING
-    ) -> Dict[str, str]:
+    ) -> str:
         """Create system signature for outgoing requests"""
         
         # Get current signing key
@@ -220,6 +211,7 @@ class TimestampAuthService:
             path=path,
             timestamp=timestamp,
             nonce=nonce,
+            user_id=user_id,
             body=body
         )
         
@@ -237,17 +229,28 @@ class TimestampAuthService:
             hashes.SHA256()
         )
         
+        # Create structured signature with all information
+        signature_data = {
+            "timestamp": timestamp,
+            "nonce": nonce,
+            "user_id": user_id,
+            "signature": signature.hex(),
+            "key_id": system_key.key_id
+        }
+        
+        # Encode as base64
+        import base64
+        import json
+        encoded_signature = base64.b64encode(
+            json.dumps(signature_data).encode()
+        ).decode()
+        
         # Update usage tracking
         system_key.last_used_at = datetime.utcnow()
         system_key.usage_count += 1
         await self.db.commit()
         
-        return {
-            "signature": signature.hex(),
-            "timestamp": str(timestamp),
-            "nonce": nonce,
-            "key_id": system_key.key_id
-        }
+        return encoded_signature
     
     async def verify_system_signature(
         self,

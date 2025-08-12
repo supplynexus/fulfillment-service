@@ -24,10 +24,7 @@ curl -X GET "http://localhost:8000/api/v1/orders" \
 ```bash
 # 使用时间戳签名认证
 curl -X GET "http://localhost:8000/api/v1/orders" \
-  -H "X-Signature: abc123def456..." \
-  -H "X-Timestamp: 1640995200" \
-  -H "X-Nonce: random_nonce_123" \
-  -H "X-Key-ID: user_key_456"
+  -H "X-Signature: <包含所有信息的签名>"
 ```
 
 ## 测试工具

@@ -49,20 +49,18 @@ async def create_signature_demo(
     auth_service = TimestampAuthService(db)
     
     try:
-        signature_data = await auth_service.create_system_signature(
+        signature = await auth_service.create_system_signature(
             method=method,
             path=path,
+            user_id=1,  # Demo user ID
             body=body
         )
         
         return {
             "message": "System signature created successfully",
-            "signature_data": signature_data,
+            "signature": signature,
             "headers_to_include": {
-                "X-Signature": signature_data["signature"],
-                "X-Timestamp": signature_data["timestamp"],
-                "X-Nonce": signature_data["nonce"],
-                "X-Key-ID": signature_data["key_id"]
+                "X-Signature": signature
             }
         }
         
