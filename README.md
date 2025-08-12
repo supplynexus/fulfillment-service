@@ -413,12 +413,12 @@ docker stats
 ```
 
 #### 环境差异和工具选择
-| 环境 | 工具 | 环境文件 | 说明 |
-|------|------|----------|------|
-| **Local** | `./scripts/db/alembic.sh local` | `backend/.env.local` | 有Python虚拟环境，直接执行alembic |
-| **Develop** | `./deployment/scripts/db-docker.sh dev` | `deployment/environments/env.dev` | 只有Docker，需要容器化执行 |
-| **Staging** | `./deployment/scripts/db-docker.sh stg` | `deployment/environments/env.stg` | 只有Docker |
-| **Production** | `./deployment/scripts/db-docker.sh prod` | `deployment/environments/env.prod` | 只有Docker |
+| 环境 | 工具 | 环境文件路径 | 实际读取文件 | 说明 |
+|------|------|--------------|--------------|------|
+| **Local** | `./scripts/db/alembic.sh local` | `backend/.env.local` | `backend/.env.local` | 有Python虚拟环境，直接执行alembic |
+| **Develop** | `./deployment/scripts/db-docker.sh dev` | `deployment/environments/env.dev` | `deployment/environments/env.dev` | 只有Docker，需要容器化执行 |
+| **Staging** | `./deployment/scripts/db-docker.sh stg` | `deployment/environments/env.stg` | `deployment/environments/env.stg` | 只有Docker |
+| **Production** | `./deployment/scripts/db-docker.sh prod` | `deployment/environments/env.prod` | `deployment/environments/env.prod` | 只有Docker |
 
 **关键区别**:
 - **Local环境**: 有Python虚拟环境，可以直接使用alembic命令

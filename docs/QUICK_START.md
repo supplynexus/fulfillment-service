@@ -200,6 +200,12 @@ alembic upgrade head
 - **Local环境**: 有Python虚拟环境，可以直接执行alembic命令
 - **服务器环境**: 只有Docker环境，必须使用db-docker.sh脚本
 
+**环境文件读取**:
+- **Local环境**: 读取 `backend/.env.local` 文件
+- **Develop环境**: 读取 `deployment/environments/env.dev` 文件
+- **Staging环境**: 读取 `deployment/environments/env.stg` 文件
+- **Production环境**: 读取 `deployment/environments/env.prod` 文件
+
 ### 前端命令
 ```bash
 cd frontend

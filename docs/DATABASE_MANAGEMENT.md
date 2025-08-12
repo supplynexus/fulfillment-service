@@ -7,12 +7,12 @@
 
 ### 环境类型对比
 
-| 环境 | Python环境 | Docker环境 | 推荐工具 | 环境文件 |
-|------|------------|------------|----------|----------|
-| **Local** | ✅ 有虚拟环境 | ✅ 可选 | `./scripts/db/alembic.sh` | `backend/.env.local` |
-| **Develop** | ❌ 无 | ✅ 必需 | `./deployment/scripts/db-docker.sh` | `deployment/environments/env.dev` |
-| **Staging** | ❌ 无 | ✅ 必需 | `./deployment/scripts/db-docker.sh` | `deployment/environments/env.stg` |
-| **Production** | ❌ 无 | ✅ 必需 | `./deployment/scripts/db-docker.sh` | `deployment/environments/env.prod` |
+| 环境 | Python环境 | Docker环境 | 推荐工具 | 环境文件路径 | 实际读取文件 |
+|------|------------|------------|----------|--------------|--------------|
+| **Local** | ✅ 有虚拟环境 | ✅ 可选 | `./scripts/db/alembic.sh` | `backend/.env.local` | `backend/.env.local` |
+| **Develop** | ❌ 无 | ✅ 必需 | `./deployment/scripts/db-docker.sh` | `deployment/environments/env.dev` | `deployment/environments/env.dev` |
+| **Staging** | ❌ 无 | ✅ 必需 | `./deployment/scripts/db-docker.sh` | `deployment/environments/env.stg` | `deployment/environments/env.stg` |
+| **Production** | ❌ 无 | ✅ 必需 | `./deployment/scripts/db-docker.sh` | `deployment/environments/env.prod` | `deployment/environments/env.prod` |
 
 ### 关键区别
 
@@ -90,26 +90,81 @@ source .venv/bin/activate
 
 ## 🔧 环境配置
 
-### Local环境配置
-```bash
-# 环境文件位置
-backend/.env.local
+### 环境文件读取机制
 
-# 数据库配置示例
-DATABASE_URL=postgresql+asyncpg://supplynexus_admin:password@localhost:5433/supplynexus
-DATABASE_URL_SYNC=postgresql://supplynexus_admin:password@localhost:5433/supplynexus
+#### 1. Local环境 - `./scripts/db/alembic.sh`
+```bash
+# 脚本内部逻辑
+case "$ENVIRONMENT" in
+    local)
+        ENV_FILE_PATH="$BACKEND_DIR/.env.local"
+        ;;
+esac
+
+# 实际读取文件
+backend/.env.local
 ```
 
-### 服务器环境配置
+#### 2. 服务器环境 - `./deployment/scripts/db-docker.sh`
 ```bash
-# Develop环境
-deployment/environments/env.dev
+# 脚本内部逻辑
+case "$ENVIRONMENT" in
+    local|dev|stg|prod)
+        ENV_FILE="env.$ENVIRONMENT"
+        ;;
+esac
 
-# Staging环境
-deployment/environments/env.stg
+# 实际读取文件路径
+ENV_FILE_PATH="$(dirname "$0")/../environments/$ENV_FILE"
 
-# Production环境
-deployment/environments/env.prod
+# 具体文件位置
+deployment/environments/env.dev    # Develop环境
+deployment/environments/env.stg    # Staging环境  
+deployment/environments/env.prod   # Production环境
+```
+
+### 环境文件配置示例
+
+#### Local环境配置 (`backend/.env.local`)
+```bash
+# 数据库配置
+DATABASE_URL=postgresql+asyncpg://supplynexus_admin:password@localhost:5433/supplynexus
+DATABASE_URL_SYNC=postgresql://supplynexus_admin:password@localhost:5433/supplynexus
+
+# Redis配置
+REDIS_URL=redis://localhost:6379/0
+
+# 安全配置
+SECRET_KEY=your-secret-key
+HASHIDS_SALT=your-hashids-salt
+```
+
+#### Develop环境配置 (`deployment/environments/env.dev`)
+```bash
+# 数据库配置
+DATABASE_URL=postgresql+asyncpg://supplynexus_admin:password@localhost:5433/supplynexus_dev
+DATABASE_URL_SYNC=postgresql://supplynexus_admin:password@localhost:5433/supplynexus_dev
+
+# Redis配置
+REDIS_URL=redis://localhost:6379/0
+
+# 安全配置
+SECRET_KEY=dev-secret-key
+HASHIDS_SALT=dev-hashids-salt
+```
+
+#### Production环境配置 (`deployment/environments/env.prod`)
+```bash
+# 数据库配置
+DATABASE_URL=postgresql+asyncpg://supplynexus_admin:password@prod-db:5432/supplynexus_prod
+DATABASE_URL_SYNC=postgresql://supplynexus_admin:password@prod-db:5432/supplynexus_prod
+
+# Redis配置
+REDIS_URL=redis://prod-redis:6379/0
+
+# 安全配置
+SECRET_KEY=prod-secret-key-change-this
+HASHIDS_SALT=prod-hashids-salt-change-this
 ```
 
 ## 📊 数据库备份和恢复
