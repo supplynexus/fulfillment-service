@@ -21,6 +21,20 @@ SupplyNexus Fulfillment Service 是一个全栈的 SaaS 解决方案，专为电
 - **🎛️ 管理后台**: 完整的订单监控和客户管理界面
 - **⚡ 异步任务队列**: Celery 处理耗时操作，确保响应速度
 
+### 🔐 认证系统
+
+#### 时间戳签名认证
+- **前端认证**: 使用 RSA 私钥生成时间戳签名
+- **后端验证**: 使用对应的公钥验证签名和时间戳
+- **防重放攻击**: 使用 nonce 机制防止签名重复使用
+- **租户隔离**: 每个租户使用独立的密钥对
+
+#### 认证流程
+1. 前端使用私钥对请求内容进行签名
+2. 发送请求时包含 `X-Tenant-ID` 和 `X-Signature` 头部
+3. 后端验证签名、时间戳和 nonce
+4. 验证通过后返回租户和用户信息
+
 ### 🏗️ 技术架构
 
 ```
@@ -82,7 +96,24 @@ cp environment.example .env
 vim .env
 ```
 
-#### 2. 启动服务
+#### 2. 认证配置
+
+```bash
+# 生成 RSA 密钥对（前端使用）
+cd frontend
+./scripts/generate-keys.sh
+
+# 将公钥添加到后端数据库
+# 使用管理工具或直接操作数据库
+```
+
+**认证配置说明**:
+- 前端使用私钥生成签名
+- 后端存储对应的公钥用于验证
+- 每个租户使用独立的密钥对
+- 密钥文件存储在 `frontend/keys/` 目录（不提交到 git）
+
+#### 3. 启动服务
 
 ```bash
 # 启动开发环境
@@ -92,7 +123,7 @@ docker-compose -f docker-compose.dev.yml up -d
 docker-compose -f docker-compose.dev.yml ps
 ```
 
-#### 3. 数据库迁移
+#### 4. 数据库迁移
 
 ```bash
 # 使用 Docker 脚本（推荐）

@@ -2,12 +2,15 @@
 Security utilities for authentication and authorization
 """
 
+import base64
+import os
 from datetime import datetime, timedelta
 from typing import Optional, Union
 from jose import JWTError, jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
+from cryptography.fernet import Fernet
 
 from app.core.config import settings
 from app.core.database import get_async_db
@@ -161,3 +164,31 @@ async def get_current_superuser(
             detail="Not enough permissions"
         )
     return current_user
+
+
+# Encryption utilities for sensitive data
+def get_encryption_key() -> bytes:
+    """Get or generate encryption key for sensitive data"""
+    # Use SECRET_KEY as base for encryption key
+    key_base = settings.SECRET_KEY.encode()
+    # Generate a 32-byte key using SHA-256
+    import hashlib
+    key = hashlib.sha256(key_base).digest()
+    # Convert to base64 for Fernet
+    return base64.urlsafe_b64encode(key)
+
+
+def encrypt_data(data: str) -> str:
+    """Encrypt sensitive data"""
+    key = get_encryption_key()
+    f = Fernet(key)
+    encrypted_data = f.encrypt(data.encode())
+    return encrypted_data.decode()
+
+
+def decrypt_data(encrypted_data: str) -> str:
+    """Decrypt sensitive data"""
+    key = get_encryption_key()
+    f = Fernet(key)
+    decrypted_data = f.decrypt(encrypted_data.encode())
+    return decrypted_data.decode()

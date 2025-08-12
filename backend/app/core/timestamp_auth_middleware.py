@@ -90,6 +90,15 @@ async def verify_timestamp_auth(
                 headers={"WWW-Authenticate": "TimestampSignature"},
             )
     
+    # If no user_id provided, create a system user for frontend authentication
+    if not user:
+        user = User(
+            id=0,  # System user ID
+            email="frontend@supplynexus.store",
+            hashed_password="",  # System user doesn't need password
+            is_active=True
+        )
+    
     tenant_result = await db.execute(
         select(Tenant).where(Tenant.id == tenant_id)
     )

@@ -12,8 +12,17 @@ from app.core.config import settings
 def setup_logging():
     """配置结构化日志"""
     
-    # 创建日志目录
-    log_dir = Path("/app/logs")
+    # 创建日志目录 - 根据环境选择路径
+    if settings.ENVIRONMENT in ["local", "development"]:
+        # 本地开发环境使用相对路径
+        log_dir = Path("logs-local")
+    elif settings.ENVIRONMENT == "dev":
+        # 开发服务器环境
+        log_dir = Path("logs-dev")
+    else:
+        # 生产环境使用绝对路径
+        log_dir = Path("/app/logs")
+    
     if not log_dir.exists():
         log_dir.mkdir(parents=True, exist_ok=True)
     

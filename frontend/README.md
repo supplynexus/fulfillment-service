@@ -68,6 +68,9 @@ FRONTEND_PRIVATE_KEY_PATH=./keys/frontend_private_key.pem
 FRONTEND_KEY_ID=frontend-server-1
 FRONTEND_USER_EMAIL=frontend@supplynexus.store
 
+# 租户配置
+NEXT_PUBLIC_TENANT_HASHID=PoRpOk2e
+
 # 认证设置
 NEXTAUTH_URL=http://localhost:3000
 NEXTAUTH_SECRET=your-nextauth-secret-change-this-in-prod
@@ -89,6 +92,12 @@ open http://localhost:3000
 
 1. **服务器端 API 调用**: 使用 RSA 密钥对进行签名认证
 2. **客户端 API 调用**: 使用 JWT 令牌进行用户认证
+
+### 租户配置
+
+- **Tenant Hashid**: 使用 `NEXT_PUBLIC_TENANT_HASHID` 环境变量配置
+- **本地开发**: 固定使用 `PoRpOk2e` (对应 Tenant ID: 1)
+- **生产环境**: 根据实际租户配置相应的 hashid
 
 ### 密钥管理
 

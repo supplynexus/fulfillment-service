@@ -11,6 +11,9 @@ FRONTEND_PRIVATE_KEY_PATH=./keys/frontend_private_key.pem
 FRONTEND_KEY_ID=frontend-server-1
 FRONTEND_USER_EMAIL=frontend@supplynexus.store
 
+# Tenant Configuration
+NEXT_PUBLIC_TENANT_HASHID=PoRpOk2e
+
 # Development Settings
 NODE_ENV=development
 NEXT_PUBLIC_ENVIRONMENT=local

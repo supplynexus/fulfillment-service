@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.core.database import get_async_db
-from app.core.api_key_auth import get_api_key_auth, require_permission
+from app.core.api_key_auth import get_api_key_auth, require_permission, require_frontend_server_key
 from app.models.api_key import ApiKey
 from app.models.tenant import Tenant
 from app.models.customer import Customer
@@ -18,7 +18,7 @@ from app.schemas.order import OrderResponse, OrderListResponse
 router = APIRouter()
 
 
-@router.get("/orders", response_model=OrderListResponse)
+@router.get("/", response_model=OrderListResponse)
 async def get_orders(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
@@ -48,7 +48,7 @@ async def get_orders(
     }
 
 
-@router.get("/orders/{order_id}", response_model=OrderResponse)
+@router.get("/{order_id}", response_model=OrderResponse)
 async def get_order(
     order_id: int,
     db: AsyncSession = Depends(get_async_db),
@@ -76,7 +76,7 @@ async def get_order(
     return order
 
 
-@router.post("/orders/{order_id}/fulfill")
+@router.post("/{order_id}/fulfill")
 async def fulfill_order(
     order_id: int,
     db: AsyncSession = Depends(get_async_db),

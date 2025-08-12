@@ -23,7 +23,10 @@ setup_logging()
 logger = get_logger(__name__)
 
 # Initialize Sentry for error tracking
-if settings.SENTRY_DSN and settings.SENTRY_DSN.strip():
+if (settings.SENTRY_DSN and 
+    settings.SENTRY_DSN.strip() and 
+    settings.SENTRY_DSN != "your-sentry-dsn-for-error-tracking" and
+    settings.ENVIRONMENT not in ["local", "development"]):
     sentry_sdk.init(
         dsn=settings.SENTRY_DSN,
         integrations=[
@@ -112,7 +115,7 @@ async def root():
 # See /api/v1/health for detailed health checks
 
 def custom_openapi():
-    """自定义 OpenAPI 配置，添加 API Key 安全模式"""
+    """自定义 OpenAPI 配置，添加多种安全模式"""
     if app.openapi_schema:
         return app.openapi_schema
     
@@ -127,14 +130,15 @@ def custom_openapi():
     if "components" not in openapi_schema:
         openapi_schema["components"] = {}
     
-    # 添加 API Key 安全模式
+    # 添加简化的安全模式
     openapi_schema["components"]["securitySchemes"] = {
         "ApiKeyAuth": {
             "type": "apiKey",
             "in": "header",
             "name": "X-API-Key",
             "description": "API Key for health check endpoints"
-        }
+        },
+
     }
     
     # 为健康检查端点添加安全要求
@@ -142,6 +146,8 @@ def custom_openapi():
         if path.startswith("/api/v1/health/") and path != "/api/v1/health":
             if "get" in openapi_schema["paths"][path]:
                 openapi_schema["paths"][path]["get"]["security"] = [{"ApiKeyAuth": []}]
+    
+
     
     app.openapi_schema = openapi_schema
     return app.openapi_schema
