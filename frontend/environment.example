@@ -1,0 +1,24 @@
+# =================================================================
+# SupplyNexus Frontend Environment Configuration
+# =================================================================
+
+# Backend API Configuration
+NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_APP_NAME=SupplyNexus Fulfillment Service
+
+# Frontend Server Authentication (for server-side API calls to backend)
+FRONTEND_PRIVATE_KEY_PATH=./keys/frontend_private_key.pem
+FRONTEND_KEY_ID=frontend-server-1
+FRONTEND_USER_EMAIL=frontend@supplynexus.store
+
+# Development Settings
+NODE_ENV=development
+NEXT_PUBLIC_ENVIRONMENT=local
+
+# Authentication Settings
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_SECRET=your-nextauth-secret-change-this-in-prod
+
+# Optional: External Services
+# SHOPIFY_API_KEY=your-shopify-api-key
+# PRINTIFY_API_TOKEN=your-printify-api-token

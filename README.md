@@ -97,6 +97,31 @@ docker-compose -f docker-compose.dev.yml ps
 ```bash
 # 使用 Docker 脚本（推荐）
 ./scripts/db/alembic.sh dev upgrade
+```
+
+#### 4. 密钥配置
+
+**重要**: 系统使用 RSA 密钥对进行安全认证，必须配置密钥：
+
+```bash
+# 进入frontend目录
+cd frontend
+
+# 生成RSA密钥对
+mkdir -p keys
+openssl genrsa -out keys/frontend_private_key.pem 2048
+openssl rsa -in keys/frontend_private_key.pem -pubout -out keys/frontend_public_key.pem
+
+# 插入测试数据（包含密钥注册）
+cd ..
+python scripts/insert_test_data.py
+```
+
+**密钥管理说明**:
+- 🔒 **私钥**: 存储在 `frontend/keys/frontend_private_key.pem` (不上传 Git)
+- 🔓 **公钥**: 自动注册到 Backend 数据库
+- 🔄 **环境差异**: 每个环境需要独立的密钥对
+- 📝 **详细说明**: 查看 [Frontend 密钥管理文档](frontend/keys/README.md)
 
 # 或者进入后端容器
 docker-compose -f docker-compose.dev.yml exec backend_dev bash
