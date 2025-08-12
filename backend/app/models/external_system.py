@@ -62,5 +62,4 @@ class ExternalSystem(Base):
     
     # Relationships
     tenant = relationship("Tenant", back_populates="external_systems")
-    products = relationship("Product", back_populates="external_system")
-    orders = relationship("Order", back_populates="external_system")
+    external_data = relationship("ExternalData", back_populates="external_system")

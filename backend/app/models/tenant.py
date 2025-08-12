@@ -31,3 +31,4 @@ class Tenant(Base):
     suppliers = relationship("Supplier", back_populates="tenant")
     api_keys = relationship("ApiKey", back_populates="tenant")
     external_systems = relationship("ExternalSystem", back_populates="tenant")
+    external_data = relationship("ExternalData", back_populates="tenant")

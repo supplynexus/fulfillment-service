@@ -8,6 +8,7 @@ from .user_tenant import UserTenant, UserRole
 from .customer import Customer
 from .supplier import Supplier
 from .external_system import ExternalSystem, ExternalSystemType
+from .external_data import ExternalData, ExternalDataType
 from .order import Order, OrderStatus
 from .product import Product
 from .api_key import ApiKey, ApiKeyAccessLog, ApiKeyType
@@ -22,6 +23,8 @@ __all__ = [
     "Supplier",
     "ExternalSystem",
     "ExternalSystemType",
+    "ExternalData",
+    "ExternalDataType",
     "Order",
     "OrderStatus",
     "Product",

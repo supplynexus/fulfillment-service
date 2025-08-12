@@ -14,9 +14,9 @@ class Product(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     
-    # External system identification
-    external_system_id = Column(Integer, ForeignKey("external_systems.id"), nullable=False)
-    external_product_id = Column(String, nullable=False)  # Product ID in external system
+    # External system identification (optional - not all products come from external systems)
+    external_system_id = Column(Integer, ForeignKey("external_systems.id"), nullable=True)
+    external_product_id = Column(String, nullable=True)  # Product ID in external system
     
     # Product identifiers
     title = Column(String, nullable=False)
@@ -46,4 +46,4 @@ class Product(Base):
     last_synced_at = Column(DateTime(timezone=True), nullable=True)
     
     # Relationships
-    external_system = relationship("ExternalSystem", back_populates="products")
+    external_system = relationship("ExternalSystem")

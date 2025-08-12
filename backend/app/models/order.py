@@ -24,9 +24,9 @@ class Order(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     
-    # External system identification
-    external_system_id = Column(Integer, ForeignKey("external_systems.id"), nullable=False)
-    external_order_id = Column(String, nullable=False)  # Order ID in external system
+    # External system identification (optional - not all orders come from external systems)
+    external_system_id = Column(Integer, ForeignKey("external_systems.id"), nullable=True)
+    external_order_id = Column(String, nullable=True)  # Order ID in external system
     
     # External system specific identifiers
     external_order_number = Column(String, nullable=True)
@@ -71,4 +71,4 @@ class Order(Base):
 
     # Relationships
     customer = relationship("Customer", back_populates="orders")
-    external_system = relationship("ExternalSystem", back_populates="orders")
+    external_system = relationship("ExternalSystem")
