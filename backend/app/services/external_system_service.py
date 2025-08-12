@@ -82,8 +82,51 @@ class ExternalSystemService:
         if active_only:
             query = query.where(ExternalSystem.is_active == True)
         
+        # Order by system type and name for better organization
+        query = query.order_by(ExternalSystem.system_type, ExternalSystem.name)
+        
         result = await self.db.execute(query)
         return result.scalars().all()
+    
+    async def get_external_systems_by_type(
+        self,
+        tenant_id: int,
+        system_type: ExternalSystemType,
+        active_only: bool = True
+    ) -> List[ExternalSystem]:
+        """Get all external systems of a specific type for a tenant"""
+        
+        return await self.get_external_systems_by_tenant(
+            tenant_id=tenant_id,
+            system_type=system_type,
+            active_only=active_only
+        )
+    
+    async def get_shopify_stores(
+        self,
+        tenant_id: int,
+        active_only: bool = True
+    ) -> List[ExternalSystem]:
+        """Get all Shopify stores for a tenant"""
+        
+        return await self.get_external_systems_by_type(
+            tenant_id=tenant_id,
+            system_type=ExternalSystemType.SHOPIFY,
+            active_only=active_only
+        )
+    
+    async def get_printify_accounts(
+        self,
+        tenant_id: int,
+        active_only: bool = True
+    ) -> List[ExternalSystem]:
+        """Get all Printify accounts for a tenant"""
+        
+        return await self.get_external_systems_by_type(
+            tenant_id=tenant_id,
+            system_type=ExternalSystemType.PRINTIFY,
+            active_only=active_only
+        )
     
     async def update_external_system(
         self,
