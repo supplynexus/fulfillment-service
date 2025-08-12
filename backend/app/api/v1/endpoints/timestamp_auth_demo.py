@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_async_db
-from app.core.timestamp_auth_middleware import get_timestamp_auth
+from app.core.smart_auth import get_smart_auth
 from app.core.timestamp_auth import TimestampAuthService
 from app.models.user import User
 from app.models.tenant import Tenant
@@ -17,7 +17,7 @@ router = APIRouter()
 
 @router.get("/timestamp-auth-demo/secure-endpoint")
 async def secure_endpoint(
-    auth: tuple[User, Tenant] = Depends(get_timestamp_auth)
+    auth: tuple[User, Tenant] = Depends(get_smart_auth)
 ) -> Any:
     """
     Secure endpoint that requires timestamp-based signature authentication
