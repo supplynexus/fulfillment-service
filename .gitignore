@@ -103,6 +103,11 @@ pids
 frontend/keys/*.pem
 frontend/keys/*.key
 frontend/keys/*.crt
+
+# Temporary scripts (never commit to git)
+scripts/*_test_*.py
+scripts/insert_*.py
+scripts/test_*.py
 *.seed
 *.pid.lock
 
