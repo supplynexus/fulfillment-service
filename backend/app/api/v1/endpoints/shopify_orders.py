@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_async_db
 from app.core.timestamp_auth_middleware import verify_timestamp_auth
 from app.services.shopify_service import ShopifyService
+from app.services.order_service import OrderService
 from app.schemas.order import OrderResponse, OrderListResponse
 
 router = APIRouter()
@@ -32,8 +33,9 @@ async def sync_shopify_orders(
                 detail="Access denied to this tenant"
             )
         
-        # Initialize Shopify service
+        # Initialize services
         shopify_service = ShopifyService(db)
+        order_service = OrderService(db)
         
         # Sync orders
         result = await shopify_service.sync_orders(tenant_id, limit)
@@ -164,3 +166,99 @@ async def test_shopify_connection(
             "message": f"Shopify connection failed: {str(e)}",
             "configuration": None
         }
+
+
+@router.get("/shopify/orders/database", response_model=dict)
+async def get_shopify_orders_from_database(
+    tenant_id: int = Query(..., description="Tenant ID"),
+    limit: int = Query(50, ge=1, le=100, description="Number of orders to retrieve"),
+    offset: int = Query(0, ge=0, description="Offset for pagination"),
+    db: AsyncSession = Depends(get_async_db),
+    auth: dict = Depends(verify_timestamp_auth)
+) -> Any:
+    """
+    Get Shopify orders from database (mixed model approach)
+    """
+    try:
+        # Verify tenant access
+        if auth.get("tenant_id") != tenant_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied to this tenant"
+            )
+        
+        # Initialize order service
+        order_service = OrderService(db)
+        
+        # Get Shopify orders from database
+        orders = await order_service.get_shopify_orders(tenant_id, limit, offset)
+        
+        # Convert to response format
+        order_data = []
+        for order in orders:
+            order_data.append({
+                "id": order.id,
+                "external_order_id": order.external_order_id,
+                "order_number": order.order_number,
+                "status": order.status,
+                "customer_email": order.customer_email,
+                "total_amount": float(order.total_amount),
+                "currency": order.currency,
+                "created_at": order.created_at.isoformat() if order.created_at else None,
+                "shopify_data": {
+                    "raw_data": order.shopify_raw_data,
+                    "processed_data": order.shopify_processed
+                }
+            })
+        
+        return {
+            "success": True,
+            "orders": order_data,
+            "count": len(order_data),
+            "pagination": {
+                "limit": limit,
+                "offset": offset,
+                "has_more": len(order_data) == limit
+            }
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error retrieving Shopify orders: {str(e)}"
+        )
+
+
+@router.get("/shopify/orders/statistics", response_model=dict)
+async def get_shopify_order_statistics(
+    tenant_id: int = Query(..., description="Tenant ID"),
+    db: AsyncSession = Depends(get_async_db),
+    auth: dict = Depends(verify_timestamp_auth)
+) -> Any:
+    """
+    Get Shopify order statistics
+    """
+    try:
+        # Verify tenant access
+        if auth.get("tenant_id") != tenant_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied to this tenant"
+            )
+        
+        # Initialize order service
+        order_service = OrderService(db)
+        
+        # Get statistics
+        stats = await order_service.get_order_statistics(tenant_id)
+        
+        return {
+            "success": True,
+            "statistics": stats
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error retrieving order statistics: {str(e)}"
+        )

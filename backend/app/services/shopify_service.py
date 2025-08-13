@@ -241,13 +241,25 @@ class ShopifyService:
                 subtotal_amount=float(subtotal_price),
                 tax_amount=float(total_tax),
                 currency=currency,
-                external_data={
+                # Mixed model: store both structured and raw data
+                shopify_raw_data=order_data,  # Complete raw Shopify response
+                shopify_processed={
                     "shopify_order_id": shopify_order_id,
                     "line_items": line_items,
                     "shipping_address": shipping_address,
                     "billing_address": billing_address,
                     "cancel_reason": order_data.get("cancelReason"),
-                    "raw_data": order_data
+                    "created_at": created_at,
+                    "updated_at": updated_at,
+                    "cancelled_at": cancelled_at
+                },
+                external_data={
+                    "system_type": "shopify",
+                    "shopify_order_id": shopify_order_id,
+                    "line_items": line_items,
+                    "shipping_address": shipping_address,
+                    "billing_address": billing_address,
+                    "cancel_reason": order_data.get("cancelReason")
                 }
             )
             

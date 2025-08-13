@@ -55,8 +55,10 @@ class Order(Base):
     # Order items and details
     line_items = Column(JSON, nullable=False)
     
-    # External data (raw data from external system)
-    external_data = Column(JSON, nullable=True)
+    # Shopify specific data (mixed model approach)
+    shopify_raw_data = Column(JSON, nullable=True)  # Raw Shopify API response
+    shopify_processed = Column(JSON, nullable=True)  # Processed Shopify data
+    external_data = Column(JSON, nullable=True)  # Generic external system data
     
     # Processing information
     error_message = Column(Text, nullable=True)
