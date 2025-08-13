@@ -101,14 +101,7 @@ async def shutdown_event():
     logger.info("Shutting down SupplyNexus Fulfillment Service")
 
 
-@app.get("/")
-async def root():
-    """Root endpoint"""
-    return {
-        "message": "SupplyNexus Fulfillment Service",
-        "version": "1.0.0",
-        "status": "healthy"
-    }
+
 
 
 # Health check endpoints are now handled by the dedicated health router
