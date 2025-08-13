@@ -4,7 +4,7 @@ API version 1 router
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, customers, orders, products, webhooks, dashboard, health, external_systems, timestamp_auth_demo, debug_auth
+from app.api.v1.endpoints import auth, customers, orders, products, webhooks, dashboard, health, external_systems
 
 api_router = APIRouter()
 
@@ -17,5 +17,4 @@ api_router.include_router(webhooks.router, prefix="/webhooks", tags=["webhooks"]
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
 api_router.include_router(health.router, tags=["health"])
 api_router.include_router(external_systems.router, prefix="/external-systems", tags=["external-systems"])
-api_router.include_router(timestamp_auth_demo.router, tags=["timestamp-auth-demo"])
-api_router.include_router(debug_auth.router, tags=["debug"])
+
