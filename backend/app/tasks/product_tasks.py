@@ -283,3 +283,46 @@ def schedule_shopify_products_sync_task():
 def schedule_shopify_products_full_sync_task():
     """定时任务：每天全量同步所有租户的产品"""
     return sync_all_tenants_products_task.delay(incremental=False)
+
+
+# 定时任务 - 每30分钟同步（基于数据库配置）
+@celery_app.task(name="sync_all_tenants_products_custom")
+def sync_all_tenants_products_custom_task():
+    """定时任务：每30分钟同步所有租户的产品（基于数据库配置）"""
+    async def _sync_based_on_config():
+        async for db in get_async_db():
+            try:
+                # 获取所有需要同步的配置
+                result = await db.execute(
+                    select(SyncConfig).where(
+                        SyncConfig.sync_type == "PRODUCTS",
+                        SyncConfig.is_active == True,
+                        SyncConfig.frequency == "CUSTOM",
+                        SyncConfig.next_run_at <= datetime.utcnow()
+                    )
+                )
+                configs = result.scalars().all()
+                
+                tasks = []
+                for config in configs:
+                    # 启动对应租户的同步任务
+                    task = sync_shopify_products_task.delay(
+                        tenant_id=config.tenant_id,
+                        incremental=True,
+                        max_products=config.sync_params.get("max_products", 50)
+                    )
+                    tasks.append(task)
+                
+                return {
+                    'status': '已启动基于配置的同步任务',
+                    'config_count': len(configs),
+                    'task_ids': [task.id for task in tasks]
+                }
+                
+            except Exception as e:
+                logger.error(f"启动基于配置的同步任务失败: {e}")
+                raise
+            finally:
+                break
+    
+    return asyncio.run(_sync_based_on_config())

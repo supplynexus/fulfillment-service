@@ -10,7 +10,7 @@ celery_app = Celery(
     "fulfillment_service",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
-    include=["app.tasks.shopify_tasks", "app.tasks.product_tasks"]
+    include=["app.tasks.product_tasks"]  # 暂时只包含 product_tasks 来测试
 )
 
 # Import beat schedule

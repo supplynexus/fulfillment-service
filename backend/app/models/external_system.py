@@ -66,3 +66,4 @@ class ExternalSystem(Base):
     external_data = relationship("ExternalData", back_populates="external_system")
     customers = relationship("Customer", back_populates="external_system")
     suppliers = relationship("Supplier", back_populates="external_system")
+    sync_configs = relationship("SyncConfig", back_populates="external_system")
