@@ -63,19 +63,20 @@ class ShopifyService:
                             updatedAt
                             cancelledAt
                             cancelReason
-                            totalPriceSet {
+                            currencyCode
+                            currentTotalPriceSet {
                                 shopMoney {
                                     amount
                                     currencyCode
                                 }
                             }
-                            subtotalPriceSet {
+                            currentSubtotalPriceSet {
                                 shopMoney {
                                     amount
                                     currencyCode
                                 }
                             }
-                            totalTaxSet {
+                            currentTotalTaxSet {
                                 shopMoney {
                                     amount
                                     currencyCode
@@ -194,9 +195,10 @@ class ShopifyService:
             cancelled_at = order_data.get("cancelledAt")
             
             # Parse pricing
-            total_price = order_data.get("totalPriceSet", {}).get("shopMoney", {}).get("amount", "0")
-            subtotal_price = order_data.get("subtotalPriceSet", {}).get("shopMoney", {}).get("amount", "0")
-            total_tax = order_data.get("totalTaxSet", {}).get("shopMoney", {}).get("amount", "0")
+            total_price = order_data.get("currentTotalPriceSet", {}).get("shopMoney", {}).get("amount", "0")
+            subtotal_price = order_data.get("currentSubtotalPriceSet", {}).get("shopMoney", {}).get("amount", "0")
+            total_tax = order_data.get("currentTotalTaxSet", {}).get("shopMoney", {}).get("amount", "0")
+            currency = order_data.get("currencyCode", "USD")
             
             # Determine order status
             if cancelled_at:
@@ -238,7 +240,7 @@ class ShopifyService:
                 total_amount=float(total_price),
                 subtotal_amount=float(subtotal_price),
                 tax_amount=float(total_tax),
-                currency="USD",  # Default, should be extracted from API
+                currency=currency,
                 external_data={
                     "shopify_order_id": shopify_order_id,
                     "line_items": line_items,
