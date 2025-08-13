@@ -54,6 +54,7 @@ class ExternalSystem(Base):
     
     # Sync configuration
     last_sync_at = Column(DateTime(timezone=True), nullable=True)
+    last_product_sync_at = Column(DateTime(timezone=True), nullable=True)  # Last product sync time
     sync_interval_minutes = Column(Integer, default=60)  # How often to sync
     
     # Timestamps

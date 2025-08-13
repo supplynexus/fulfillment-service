@@ -2,7 +2,7 @@
 Product model - represents products from external systems
 """
 
-from sqlalchemy import Boolean, Column, Integer, String, DateTime, Text, JSON, Numeric, ForeignKey
+from sqlalchemy import Boolean, Column, Integer, String, DateTime, Text, JSON, Numeric, ForeignKey, Index
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 
@@ -23,9 +23,12 @@ class Product(Base):
     
     # Product identifiers
     title = Column(String, nullable=False)
+    handle = Column(String(255), nullable=True, unique=True)  # URL handle for Shopify products
     description = Column(Text, nullable=True)
     
     # Product details
+    product_type = Column(String(100), nullable=True)  # Product type/category
+    vendor = Column(String(100), nullable=True)  # Brand/vendor
     tags = Column(JSON, nullable=True)  # List of tags
     images = Column(JSON, nullable=True)  # List of image URLs
     variants = Column(JSON, nullable=True)  # Product variants
@@ -37,6 +40,20 @@ class Product(Base):
     # Product status
     is_active = Column(Boolean, default=True)
     is_available = Column(Boolean, default=True)
+    status = Column(String(20), default="ACTIVE", nullable=False)  # ACTIVE, DRAFT, ARCHIVED
+    
+    # Inventory management
+    total_inventory = Column(Integer, nullable=True)  # Total inventory across all variants
+    tracks_inventory = Column(Boolean, default=True, nullable=False)  # Whether to track inventory
+    has_out_of_stock_variants = Column(Boolean, default=False, nullable=False)  # Has variants out of stock
+    has_only_default_variant = Column(Boolean, default=True, nullable=False)  # Has only default variant
+    
+    # SEO and online store
+    seo = Column(JSON, nullable=True)  # SEO information (title, description)
+    online_store_url = Column(String(500), nullable=True)  # Online store URL
+    
+    # Publishing
+    published_at = Column(DateTime(timezone=True), nullable=True)  # When product was published
     
     # External system specific data
     external_data = Column(JSON, nullable=True)  # Store system-specific data
@@ -51,3 +68,13 @@ class Product(Base):
     # Relationships
     tenant = relationship("Tenant", back_populates="products")
     external_system = relationship("ExternalSystem")
+    
+    # Indexes for better query performance
+    __table_args__ = (
+        Index('idx_products_tenant_status', 'tenant_id', 'status'),
+        Index('idx_products_handle', 'handle'),
+        Index('idx_products_vendor', 'vendor'),
+        Index('idx_products_type', 'product_type'),
+        Index('idx_products_inventory', 'total_inventory'),
+        Index('idx_products_published', 'published_at'),
+    )
