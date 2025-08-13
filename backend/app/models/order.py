@@ -36,8 +36,11 @@ class Order(Base):
     external_order_name = Column(String, nullable=True)
     
     # Order information
+    order_number = Column(String, nullable=True)  # Human readable order number
     status = Column(String, default=OrderStatus.PENDING.value, index=True)
     total_amount = Column(Numeric(10, 2), nullable=False)
+    subtotal_amount = Column(Numeric(10, 2), nullable=True)
+    tax_amount = Column(Numeric(10, 2), nullable=True)
     currency = Column(String(3), default="USD")
     
     # Customer information
@@ -51,6 +54,9 @@ class Order(Base):
     
     # Order items and details
     line_items = Column(JSON, nullable=False)
+    
+    # External data (raw data from external system)
+    external_data = Column(JSON, nullable=True)
     
     # Processing information
     error_message = Column(Text, nullable=True)

@@ -4,7 +4,7 @@ API version 1 router
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, customers, orders, products, webhooks, dashboard, health, external_systems
+from app.api.v1.endpoints import auth, customers, orders, products, webhooks, dashboard, health, external_systems, shopify_orders
 
 api_router = APIRouter()
 
@@ -17,4 +17,5 @@ api_router.include_router(webhooks.router, prefix="/webhooks", tags=["webhooks"]
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
 api_router.include_router(health.router, tags=["health"])
 api_router.include_router(external_systems.router, prefix="/external-systems", tags=["external-systems"])
+api_router.include_router(shopify_orders.router, prefix="/shopify", tags=["shopify"])
 
