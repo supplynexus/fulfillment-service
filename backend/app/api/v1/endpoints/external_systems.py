@@ -192,39 +192,4 @@ async def delete_external_system(
     return {"message": "External system deleted successfully"}
 
 
-@router.post("/external-systems/{external_system_id}/test-connection")
-async def test_external_system_connection(
-    external_system_id: int,
-    db: AsyncSession = Depends(get_async_db),
-    auth: tuple[ApiKey, Tenant] = Depends(require_permission("external_systems:read"))
-) -> Any:
-    """
-    Test connection to external system
-    """
-    api_key, tenant = auth
-    
-    service = ExternalSystemService(db)
-    external_system = await service.get_external_system(external_system_id, tenant.id)
-    
-    if not external_system:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="External system not found"
-        )
-    
-    # Get decrypted credentials
-    credentials = await service.get_decrypted_credentials(external_system_id, tenant.id)
-    if not credentials:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No valid credentials found"
-        )
-    
-    # TODO: Implement actual connection testing based on system type
-    # For now, return a placeholder response
-    return {
-        "message": "Connection test initiated",
-        "system_type": external_system.system_type.value,
-        "system_name": external_system.name,
-        "status": "pending"
-    }
+
