@@ -1,0 +1,12 @@
+---
+alwaysApply: true
+---
+## Backend 启动命令
+
+启动backend开发服务器：
+```bash
+cd backend && source .venv/bin/activate && python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+**注意**: 确保在 backend 目录下执行，且虚拟环境已激活。
+- 如果已经在 backend 目录时，就不要 cd backend 了
