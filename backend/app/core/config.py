@@ -13,9 +13,9 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://supplynexus_admin:IVzrm2bKlWyxWzhU3KVJUOdwU6IEwG32@localhost:5433/supplynexus"
     
     # Redis 配置
-    REDIS_URL: str = "redis://localhost:6380/0"
-    CELERY_BROKER_URL: str = "redis://localhost:6380/1"
-    CELERY_RESULT_BACKEND: str = "redis://localhost:6380/2"
+    REDIS_URL: str = "redis://:Kj8mN2pQ9vX5wR7s@localhost:6380/0"
+    CELERY_BROKER_URL: str = "redis://:Kj8mN2pQ9vX5wR7s@localhost:6380/1"
+    CELERY_RESULT_BACKEND: str = "redis://:Kj8mN2pQ9vX5wR7s@localhost:6380/2"
     
     # Shopify API 配置
     SHOPIFY_SHOP_NAME: Optional[str] = os.getenv("SHOPIFY_SHOP_NAME")

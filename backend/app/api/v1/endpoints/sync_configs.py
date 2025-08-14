@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel, Field
 
 from app.core.database import get_async_db
-from app.core.auth import verify_timestamp_auth
+from app.core.timestamp_auth_middleware import verify_timestamp_auth
 from app.models.sync_config import SyncConfig, SyncJob, SyncType, SyncFrequency, SyncJobStatus
 from app.models.external_system import ExternalSystem, ExternalSystemType
 

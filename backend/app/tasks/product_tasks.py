@@ -4,7 +4,7 @@ Shopify 产品同步的 Celery 异步任务
 """
 import asyncio
 from typing import List, Dict, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 
 from celery import current_task
@@ -17,6 +17,7 @@ from app.services.shopify_product_service import ShopifyProductService
 from app.services.product_mapper import ProductMapper
 from app.models.external_system import ExternalSystem
 from app.models.product import Product
+from app.models.sync_config import SyncConfig
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +127,9 @@ async def _sync_products_async(
                         query=query_filter
                     )
                     
-                    products_data = result.get("data", {}).get("products", {})
+                    # 安全地获取数据，避免 NoneType 错误
+                    data = result.get("data") or {}
+                    products_data = data.get("products") or {}
                     products = products_data.get("nodes", [])
                     page_info = products_data.get("pageInfo", {})
                     
@@ -181,7 +184,7 @@ async def _sync_products_async(
                     break
             
             # 更新外部系统的最后同步时间
-            shopify_system.last_product_sync_at = datetime.utcnow()
+            shopify_system.last_product_sync_at = datetime.now(timezone.utc)
             await db.commit()
             
             logger.info(f"产品同步完成: 获取 {products_fetched} 个，保存 {products_saved} 个")
@@ -298,7 +301,7 @@ def sync_all_tenants_products_custom_task():
                         SyncConfig.sync_type == "PRODUCTS",
                         SyncConfig.is_active == True,
                         SyncConfig.frequency == "CUSTOM",
-                        SyncConfig.next_run_at <= datetime.utcnow()
+                        SyncConfig.next_run_at <= datetime.now(timezone.utc)
                     )
                 )
                 configs = result.scalars().all()
@@ -312,6 +315,14 @@ def sync_all_tenants_products_custom_task():
                         max_products=config.sync_params.get("max_products", 50)
                     )
                     tasks.append(task)
+                    
+                    # 更新下次运行时间
+                    if config.custom_interval_minutes:
+                        config.next_run_at = datetime.now(timezone.utc) + timedelta(minutes=config.custom_interval_minutes)
+                        config.last_run_at = datetime.now(timezone.utc)
+                        config.total_runs += 1
+                
+                await db.commit()
                 
                 return {
                     'status': '已启动基于配置的同步任务',
@@ -321,6 +332,7 @@ def sync_all_tenants_products_custom_task():
                 
             except Exception as e:
                 logger.error(f"启动基于配置的同步任务失败: {e}")
+                await db.rollback()
                 raise
             finally:
                 break

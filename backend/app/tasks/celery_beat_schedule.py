@@ -50,6 +50,17 @@ CELERY_BEAT_SCHEDULE = {
             'expires': 1800,  # 30分钟后过期
         }
     },
+    
+    # 每1分钟同步所有租户的 Shopify 产品（基于数据库配置）
+    'sync-shopify-products-1min': {
+        'task': 'sync_all_tenants_products_custom',
+        'schedule': crontab(minute='*'),  # 每分钟执行
+        'args': (),
+        'options': {
+            'queue': 'shopify',
+            'expires': 60,  # 1分钟后过期
+        }
+    },
 }
 
 # 任务路由配置

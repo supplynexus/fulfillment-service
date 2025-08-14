@@ -1,11 +1,10 @@
 """
-Product Data Mapper Service
-Maps external system product data to our database model
+Product Mapper for mapping external system data to internal models
 """
 
-from typing import Dict, Any, Optional, List
-from datetime import datetime
+from typing import Dict, Any, List, Optional
 from decimal import Decimal
+from datetime import datetime, timezone
 
 from app.models.product import Product
 from app.core.logging import get_logger
@@ -14,24 +13,20 @@ logger = get_logger(__name__)
 
 
 class ProductMapper:
-    """Maps external product data to our database model"""
+    """Maps external system product data to internal Product model"""
     
     @staticmethod
-    def map_shopify_product(
-        shopify_data: Dict[str, Any], 
-        tenant_id: int, 
-        external_system_id: int
-    ) -> Dict[str, Any]:
+    def map_shopify_product(shopify_data: Dict[str, Any], tenant_id: int, external_system_id: int) -> Dict[str, Any]:
         """
-        Map Shopify GraphQL product data to our Product model fields
+        Map Shopify product data to internal Product model format
         
         Args:
-            shopify_data: Raw Shopify product data from GraphQL
+            shopify_data: Raw Shopify product data
             tenant_id: Tenant ID
             external_system_id: External system ID
             
         Returns:
-            Dict with mapped fields for Product model
+            Dict containing mapped product data
         """
         try:
             # Extract basic product information
@@ -45,18 +40,28 @@ class ProductMapper:
             tags = shopify_data.get("tags", [])
             status = shopify_data.get("status", "ACTIVE")
             
-            # Extract timestamps
+            # Extract timestamps with proper timezone handling
             created_at = shopify_data.get("createdAt")
             updated_at = shopify_data.get("updatedAt")
             published_at = shopify_data.get("publishedAt")
             
-            # Parse timestamps if they exist
+            # Parse timestamps if they exist - ensure timezone-aware
             if created_at:
-                created_at = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                # Handle both "Z" and "+00:00" formats
+                if created_at.endswith("Z"):
+                    created_at = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                else:
+                    created_at = datetime.fromisoformat(created_at)
             if updated_at:
-                updated_at = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+                if updated_at.endswith("Z"):
+                    updated_at = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+                else:
+                    updated_at = datetime.fromisoformat(updated_at)
             if published_at:
-                published_at = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
+                if published_at.endswith("Z"):
+                    published_at = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
+                else:
+                    published_at = datetime.fromisoformat(published_at)
             
             # Extract inventory information
             total_inventory = shopify_data.get("totalInventory")
@@ -140,13 +145,12 @@ class ProductMapper:
                 option_info = {
                     "id": option.get("id"),
                     "name": option.get("name"),
-                    "position": option.get("position"),
                     "values": option.get("values", [])
                 }
                 options.append(option_info)
             
-            # Build mapped data
-            mapped_data = {
+            # Build the mapped product data
+            mapped_product = {
                 "tenant_id": tenant_id,
                 "external_system_id": external_system_id,
                 "external_product_id": product_id,
@@ -164,27 +168,24 @@ class ProductMapper:
                 "price": price,
                 "seo": seo,
                 "online_store_url": online_store_url,
-                "published_at": published_at,
                 "variants": variants,
                 "images": images,
+                "options": options,
                 "external_data": {
-                    "shopify_raw": shopify_data,
                     "description_html": description_html,
-                    "options": options,
                     "price_range": price_range,
-                    "created_at": created_at.isoformat() if created_at else None,
-                    "updated_at": updated_at.isoformat() if updated_at else None,
+                    "raw_data": shopify_data
                 },
-                "last_synced_at": datetime.utcnow(),
-                "is_active": status == "ACTIVE",
-                "is_available": status == "ACTIVE" and total_inventory > 0 if total_inventory is not None else True
+                "created_at": created_at,
+                "updated_at": updated_at,
+                "published_at": published_at,
+                "last_synced_at": datetime.now(timezone.utc),
             }
             
-            return mapped_data
+            return mapped_product
             
         except Exception as e:
-            logger.error(f"Error mapping Shopify product data: {e}")
-            raise
+            raise Exception(f"Error mapping Shopify product: {e}")
     
     @staticmethod
     def map_shopify_products_list(
