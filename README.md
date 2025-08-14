@@ -20,6 +20,7 @@ SupplyNexus Fulfillment Service 是一个全栈的 SaaS 解决方案，专为电
 - **🛡️ 智能重试机制**: 失败订单自动重试，错误处理
 - **🎛️ 管理后台**: 完整的订单监控和客户管理界面
 - **⚡ 异步任务队列**: Celery 处理耗时操作，确保响应速度
+- **🕐 自动产品同步**: 1分钟自动同步 Shopify 产品数据
 
 ### 🔐 认证系统
 
@@ -54,6 +55,26 @@ SupplyNexus Fulfillment Service 是一个全栈的 SaaS 解决方案，专为电
                     │  Database       │    │   + Celery      │
                     └─────────────────┘    └─────────────────┘
 ```
+
+### ⚡ Celery 后台任务系统
+
+#### 系统组件
+- **FastAPI Web API 服务** (端口 8000) - 提供 RESTful API 接口
+- **Celery Beat** (定时任务调度器) - 根据配置的定时规则触发任务
+- **Celery Worker** (任务执行器) - 执行具体的异步任务
+- **Redis** (消息代理，端口 6380) - 存储任务队列和结果
+- **PostgreSQL** (数据库) - 存储业务数据
+
+#### 定时任务
+- **1分钟同步**: `sync-shopify-products-1min` - 每分钟同步 Shopify 产品
+- **30分钟同步**: `sync-shopify-products-30min` - 每30分钟同步 Shopify 产品
+- **每小时同步**: `sync-shopify-products-hourly` - 每小时同步订单
+- **每天全量同步**: `sync-shopify-products-daily` - 每天凌晨2点全量同步
+
+#### 队列说明
+- **shopify**: Shopify 相关任务（产品同步、订单同步）
+- **default**: 默认任务队列
+- **orders**: 订单处理任务
 
 ## 🚀 快速开始
 
@@ -263,6 +284,19 @@ cp environment.example .env
 docker-compose -f docker-compose.dev.yml up -d
 ```
 
+### 启动 Celery 后台任务
+
+```bash
+# 1. 启动 Web API 服务
+cd backend && source .venv/bin/activate && python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# 2. 启动 Celery Beat (定时任务调度器)
+cd backend && source .venv/bin/activate && celery -A app.tasks.celery_app beat --loglevel=info
+
+# 3. 启动 Celery Worker (任务执行器)
+cd backend && source .venv/bin/activate && celery -A app.tasks.celery_app worker --loglevel=info -Q shopify,default,orders
+```
+
 ### 常用命令
 
 ```bash
@@ -277,6 +311,13 @@ docker-compose -f docker-compose.dev.yml up -d
 
 # 运行测试
 docker-compose -f docker-compose.dev.yml exec backend_dev pytest
+
+# 检查 Celery 任务状态
+redis-cli -p 6380 llen shopify
+redis-cli -p 6380 llen default
+
+# 检查 Celery 进程
+ps aux | grep celery
 ```
 
 ## 🚢 部署
@@ -392,6 +433,22 @@ ls -la .env.*
 cat .env.local
 ```
 
+#### 6. Celery 任务不执行
+```bash
+# 检查 Celery Worker 是否启动
+ps aux | grep celery
+
+# 检查队列长度
+redis-cli -p 6380 llen shopify
+redis-cli -p 6380 llen default
+
+# 重启 Celery 服务
+pkill -f celery
+cd backend && source .venv/bin/activate
+celery -A app.tasks.celery_app beat --loglevel=info &
+celery -A app.tasks.celery_app worker --loglevel=info -Q shopify,default,orders &
+```
+
 ### 调试命令
 
 ```bash
@@ -441,6 +498,7 @@ docker stats
 ## 📚 详细文档
 
 - [系统架构文档](deployment/ARCHITECTURE.md) - 系统架构和部署设计
+- [Celery 后台任务系统](docs/CELERY_BACKGROUND_TASKS.md) - Celery 任务队列系统详细说明
 - [健康检查安全配置](backend/docs/HEALTH_CHECK_SECURITY.md) - 健康检查 API 安全配置
 - [数据库管理指南](docs/DATABASE_MANAGEMENT.md) - 数据库迁移、备份、恢复操作
 - [文档索引](docs/README.md) - 项目文档导航
