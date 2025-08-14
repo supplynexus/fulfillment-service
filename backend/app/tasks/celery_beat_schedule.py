@@ -1,5 +1,6 @@
 """
 Celery Beat 定时任务配置
+用于配置定期执行的任务
 """
 
 from celery.schedules import crontab
@@ -86,3 +87,4 @@ CELERY_BEAT_SCHEDULE = {
         }
     },
 }
+

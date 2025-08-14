@@ -32,3 +32,5 @@ class Tenant(Base):
     external_data = relationship("ExternalData", back_populates="tenant")
     products = relationship("Product", back_populates="tenant")
     orders = relationship("Order", back_populates="tenant")
+    sync_configs = relationship("SyncConfig", back_populates="tenant")
+    sync_jobs = relationship("SyncJob", back_populates="tenant")

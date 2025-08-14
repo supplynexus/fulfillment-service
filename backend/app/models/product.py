@@ -2,7 +2,7 @@
 Product model - represents products from external systems
 """
 
-from sqlalchemy import Boolean, Column, Integer, String, DateTime, Text, JSON, Numeric, ForeignKey
+from sqlalchemy import Boolean, Column, Integer, String, DateTime, Text, JSON, Numeric, ForeignKey, Index
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 
@@ -23,9 +23,12 @@ class Product(Base):
     
     # Product identifiers
     title = Column(String, nullable=False)
+    handle = Column(String(255), nullable=True, unique=True)  # URL handle for Shopify products
     description = Column(Text, nullable=True)
     
     # Product details
+    product_type = Column(String(100), nullable=True)  # Product type/category
+    vendor = Column(String(100), nullable=True)  # Brand/vendor
     tags = Column(JSON, nullable=True)  # List of tags
     images = Column(JSON, nullable=True)  # List of image URLs
     variants = Column(JSON, nullable=True)  # Product variants
@@ -66,3 +69,13 @@ class Product(Base):
     # Relationships
     tenant = relationship("Tenant", back_populates="products")
     external_system = relationship("ExternalSystem")
+    
+    # Indexes for better query performance
+    __table_args__ = (
+        Index('idx_products_tenant_status', 'tenant_id', 'status'),
+        Index('idx_products_handle', 'handle'),
+        Index('idx_products_vendor', 'vendor'),
+        Index('idx_products_type', 'product_type'),
+        Index('idx_products_inventory', 'total_inventory'),
+        Index('idx_products_published', 'published_at'),
+    )

@@ -17,6 +17,9 @@ celery_app = Celery(
     ]
 )
 
+# Import beat schedule
+from app.tasks.celery_beat_schedule import CELERY_BEAT_SCHEDULE, CELERY_TASK_ROUTES
+
 # Celery configuration
 celery_app.conf.update(
     task_serializer="json",

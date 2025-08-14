@@ -15,6 +15,7 @@ from .api_key import ApiKey, ApiKeyAccessLog, ApiKeyType
 from .jwt_blacklist import JwtBlacklist
 from .user_key import UserKey
 from .system_key import SystemKey, SystemKeyType
+from .sync_config import SyncConfig, SyncJob, SyncType, SyncFrequency, SyncJobStatus
 
 __all__ = [
     "User",
@@ -36,5 +37,10 @@ __all__ = [
     "JwtBlacklist",
     "UserKey",
     "SystemKey",
-    "SystemKeyType"
+    "SystemKeyType",
+    "SyncConfig",
+    "SyncJob", 
+    "SyncType",
+    "SyncFrequency",
+    "SyncJobStatus"
 ]
