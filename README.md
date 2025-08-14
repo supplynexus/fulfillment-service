@@ -111,11 +111,17 @@ cd fulfillment-service
 
 ```bash
 # 复制环境配置模板
-cp environment.example .env
+cp deployment/environments/env.example deployment/environments/env.local
 
 # 编辑环境变量（必须）
-vim .env
+vim deployment/environments/env.local
 ```
+
+**环境配置说明**:
+- 所有环境配置统一管理在 `deployment/environments/` 目录
+- 支持 local, dev, stg, prod 四个环境
+- 可通过 `ENV_FILE` 环境变量指定配置文件
+- 使用 `./scripts/check_environment.sh local` 检查配置
 
 #### 2. 认证配置
 
@@ -147,8 +153,14 @@ docker-compose -f docker-compose.dev.yml ps
 #### 4. 数据库迁移
 
 ```bash
-# 使用 Docker 脚本（推荐）
-./scripts/db/alembic.sh dev upgrade
+# 本地环境（推荐）
+./scripts/db/alembic.sh local upgrade
+
+# 开发环境
+./deployment/scripts/db-docker.sh dev upgrade
+
+# 检查迁移状态
+./scripts/db/alembic.sh local current
 ```
 
 #### 4. 密钥配置
@@ -221,13 +233,17 @@ fulfillment-service/
 ├── shared/                    # 共享类型和工具
 ├── deployment/               # 部署配置
 │   ├── docker/              # Docker 配置
-│   ├── environments/        # 环境配置文件
+│   ├── environments/        # 统一环境配置文件
+│   │   ├── env.example      # 配置模板
+│   │   ├── env.local        # 本地环境
+│   │   ├── env.dev          # 开发环境
+│   │   ├── env.stg          # 测试环境
+│   │   └── env.prod         # 生产环境
 │   └── scripts/             # 部署脚本
 ├── docs/                    # 项目文档
 ├── scripts/                 # 开发脚本
 ├── docker-compose.yml       # 生产环境
-├── docker-compose.dev.yml   # 开发环境
-└── environment.example      # 环境变量模板
+└── docker-compose.dev.yml   # 开发环境
 ```
 
 ## ⚙️ 配置指南
@@ -280,7 +296,7 @@ HEALTH_CHECK_RATE_WINDOW=60
 ./scripts/dev/setup.sh
 
 # 或者手动安装
-cp environment.example .env
+cp deployment/environments/env.example deployment/environments/env.local
 docker-compose -f docker-compose.dev.yml up -d
 ```
 
@@ -290,10 +306,14 @@ docker-compose -f docker-compose.dev.yml up -d
 # 1. 启动 Web API 服务
 cd backend && source .venv/bin/activate && python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
-# 2. 启动 Celery Beat (定时任务调度器)
+# 2. 启动 Celery 服务（推荐）
+cd backend && ./scripts/start_celery.sh
+
+# 或者分别启动
+# 启动 Celery Beat (定时任务调度器)
 cd backend && source .venv/bin/activate && celery -A app.tasks.celery_app beat --loglevel=info
 
-# 3. 启动 Celery Worker (任务执行器)
+# 启动 Celery Worker (任务执行器)
 cd backend && source .venv/bin/activate && celery -A app.tasks.celery_app worker --loglevel=info -Q shopify,default,orders
 ```
 
@@ -430,7 +450,7 @@ docker-compose exec postgres psql -U supplynexus_admin -d supplynexus -c "SELECT
 ls -la .env.*
 
 # 检查环境文件内容
-cat .env.local
+cat deployment/environments/env.local
 ```
 
 #### 6. Celery 任务不执行
@@ -529,7 +549,7 @@ docker stats
 #### 环境差异和工具选择
 | 环境 | 工具 | 环境文件路径 | 实际读取文件 | 说明 |
 |------|------|--------------|--------------|------|
-| **Local** | `./scripts/db/alembic.sh local` | `backend/.env.local` | `backend/.env.local` | 有Python虚拟环境，直接执行alembic |
+| **Local** | `./scripts/db/alembic.sh local` | `deployment/environments/env.local` | `deployment/environments/env.local` | 有Python虚拟环境，直接执行alembic |
 | **Develop** | `./deployment/scripts/db-docker.sh dev` | `deployment/environments/env.dev` | `deployment/environments/env.dev` | 只有Docker，需要容器化执行 |
 | **Staging** | `./deployment/scripts/db-docker.sh stg` | `deployment/environments/env.stg` | `deployment/environments/env.stg` | 只有Docker |
 | **Production** | `./deployment/scripts/db-docker.sh prod` | `deployment/environments/env.prod` | `deployment/environments/env.prod` | 只有Docker |
@@ -537,15 +557,47 @@ docker stats
 **关键区别**:
 - **Local环境**: 有Python虚拟环境，可以直接使用alembic命令
 - **服务器环境**: 只有Docker环境，必须使用db-docker.sh脚本
+- **统一配置**: 所有环境都使用 `deployment/environments/` 目录下的配置文件
 
 ### 🐳 Docker部署详细说明
 
-#### 环境配置
-项目支持多个环境配置文件：
-- `.env` - 本地开发环境（默认）
-- `.env.dev` - 开发环境
-- `.env.stg` - 测试环境
-- `.env.prod` - 生产环境
+#### 统一环境配置
+项目使用统一的环境配置管理，所有环境配置文件位于 `deployment/environments/` 目录：
+
+```
+deployment/environments/
+├── env.example          # 配置模板
+├── env.local            # 本地环境
+├── env.dev              # 开发环境
+├── env.stg              # 测试环境
+└── env.prod             # 生产环境
+```
+
+#### 环境配置使用方式
+所有脚本和服务都支持通过 `ENV_FILE` 环境变量指定配置文件：
+
+```bash
+# 本地开发
+export ENV_FILE=../deployment/environments/env.local
+python -m uvicorn app.main:app --reload
+
+# 开发环境
+export ENV_FILE=../deployment/environments/env.dev
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+# 数据库操作
+./scripts/db/alembic.sh local upgrade
+./deployment/scripts/db-docker.sh dev upgrade
+
+# Celery服务
+export ENV_FILE=../deployment/environments/env.local
+./backend/scripts/start_celery.sh
+
+# 环境配置检查
+./scripts/check_environment.sh local
+./scripts/check_environment.sh dev
+./scripts/check_environment.sh prod
+```
 
 #### 日志目录
 每个环境都有对应的日志目录：

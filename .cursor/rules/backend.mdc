@@ -1,12 +1,51 @@
----
-alwaysApply: true
----
-## Backend 启动命令
+# Backend 开发环境规则
 
-启动backend开发服务器：
+## 环境变量配置
+- **绝对禁止** 在命令行中使用 `export` 或直接在命令前设置环境变量
+- 环境变量必须通过 `.env` 文件或环境配置文件设置
+- Redis URL 格式：`redis://:password@localhost:6380/db_number`
+
+## 启动命令规范
+
+### 三个终端分别启动（推荐方式）
+
+#### 终端1: FastAPI Web 服务
 ```bash
 cd backend && source .venv/bin/activate && python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-**注意**: 确保在 backend 目录下执行，且虚拟环境已激活。
+#### 终端2: Celery Worker
+```bash
+cd backend && source .venv/bin/activate && celery -A app.tasks.celery_app worker --loglevel=info
+```
+
+#### 终端3: Celery Beat
+```bash
+cd backend && source .venv/bin/activate && celery -A app.tasks.celery_app beat --loglevel=info
+```
+
+### 后台启动方式（可选）
+```bash
+cd backend && source .venv/bin/activate && ./scripts/start_celery.sh
+```
+
+## 数据库操作规范
+
+### 数据库结构修改流程（绝对禁止直接执行 SQL）
+1. **修改模型文件** - 在 `app/models/` 目录下修改相应的 SQLAlchemy 模型
+2. **生成 Alembic 迁移文件** - 执行 `alembic revision --autogenerate -m "描述"`
+3. **执行迁移** - 执行 `alembic upgrade head`
+4. **绝对禁止** 直接执行 `ALTER TABLE`、`CREATE TABLE` 等 SQL 命令
+
+### 迁移文件管理
+- 迁移文件位于 `migrations/versions/` 目录
+- 每次修改数据库结构都必须生成新的迁移文件
+- 迁移文件一旦提交到版本控制，不得修改
+- 如果需要修改，创建新的迁移文件
+
+## 重要注意事项
+- 确保在 backend 目录下执行，且虚拟环境已激活
 - 如果已经在 backend 目录时，就不要 cd backend 了
+- 所有服务都应该后台运行并监控日志
+- 发现错误时立即修复，不要重复错误
+- 优先使用三个终端分别启动的方式，便于监控和调试

@@ -14,6 +14,7 @@ from app.tasks.celery_app import celery_app
 from app.core.database import get_sync_db, get_async_db
 from app.services.shopify.client import create_shopify_client
 from app.services.shopify.order_service import ShopifyOrderService
+from app.services.shopify.product_service import ShopifyProductService
 from app.models.order import Order
 from app.schemas.order import OrderCreate
 
@@ -157,6 +158,94 @@ def sync_shopify_orders_1min_task(self):
         raise
 
 
+@celery_app.task(bind=True, name="sync_shopify_products")
+def sync_shopify_products_task(
+    self,
+    tenant_id: int,
+    query_filter: Optional[str] = None,
+    max_products: Optional[int] = None,
+    sync_recent_only: bool = True
+):
+    """
+    同步 Shopify 商品的 Celery 任务
+    
+    Args:
+        tenant_id: 租户 ID
+        query_filter: 商品过滤条件
+        max_products: 最大商品数量
+        sync_recent_only: 是否只同步最近的商品
+    """
+    try:
+        # 更新任务状态
+        self.update_state(
+            state='PROGRESS',
+            meta={'status': '开始同步商品', 'progress': 0}
+        )
+        
+        # 运行异步函数
+        result = asyncio.run(_sync_products_async(
+            tenant_id=tenant_id,
+            query_filter=query_filter,
+            max_products=max_products,
+            sync_recent_only=sync_recent_only,
+            task=self
+        ))
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"同步商品任务失败: {e}")
+        self.update_state(
+            state='FAILURE',
+            meta={'error': str(e)}
+        )
+        raise
+
+
+@celery_app.task(bind=True, name="sync_shopify_products_1min")
+def sync_shopify_products_1min_task(self):
+    """
+    每分钟同步 Shopify 商品的定时任务
+    """
+    try:
+        logger.info("开始执行每分钟商品同步任务")
+        
+        # 获取所有活跃的租户
+        db = next(get_sync_db())
+        # 这里需要根据你的租户模型来获取活跃租户
+        # 暂时使用默认租户 ID 1
+        tenant_ids = [1]
+        
+        results = []
+        for tenant_id in tenant_ids:
+            try:
+                result = asyncio.run(_sync_products_async(
+                    tenant_id=tenant_id,
+                    sync_recent_only=True,
+                    max_products=100
+                ))
+                results.append({
+                    'tenant_id': tenant_id,
+                    'result': result
+                })
+            except Exception as e:
+                logger.error(f"租户 {tenant_id} 商品同步失败: {e}")
+                results.append({
+                    'tenant_id': tenant_id,
+                    'error': str(e)
+                })
+        
+        logger.info(f"每分钟商品同步任务完成: {results}")
+        return {
+            'status': '完成',
+            'results': results
+        }
+        
+    except Exception as e:
+        logger.error(f"每分钟商品同步任务失败: {e}")
+        raise
+
+
 async def _sync_orders_async(
     tenant_id: int,
     query_filter: Optional[str] = None,
@@ -167,36 +256,80 @@ async def _sync_orders_async(
     """异步同步订单的核心逻辑"""
     
     # 获取数据库会话
-    db = get_async_db()
+    from app.core.database import AsyncSessionLocal
     
-    try:
-        # 创建订单服务
-        order_service = ShopifyOrderService(db)
-        
-        # 同步订单
-        result = await order_service.sync_orders(
-            tenant_id=tenant_id,
-            query_filter=query_filter,
-            max_orders=max_orders,
-            sync_recent_only=sync_recent_only
-        )
-        
-        # 更新任务进度
-        if task:
-            task.update_state(
-                state='PROGRESS',
-                meta={
-                    'status': '同步完成',
-                    'progress': 100,
-                    'result': result
-                }
+    async with AsyncSessionLocal() as db:
+        try:
+            # 创建订单服务
+            order_service = ShopifyOrderService(db)
+            
+            # 同步订单
+            result = await order_service.sync_orders(
+                tenant_id=tenant_id,
+                query_filter=query_filter,
+                max_orders=max_orders,
+                sync_recent_only=sync_recent_only
             )
-        
-        return result
-        
-    except Exception as e:
-        logger.error(f"异步同步订单失败: {e}")
-        raise
+            
+            # 更新任务进度
+            if task:
+                task.update_state(
+                    state='PROGRESS',
+                    meta={
+                        'status': '同步完成',
+                        'progress': 100,
+                        'result': result
+                    }
+                )
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"异步同步订单失败: {e}")
+            raise
+
+
+async def _sync_products_async(
+    tenant_id: int,
+    query_filter: Optional[str] = None,
+    max_products: Optional[int] = None,
+    sync_recent_only: bool = True,
+    task=None
+) -> Dict[str, Any]:
+    """异步同步商品的核心逻辑"""
+    
+    # 获取数据库会话
+    from app.core.database import AsyncSessionLocal
+    
+    async with AsyncSessionLocal() as db:
+        try:
+            # 创建商品服务
+            product_service = ShopifyProductService(db)
+            
+            # 同步商品
+            result = await product_service.sync_products(
+                tenant_id=tenant_id,
+                query_filter=query_filter,
+                max_products=max_products,
+                sync_recent_only=sync_recent_only
+            )
+            
+            # 更新任务进度
+            if task:
+                task.update_state(
+                    state='PROGRESS',
+                    meta={
+                        'status': '同步完成',
+                        'progress': 100,
+                        'result': result
+                    }
+                )
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"异步同步商品失败: {e}")
+            raise
 
 
 async def _fetch_orders_async(

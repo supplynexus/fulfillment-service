@@ -20,6 +20,14 @@
 - 配置说明
 - 故障排除
 
+### 🚀 [快速开始指南](QUICK_START.md)
+完整的快速启动指南，包含：
+- 项目概述和技术栈
+- 环境设置和启动步骤
+- 服务检查清单
+- 常用命令和故障排除
+- 监控端点和认证配置
+
 ### 🚢 [环境部署指南](DEPLOYMENT.md)
 完整的部署指南，包含：
 - 多环境部署（local/dev/staging/prod）
@@ -39,6 +47,9 @@
 ### 技术文档
 - [Nginx配置](../deployment/nginx/api.dev.supplynexus.store.conf) - 生产环境nginx配置
 - [数据库管理脚本](../scripts/db/alembic.sh) - 数据库迁移管理脚本
+- [环境配置快速参考](ENVIRONMENT_CONFIG_QUICK_REFERENCE.md) - 环境配置使用指南
+- [项目整理总结](PROJECT_CLEANUP_SUMMARY.md) - 项目整理和环境配置统一总结
+- [脚本分析计划](SCRIPT_ANALYSIS_AND_CLEANUP.md) - 脚本分析和清理计划
 
 ### 安全文档
 - [健康检查安全配置](../backend/docs/HEALTH_CHECK_SECURITY.md) - 健康检查 API 安全配置
@@ -48,8 +59,8 @@
 
 ### 新用户
 1. 阅读 [项目主页](../README.md) 了解项目
-2. 按照 [快速开始](../README.md#-快速开始) 设置开发环境
-3. 查看 [开发指南](../README.md#-开发指南) 开始开发
+2. 按照 [快速开始指南](QUICK_START.md) 设置开发环境
+3. 查看 [开发指南](DEVELOPMENT.md) 开始开发
 
 ### 开发者
 1. 查看 [数据库管理](../README.md#数据库管理) 了解数据库操作

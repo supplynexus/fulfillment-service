@@ -1,7 +1,7 @@
-# 🚀 SupplyNexus OMS 快速开始指南
+# 🚀 SupplyNexus Fulfillment Service - 快速开始指南
 
 ## 📋 项目概述
-SupplyNexus OMS是一个多租户的订单管理系统，集成Shopify和Printify，提供完整的订单管理、发货和库存管理功能。
+SupplyNexus Fulfillment Service是一个多租户的订单履行自动化服务，集成Shopify和Printify，提供完整的订单管理、发货和库存管理功能。
 
 ## 🏗️ 技术栈
 - **后端**: FastAPI + PostgreSQL + Redis + Celery
@@ -20,10 +20,10 @@ cd fulfillment-service
 ### 2. 环境设置
 ```bash
 # 复制环境配置文件
-cp environment.example environment.local
+cp deployment/environments/env.example deployment/environments/env.local
 
 # 编辑环境配置
-vim environment.local
+vim deployment/environments/env.local
 ```
 
 ### 3. 启动开发环境
@@ -49,13 +49,26 @@ source .venv/bin/activate  # Linux/Mac
 pip install -r requirements.txt
 
 # 运行数据库迁移
-alembic upgrade head
+./scripts/db/alembic.sh local upgrade
 
 # 启动后端服务
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### 5. 前端设置
+### 5. 启动Celery任务队列
+```bash
+# 启动Celery Worker (新终端)
+cd backend
+source .venv/bin/activate
+./scripts/start_celery.sh
+
+# 启动Celery Beat (新终端)
+cd backend
+source .venv/bin/activate
+celery -A app.tasks.celery_app beat --loglevel=info
+```
+
+### 6. 前端设置
 ```bash
 cd frontend
 
@@ -64,6 +77,77 @@ npm install
 
 # 启动开发服务器
 npm run dev
+```
+
+### 7. 验证服务状态
+```bash
+# 检查健康状态
+curl http://localhost:8000/api/v1/health
+
+# 检查API文档
+open http://localhost:8000/api/v1/docs
+```
+
+## 📋 服务检查清单
+
+### ✅ FastAPI服务
+- [ ] 服务启动成功
+- [ ] 健康检查端点响应正常
+- [ ] API文档可访问
+- [ ] 端口8000可访问
+
+### ✅ Celery任务队列
+- [ ] Worker进程启动成功
+- [ ] Beat进程启动成功
+- [ ] 任务队列连接正常
+- [ ] 定时任务配置正确
+
+### ✅ 数据库连接
+- [ ] PostgreSQL连接正常
+- [ ] 数据库迁移完成
+- [ ] 表结构正确
+
+### ✅ Redis连接
+- [ ] Redis服务运行正常
+- [ ] Celery可以连接Redis
+- [ ] 缓存功能正常
+
+## 🔧 常用命令
+
+### 服务管理
+```bash
+# 启动FastAPI
+python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# 启动Celery Worker
+./scripts/start_celery.sh
+
+# 启动Celery Beat
+celery -A app.tasks.celery_app beat --loglevel=info
+
+# 停止Celery
+./scripts/stop_celery.sh
+```
+
+### 数据同步
+```bash
+# 完全重新同步
+./scripts/full_resync.sh
+
+# 只同步订单
+./scripts/full_resync.sh --orders-only
+
+# 只同步商品
+./scripts/full_resync.sh --products-only
+```
+
+### 环境检查
+```bash
+# 检查依赖
+python scripts/check_dependencies.py
+
+# 检查数据库
+python scripts/db.py
 ```
 
 ## 🎯 开发工作流
@@ -98,244 +182,124 @@ git pull origin develop
 5. 代码审查
 6. 合并到develop
 
-## 📊 项目结构
+## 🐛 故障排除
 
-```
-fulfillment-service/
-├── backend/                 # FastAPI后端
-│   ├── app/
-│   │   ├── api/            # API路由
-│   │   ├── core/           # 核心配置
-│   │   ├── models/         # 数据模型
-│   │   ├── services/       # 业务逻辑
-│   │   └── tasks/          # Celery任务
-│   ├── migrations/         # 数据库迁移
-│   └── tests/              # 测试
-├── frontend/               # Next.js前端
-│   ├── src/
-│   │   ├── app/           # 页面路由
-│   │   ├── components/    # React组件
-│   │   └── lib/           # 工具库
-│   └── tests/             # 测试
-├── deployment/            # 部署配置
-├── docs/                  # 项目文档
-└── scripts/               # 开发脚本
-```
+### 常见问题
 
-## 🔧 常用命令
-
-### 开发命令
+#### 1. 端口被占用
 ```bash
-# 查看任务状态
-./scripts/show_tasks.sh
+# 查找占用端口的进程
+lsof -i :8000
 
-# 创建功能分支
-./scripts/create_feature_branch.sh <phase> <feature>
-
-# 启动开发环境
-docker-compose -f docker-compose.dev.yml up -d
-
-# 停止开发环境
-docker-compose -f docker-compose.dev.yml down
-
-# 查看日志
-docker-compose -f docker-compose.dev.yml logs -f
+# 杀死进程
+kill -9 <PID>
 ```
 
-### 后端命令
+#### 2. 数据库连接失败
 ```bash
-cd backend
+# 检查数据库服务
+docker ps | grep postgres
 
-# 激活虚拟环境
-source .venv/bin/activate
-
-# 运行测试
-pytest
-
-# 运行代码格式化
-black app/
-isort app/
-
-# 运行类型检查
-mypy app/
-
-# 数据库迁移
-alembic revision --autogenerate -m "description"
-alembic upgrade head
+# 检查环境变量
+echo $DATABASE_URL
 ```
 
-### 数据库迁移命令（按环境）
-
-#### Local环境（有Python虚拟环境）
+#### 3. Redis连接失败
 ```bash
-# 检查当前状态
-./scripts/db/alembic.sh local current
+# 检查Redis服务
+docker ps | grep redis
 
-# 查看迁移历史
-./scripts/db/alembic.sh local history
-
-# 应用所有迁移
-./scripts/db/alembic.sh local upgrade
-
-# 生成新迁移
-./scripts/db/alembic.sh local autogen "add new feature"
+# 测试Redis连接
+redis-cli ping
 ```
 
-#### Develop/Staging/Production环境（只有Docker）
+#### 4. Celery任务不执行
 ```bash
-# 检查当前状态
-./deployment/scripts/db-docker.sh dev current
+# 检查Celery状态
+celery -A app.tasks.celery_app inspect active
 
-# 查看迁移历史
-./deployment/scripts/db-docker.sh dev history
-
-# 应用所有迁移
-./deployment/scripts/db-docker.sh dev upgrade
-
-# 生成新迁移
-./deployment/scripts/db-docker.sh dev autogen "add new feature"
+# 检查任务队列
+celery -A app.tasks.celery_app inspect stats
 ```
 
-**环境差异说明**:
-- **Local环境**: 有Python虚拟环境，可以直接执行alembic命令
-- **服务器环境**: 只有Docker环境，必须使用db-docker.sh脚本
-
-**环境文件读取**:
-- **Local环境**: 读取 `backend/.env.local` 文件
-- **Develop环境**: 读取 `deployment/environments/env.dev` 文件
-- **Staging环境**: 读取 `deployment/environments/env.stg` 文件
-- **Production环境**: 读取 `deployment/environments/env.prod` 文件
-
-### 前端命令
+### 日志查看
 ```bash
-cd frontend
+# 查看应用日志
+tail -f logs-local/app.log
 
-# 运行开发服务器
-npm run dev
-
-# 构建生产版本
-npm run build
-
-# 运行测试
-npm test
-
-# 代码格式化
-npm run lint
-npm run format
+# 查看Celery日志
+tail -f logs-local/celery.log
 ```
 
-## 📚 API文档
+## 📊 监控端点
 
-### 后端API
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
+### 健康检查
+- `GET /api/v1/health` - 基本健康检查
+- `GET /api/v1/health/db` - 数据库健康检查
+- `GET /api/v1/health/redis` - Redis健康检查
+- `GET /api/v1/health/full` - 完整健康检查
 
-### 前端应用
-- 开发服务器: http://localhost:3000
+### 同步状态
+- `GET /api/v1/sync/status` - 同步状态
+- `GET /api/v1/sync/summary` - 同步摘要
+- `GET /api/v1/sync/tasks` - 任务列表
 
-## 🧪 测试
+### API文档
+- `GET /api/v1/docs` - Swagger UI
+- `GET /api/v1/openapi.json` - OpenAPI规范
 
-### 后端测试
+## 🔐 认证
+
+### API密钥认证
 ```bash
-cd backend
-pytest
+# 设置API密钥
+export API_KEY="your-api-key"
 
-# 运行特定测试
-pytest tests/unit/test_auth.py
-
-# 生成覆盖率报告
-pytest --cov=app tests/
+# 使用API密钥访问
+curl -H "X-API-Key: your-api-key" http://localhost:8000/api/v1/health/full
 ```
 
-### 前端测试
+### 用户认证
 ```bash
-cd frontend
-npm test
-
-# 运行E2E测试
-npm run test:e2e
+# 用户登录
+curl -X POST "http://localhost:8000/api/v1/auth/login" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "username=admin&password=password"
 ```
 
-## 🚀 部署
-
-### 开发环境
-```bash
-# 使用Docker Compose
-docker-compose -f docker-compose.dev.yml up -d
-
-# 或使用部署脚本
-./scripts/dev/start.sh
-```
-
-### 生产环境
-```bash
-# 使用部署脚本
-./scripts/deployment/deploy.sh production
-```
-
-## 🔒 环境变量
+## 📝 环境配置
 
 ### 必需的环境变量
 ```bash
-# 数据库
-DATABASE_URL=postgresql+asyncpg://user:password@localhost:5433/dbname
+# 数据库配置
+DATABASE_URL=postgresql+asyncpg://user:password@localhost/dbname
 
-# Redis
+# Redis配置
 REDIS_URL=redis://localhost:6379/0
 
-# JWT
-SECRET_KEY=your-secret-key
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-REFRESH_TOKEN_EXPIRE_DAYS=7
-
-# Hashids
-HASHIDS_SALT=your-hashids-salt-here
-HASHIDS_MIN_LENGTH=8
-
-# Shopify
-SHOPIFY_SHOP_NAME=your-shop-name
+# Shopify配置
 SHOPIFY_ACCESS_TOKEN=your-access-token
+SHOPIFY_STORE_URL=your-store.myshopify.com
 
-# Printify
-PRINTIFY_API_TOKEN=your-api-token
+# 安全配置
+SECRET_KEY=your-secret-key
+API_KEY=your-api-key
 ```
 
-## 📞 获取帮助
-
-### 文档
-- [开发任务分解](./DEVELOPMENT_TASKS.md)
-- [开发工作流](./DEVELOPMENT_WORKFLOW.md)
-- [API文档](./api/)
-
-### 问题报告
-1. 查看现有Issue
-2. 创建新Issue
-3. 提供详细的错误信息
-
-### 贡献指南
-1. Fork项目
-2. 创建功能分支
-3. 提交代码
-4. 创建Pull Request
+### 配置文件
+- `deployment/environments/env.example` - 环境变量示例
+- `alembic.ini` - 数据库迁移配置
+- `docker-compose.yml` - Docker服务配置
 
 ## 🎯 下一步
 
-1. 阅读[开发任务分解](./DEVELOPMENT_TASKS.md)了解项目计划
-2. 查看[开发工作流](./DEVELOPMENT_WORKFLOW.md)了解开发流程
-3. 从Phase 1开始开发认证系统
-4. 根据需要创建新的功能分支
+1. **配置环境变量**: 设置正确的数据库和API密钥
+2. **启动服务**: 按照上述步骤启动所有服务
+3. **验证功能**: 测试API端点和同步功能
+4. **监控状态**: 使用监控端点检查系统状态
+5. **部署生产**: 准备生产环境部署
 
-## 📈 项目进度
+---
 
-- [x] 项目初始化
-- [x] 基础架构搭建
-- [x] 开发工作流建立
-- [x] Phase 1: 认证和安全基础 ✅
-  - [x] 基于租户的JWT认证系统
-  - [x] 时间戳签名认证
-  - [x] Hashids支持
-  - [x] 完整的数据库模型设计
-- [ ] Phase 2: 数据获取和同步
-- [ ] Phase 3: 核心业务功能
-- [ ] Phase 4: 用户界面
-- [ ] Phase 5: 多租户完善
+**文档版本**: v2.0  
+**最后更新**: 2025年8月14日

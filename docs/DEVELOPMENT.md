@@ -35,10 +35,10 @@ cd fulfillment-service
 
 ```bash
 # 复制环境配置模板
-cp environment.example .env
+cp deployment/environments/env.example deployment/environments/env.local
 
 # 编辑环境变量（必须）
-vim .env
+vim deployment/environments/env.local
 ```
 
 ### 2. 启动服务
@@ -54,12 +54,14 @@ docker-compose -f docker-compose.dev.yml ps
 ### 3. 数据库迁移
 
 ```bash
-# 使用 Docker 脚本（推荐）
-./scripts/db/alembic.sh dev upgrade
+# 本地环境（推荐）
+./scripts/db/alembic.sh local upgrade
 
-# 或者进入后端容器
-docker-compose -f docker-compose.dev.yml exec backend_dev bash
-alembic upgrade head
+# 开发环境
+./deployment/scripts/db-docker.sh dev upgrade
+
+# 检查迁移状态
+./scripts/db/alembic.sh local current
 ```
 
 ## 🌐 服务访问
@@ -265,7 +267,7 @@ fulfillment-service/
 ├── scripts/                 # 开发脚本
 ├── docker-compose.yml       # 生产环境
 ├── docker-compose.dev.yml   # 开发环境
-└── environment.example      # 环境变量模板
+└── deployment/environments/env.example  # 环境变量模板
 ```
 
 ## 🔐 认证配置

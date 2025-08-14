@@ -8,7 +8,7 @@ from typing import List, Optional
 from datetime import datetime
 
 from app.core.database import get_async_db
-from app.core.auth import require_permission
+from app.core.api_key_auth import require_permission
 from app.models.api_key import ApiKey
 from app.models.tenant import Tenant
 from app.schemas.order import OrderResponse, OrderListResponse, OrderSyncResponse
@@ -119,6 +119,30 @@ async def sync_orders_background(
         "message": "订单同步任务已启动",
         "task_id": task.id,
         "status": "PENDING"
+    }
+
+
+@router.post("/sync/full")
+async def full_sync_orders(
+    auth: tuple[ApiKey, Tenant] = Depends(require_permission("orders:write"))
+):
+    """
+    完全重新同步所有Shopify订单（不限制数量和时间）
+    """
+    api_key, tenant = auth
+    
+    # 启动后台任务，完全重新同步
+    task = sync_shopify_orders_task.delay(
+        tenant_id=tenant.id,
+        sync_recent_only=False,  # 完全重新同步
+        max_orders=None  # 不限制数量
+    )
+    
+    return {
+        "message": "完全重新同步任务已启动",
+        "task_id": task.id,
+        "status": "PENDING",
+        "sync_type": "full_resync"
     }
 
 

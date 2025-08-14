@@ -10,12 +10,12 @@ class Settings(BaseSettings):
     """应用设置"""
     
     # 数据库配置
-    DATABASE_URL: str = "postgresql+asyncpg://supplynexus_admin:IVzrm2bKlWyxWzhU3KVJUOdwU6IEwG32@localhost:5433/supplynexus"
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql+asyncpg://localhost:5433/supplynexus")
     
     # Redis 配置
-    REDIS_URL: str = "redis://localhost:6380/0"
-    CELERY_BROKER_URL: str = "redis://localhost:6380/1"
-    CELERY_RESULT_BACKEND: str = "redis://localhost:6380/2"
+    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    CELERY_BROKER_URL: str = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/1")
+    CELERY_RESULT_BACKEND: str = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/2")
     
     # Shopify API 配置
     SHOPIFY_SHOP_NAME: Optional[str] = os.getenv("SHOPIFY_SHOP_NAME")
@@ -57,7 +57,12 @@ class Settings(BaseSettings):
     SWAGGER_DEBUG_MODE: bool = os.getenv("SWAGGER_DEBUG_MODE", "false").lower() == "true"
     
     class Config:
-        env_file = os.getenv("ENV_FILE", ".env")
+        # 支持从ENV_FILE环境变量读取配置文件
+        # 如果没有指定ENV_FILE，则按优先级查找：
+        # 1. .env.local (本地开发)
+        # 2. ../deployment/environments/env.local (统一配置)
+        # 3. .env (默认)
+        env_file = os.getenv("ENV_FILE") or ".env.local"
         extra = "ignore"  # Ignore extra fields instead of raising validation error
 
 

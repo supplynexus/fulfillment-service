@@ -9,7 +9,7 @@
 
 | 环境 | Python环境 | Docker环境 | 推荐工具 | 环境文件路径 | 实际读取文件 |
 |------|------------|------------|----------|--------------|--------------|
-| **Local** | ✅ 有虚拟环境 | ✅ 可选 | `./scripts/db/alembic.sh` | `backend/.env.local` | `backend/.env.local` |
+| **Local** | ✅ 有虚拟环境 | ✅ 可选 | `./scripts/db/alembic.sh` | `deployment/environments/env.local` | `deployment/environments/env.local` |
 | **Develop** | ❌ 无 | ✅ 必需 | `./deployment/scripts/db-docker.sh` | `deployment/environments/env.dev` | `deployment/environments/env.dev` |
 | **Staging** | ❌ 无 | ✅ 必需 | `./deployment/scripts/db-docker.sh` | `deployment/environments/env.stg` | `deployment/environments/env.stg` |
 | **Production** | ❌ 无 | ✅ 必需 | `./deployment/scripts/db-docker.sh` | `deployment/environments/env.prod` | `deployment/environments/env.prod` |
@@ -18,6 +18,7 @@
 
 - **Local环境**: 有Python虚拟环境，可以直接执行alembic命令
 - **服务器环境**: 只有Docker环境，必须使用容器化脚本
+- **统一配置**: 所有环境都使用 `deployment/environments/` 目录下的配置文件
 
 ## 🚀 数据库迁移
 
@@ -97,12 +98,12 @@ source .venv/bin/activate
 # 脚本内部逻辑
 case "$ENVIRONMENT" in
     local)
-        ENV_FILE_PATH="$BACKEND_DIR/.env.local"
+        ENV_FILE_PATH="$PROJECT_ROOT/deployment/environments/env.local"
         ;;
 esac
 
 # 实际读取文件
-backend/.env.local
+deployment/environments/env.local
 ```
 
 #### 2. 服务器环境 - `./deployment/scripts/db-docker.sh`
@@ -125,7 +126,7 @@ deployment/environments/env.prod   # Production环境
 
 ### 环境文件配置示例
 
-#### Local环境配置 (`backend/.env.local`)
+#### Local环境配置 (`deployment/environments/env.local`)
 ```bash
 # 数据库配置
 DATABASE_URL=postgresql+asyncpg://supplynexus_admin:password@localhost:5433/supplynexus

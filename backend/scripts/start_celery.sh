@@ -24,6 +24,16 @@ source .venv/bin/activate
 export PYTHONPATH=.
 export C_FORCE_ROOT=true
 
+# 设置环境配置文件
+ENV_FILE=${ENV_FILE:-"../deployment/environments/env.local"}
+if [ -f "$ENV_FILE" ]; then
+    export ENV_FILE
+    echo "📁 使用环境配置文件: $ENV_FILE"
+else
+    echo "⚠️  环境配置文件不存在: $ENV_FILE"
+    echo "📁 使用默认配置"
+fi
+
 echo "📋 启动选项："
 echo "1) 启动 Celery Worker"
 echo "2) 启动 Celery Beat (定时任务)"

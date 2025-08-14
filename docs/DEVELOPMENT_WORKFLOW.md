@@ -276,7 +276,7 @@ npm test
 
 ### 文档位置
 - API文档: `backend/docs/`
-- 数据库文档: `docs/backup/`
+- 数据库文档: `docs/DATABASE_MANAGEMENT.md`
 - 部署文档: `docs/deployment/`
 - 开发文档: `docs/dev/`
 

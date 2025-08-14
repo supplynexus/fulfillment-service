@@ -6,7 +6,7 @@ Shopify 订单同步服务
 import asyncio
 import logging
 from typing import List, Dict, Any, Optional, AsyncGenerator
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
@@ -43,14 +43,15 @@ class ShopifyOrderService:
                 logger.warning(f"未找到活跃的 Shopify 外部系统 (tenant_id: {tenant_id})")
                 return None
             
-            # 解密凭据
+            # 处理凭据 - 支持加密和未加密两种格式
             credentials = {}
-            for key, encrypted_value in external_system.credentials.items():
+            for key, value in external_system.credentials.items():
                 try:
-                    credentials[key] = decrypt_data(encrypted_value)
-                except Exception as e:
-                    logger.error(f"解密凭据失败 {key}: {e}")
-                    continue
+                    # 尝试解密（如果是加密的）
+                    credentials[key] = decrypt_data(value)
+                except Exception:
+                    # 如果解密失败，假设是未加密的
+                    credentials[key] = value
             
             return credentials
             
@@ -106,6 +107,14 @@ class ShopifyOrderService:
         else:
             order_date = datetime.utcnow()
         
+        # 提取备注和其他外部数据
+        external_data = {
+            'note': order_data.get('note'),
+            'tags': order_data.get('tags'),
+            'updated_at': order_data.get('updatedAt'),
+            'created_at': order_data.get('createdAt')
+        }
+        
         return OrderCreate(
             external_order_id=shopify_order_id,
             external_order_number=order_name,
@@ -121,9 +130,62 @@ class ShopifyOrderService:
             line_items=line_items,
             order_date=order_date,
             fulfillment_status=fulfillment_status,
-            external_data=order_data  # 保存原始数据
+            external_data=external_data
         )
     
+    async def _get_smart_sync_timestamp(self, tenant_id: int, buffer_minutes: int = 5) -> datetime:
+        """
+        获取智能同步时间戳，防止漏单
+        
+        策略：
+        1. 优先使用外部系统的 last_sync_at
+        2. 如果没有，使用数据库中该租户最新订单的 updated_at
+        3. 如果都没有，使用当前时间减去 buffer_minutes
+        4. 为了防漏单，将时间戳往前推 buffer_minutes 分钟
+        """
+        try:
+            # 1. 获取外部系统的最后同步时间
+            result = await self.db.execute(
+                select(ExternalSystem.last_sync_at)
+                .where(
+                    ExternalSystem.tenant_id == tenant_id,
+                    ExternalSystem.system_type == ExternalSystemType.SHOPIFY,
+                    ExternalSystem.is_active == True
+                )
+            )
+            external_sync_time = result.scalar_one_or_none()
+            
+            if external_sync_time:
+                # 往前推 buffer_minutes 分钟，防止漏单
+                sync_time = external_sync_time - timedelta(minutes=buffer_minutes)
+                logger.info(f"使用外部系统同步时间: {external_sync_time} -> {sync_time}")
+                return sync_time
+            
+            # 2. 获取数据库中该租户最新订单的更新时间
+            result = await self.db.execute(
+                select(Order.updated_at)
+                .where(Order.tenant_id == tenant_id)
+                .order_by(Order.updated_at.desc())
+                .limit(1)
+            )
+            latest_order_time = result.scalar_one_or_none()
+            
+            if latest_order_time:
+                # 往前推 buffer_minutes 分钟，防止漏单
+                sync_time = latest_order_time - timedelta(minutes=buffer_minutes)
+                logger.info(f"使用最新订单时间: {latest_order_time} -> {sync_time}")
+                return sync_time
+            
+            # 3. 默认使用当前时间减去 buffer_minutes
+            sync_time = datetime.utcnow() - timedelta(minutes=buffer_minutes)
+            logger.info(f"使用默认时间: {sync_time}")
+            return sync_time
+            
+        except Exception as e:
+            logger.error(f"获取智能同步时间戳失败: {e}")
+            # 出错时使用保守的时间
+            return datetime.utcnow() - timedelta(hours=1)
+
     async def sync_orders(
         self,
         tenant_id: int,
@@ -147,7 +209,13 @@ class ShopifyOrderService:
                 }
             
             access_token = credentials.get('access_token')
-            shop_name = credentials.get('store_url', '').replace('.myshopify.com', '')
+            store_url = credentials.get('store_url', '')
+            
+            # 从 store_url 中提取 shop_name
+            if store_url.startswith('https://'):
+                shop_name = store_url.replace('https://', '').replace('.myshopify.com', '')
+            else:
+                shop_name = store_url.replace('.myshopify.com', '')
             
             if not access_token or not shop_name:
                 return {
@@ -164,13 +232,16 @@ class ShopifyOrderService:
             
             # 设置查询过滤条件
             if sync_recent_only:
-                # 只同步最近1小时的订单
-                since_time = datetime.utcnow() - timedelta(hours=1)
-                time_filter = f"created_at:>={since_time.isoformat()}"
+                # 使用智能时间戳，防止漏单
+                since_time = await self._get_smart_sync_timestamp(tenant_id, buffer_minutes=5)
+                # 使用带时区的精确时间格式
+                time_filter = f"updated_at:>={since_time.isoformat()}"
                 if query_filter:
                     query_filter = f"{query_filter} AND {time_filter}"
                 else:
                     query_filter = time_filter
+                
+                logger.info(f"智能同步时间戳: {since_time.isoformat()}")
             
             logger.info(f"开始同步 Shopify 订单 (tenant_id: {tenant_id}, filter: {query_filter})")
             
@@ -201,16 +272,27 @@ class ShopifyOrderService:
                     
                     if existing_order:
                         # 更新现有订单
-                        for field, value in order_create.dict(exclude_unset=True).items():
-                            setattr(existing_order, field, value)
+                        order_dict = order_create.dict(exclude_unset=True)
+                        
+                        # 确保 external_data 字段被正确处理
+                        if 'external_data' in order_dict:
+                            existing_order.external_data = order_dict['external_data']
+                            logger.debug(f"更新订单 external_data: {order_dict['external_data']}")
+                        
+                        # 更新其他字段
+                        for field, value in order_dict.items():
+                            if field != 'external_data':  # external_data 已经单独处理
+                                setattr(existing_order, field, value)
+                        
                         existing_order.updated_at = datetime.utcnow()
                         orders_updated += 1
                         logger.debug(f"更新订单: {order_create.external_order_id}")
                     else:
                         # 创建新订单
+                        order_data_dict = order_create.dict()
                         new_order = Order(
                             tenant_id=tenant_id,
-                            **order_create.dict()
+                            **order_data_dict
                         )
                         self.db.add(new_order)
                         orders_saved += 1
@@ -260,7 +342,7 @@ class ShopifyOrderService:
                     ExternalSystem.system_type == ExternalSystemType.SHOPIFY,
                     ExternalSystem.is_active == True
                 )
-                .values(last_sync_at=datetime.utcnow())
+                .values(last_sync_at=datetime.now(timezone.utc))
             )
             await self.db.commit()
         except Exception as e:

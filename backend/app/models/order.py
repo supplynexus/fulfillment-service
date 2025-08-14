@@ -52,6 +52,9 @@ class Order(Base):
     # Order items and details
     line_items = Column(JSON, nullable=False)
     
+    # External data (for storing additional information from external systems)
+    external_data = Column(JSON, nullable=True)
+    
     # Processing information
     error_message = Column(Text, nullable=True)
     retry_count = Column(Integer, default=0)

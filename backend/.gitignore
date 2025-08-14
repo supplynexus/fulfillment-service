@@ -1,0 +1,7 @@
+
+# Environment files with sensitive data
+.env.local
+.env.dev
+.env.prod
+.env.stg
+*.backup

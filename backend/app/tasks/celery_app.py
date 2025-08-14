@@ -9,8 +9,8 @@ from app.tasks.celery_beat_schedule import CELERY_BEAT_SCHEDULE
 # Create Celery app
 celery_app = Celery(
     "fulfillment_service",
-    broker=settings.REDIS_URL,
-    backend=settings.REDIS_URL,
+    broker=settings.CELERY_BROKER_URL,
+    backend=settings.CELERY_RESULT_BACKEND,
     include=[
         "app.tasks.shopify_tasks",
         "app.tasks.order_tasks"

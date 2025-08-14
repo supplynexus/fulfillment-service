@@ -37,6 +37,21 @@ class Product(Base):
     # Product status
     is_active = Column(Boolean, default=True)
     is_available = Column(Boolean, default=True)
+    status = Column(String, nullable=True)  # Product status (active, draft, archived, etc.)
+    
+    # Inventory tracking
+    tracks_inventory = Column(Boolean, default=True)
+    has_out_of_stock_variants = Column(Boolean, default=False)
+    has_only_default_variant = Column(Boolean, default=True)
+    total_inventory = Column(Integer, nullable=True)
+    
+    # Product metadata
+    handle = Column(String, nullable=True)
+    product_type = Column(String, nullable=True)
+    vendor = Column(String, nullable=True)
+    seo = Column(JSON, nullable=True)
+    online_store_url = Column(String, nullable=True)
+    published_at = Column(DateTime(timezone=True), nullable=True)
     
     # External system specific data
     external_data = Column(JSON, nullable=True)  # Store system-specific data

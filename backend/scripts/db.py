@@ -17,10 +17,17 @@ from app.core.config import settings
 
 def set_environment():
     """Set environment variables for database operations"""
-    # Use environment file if specified
+    # Use environment file if specified, otherwise use default
     env_file = os.getenv("ENV_FILE")
-    if env_file:
+    if not env_file:
+        # 默认使用统一的环境配置
+        env_file = "../deployment/environments/env.local"
+        print(f"📁 Using default environment file: {env_file}")
+    else:
         print(f"📁 Using environment file: {env_file}")
+    
+    # 设置环境文件路径
+    os.environ["ENV_FILE"] = env_file
     
     os.environ.setdefault("DATABASE_URL", settings.DATABASE_URL)
     os.environ.setdefault("DATABASE_URL_SYNC", settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://"))

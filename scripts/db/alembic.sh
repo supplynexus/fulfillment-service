@@ -79,23 +79,25 @@ BACKEND_DIR="$PROJECT_ROOT/backend"
 # Set environment file path based on environment
 case "$ENVIRONMENT" in
     local)
-        ENV_FILE_PATH="$BACKEND_DIR/.env.local"
+        ENV_FILE_PATH="$PROJECT_ROOT/deployment/environments/env.local"
         ;;
     dev)
-        ENV_FILE_PATH="$BACKEND_DIR/.env.dev"
+        ENV_FILE_PATH="$PROJECT_ROOT/deployment/environments/env.dev"
         ;;
     stg)
-        ENV_FILE_PATH="$BACKEND_DIR/.env.stg"
+        ENV_FILE_PATH="$PROJECT_ROOT/deployment/environments/env.stg"
         ;;
     prod)
-        ENV_FILE_PATH="$BACKEND_DIR/.env.prod"
+        ENV_FILE_PATH="$PROJECT_ROOT/deployment/environments/env.prod"
         ;;
 esac
 
 # Check if environment file exists
 if [ ! -f "$ENV_FILE_PATH" ]; then
     print_error "Environment file $ENV_FILE_PATH not found"
-    echo "Please ensure backend/.env.dev exists"
+    echo "Please ensure deployment/environments/env.$ENVIRONMENT exists"
+    echo "You can create it by copying the example:"
+    echo "  cp deployment/environments/env.example $ENV_FILE_PATH"
     exit 1
 fi
 
