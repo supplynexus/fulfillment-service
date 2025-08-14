@@ -5,84 +5,86 @@ Celery Beat 定时任务配置
 
 from celery.schedules import crontab
 
-# 定时任务配置
+# Celery Beat 定时任务配置
 CELERY_BEAT_SCHEDULE = {
-    # 每小时增量同步所有租户的 Shopify 产品
-    'sync-shopify-products-hourly': {
-        'task': 'schedule_shopify_products_sync',
-        'schedule': crontab(minute=0, hour='*'),  # 每小时整点执行
-        'args': (),
-        'options': {
-            'queue': 'default',
-            'expires': 3600,  # 1小时后过期
-        }
-    },
-    
-    # 每天凌晨2点全量同步所有租户的 Shopify 产品
-    'sync-shopify-products-daily': {
-        'task': 'schedule_shopify_products_full_sync',
-        'schedule': crontab(minute=0, hour=2),  # 每天凌晨2点执行
-        'args': (),
-        'options': {
-            'queue': 'default',
-            'expires': 86400,  # 24小时后过期
-        }
-    },
-    
-    # 每30分钟同步一次订单（如果需要）
-    'sync-shopify-orders': {
-        'task': 'fetch_recent_orders',
-        'schedule': crontab(minute='*/30'),  # 每30分钟执行
-        'args': (),
-        'options': {
-            'queue': 'default',
-            'expires': 1800,  # 30分钟后过期
-        }
-    },
-    
-    # 每30分钟同步所有租户的 Shopify 产品（基于数据库配置）
-    'sync-shopify-products-30min': {
-        'task': 'sync_all_tenants_products_custom',
-        'schedule': crontab(minute='*/30'),  # 每30分钟执行
-        'args': (),
+    # 每分钟同步 Shopify 订单
+    'sync-shopify-orders-1min': {
+        'task': 'app.tasks.shopify_tasks.sync_shopify_orders_1min_task',
+        'schedule': 60.0,  # 每60秒执行一次
         'options': {
             'queue': 'shopify',
-            'expires': 1800,  # 30分钟后过期
+            'expires': 30,  # 任务过期时间（秒）
         }
     },
     
-    # 每1分钟同步所有租户的 Shopify 产品（基于数据库配置）
+    # 每分钟同步 Shopify 商品
     'sync-shopify-products-1min': {
-        'task': 'sync_all_tenants_products_custom',
-        'schedule': crontab(minute='*'),  # 每分钟执行
-        'args': (),
+        'task': 'app.tasks.shopify_tasks.sync_shopify_products_1min_task',
+        'schedule': 60.0,  # 每60秒执行一次
         'options': {
             'queue': 'shopify',
-            'expires': 60,  # 1分钟后过期
+            'expires': 30,  # 任务过期时间（秒）
+        }
+    },
+    
+    # 每小时同步 Shopify 订单（全量同步）
+    'sync-shopify-orders-hourly': {
+        'task': 'app.tasks.shopify_tasks.sync_shopify_orders_task',
+        'schedule': crontab(minute=0),  # 每小时整点执行
+        'args': (1,),  # tenant_id
+        'kwargs': {
+            'sync_recent_only': False,
+            'max_orders': 1000
+        },
+        'options': {
+            'queue': 'shopify',
+            'expires': 3600,  # 任务过期时间（秒）
+        }
+    },
+    
+    # 每小时同步 Shopify 商品（全量同步）
+    'sync-shopify-products-hourly': {
+        'task': 'app.tasks.shopify_tasks.sync_shopify_products_task',
+        'schedule': crontab(minute=0),  # 每小时整点执行
+        'args': (1,),  # tenant_id
+        'kwargs': {
+            'sync_recent_only': False,
+            'max_products': 1000
+        },
+        'options': {
+            'queue': 'shopify',
+            'expires': 3600,  # 任务过期时间（秒）
+        }
+    },
+    
+    # 每天凌晨2点全量同步 Shopify 订单
+    'sync-shopify-orders-daily': {
+        'task': 'app.tasks.shopify_tasks.sync_shopify_orders_task',
+        'schedule': crontab(hour=2, minute=0),  # 每天凌晨2点执行
+        'args': (1,),  # tenant_id
+        'kwargs': {
+            'sync_recent_only': False,
+            'max_orders': None  # 不限制数量，同步所有订单
+        },
+        'options': {
+            'queue': 'shopify',
+            'expires': 7200,  # 任务过期时间（秒）
+        }
+    },
+    
+    # 每天凌晨3点全量同步 Shopify 商品
+    'sync-shopify-products-daily': {
+        'task': 'app.tasks.shopify_tasks.sync_shopify_products_task',
+        'schedule': crontab(hour=3, minute=0),  # 每天凌晨3点执行
+        'args': (1,),  # tenant_id
+        'kwargs': {
+            'sync_recent_only': False,
+            'max_products': None  # 不限制数量，同步所有商品
+        },
+        'options': {
+            'queue': 'shopify',
+            'expires': 7200,  # 任务过期时间（秒）
         }
     },
 }
 
-# 任务路由配置
-CELERY_TASK_ROUTES = {
-    'sync_shopify_products': {'queue': 'shopify'},
-    'sync_shopify_products_incremental': {'queue': 'shopify'},
-    'sync_shopify_products_full': {'queue': 'shopify'},
-    'sync_all_tenants_products': {'queue': 'shopify'},
-    'schedule_shopify_products_sync': {'queue': 'shopify'},
-    'schedule_shopify_products_full_sync': {'queue': 'shopify'},
-    'sync_all_tenants_products_custom': {'queue': 'shopify'},
-    
-    'fetch_shopify_orders': {'queue': 'orders'},
-    'fetch_recent_orders': {'queue': 'orders'},
-    'fetch_unfulfilled_orders': {'queue': 'orders'},
-    'sync_all_orders': {'queue': 'orders'},
-}
-
-# 队列配置
-CELERY_TASK_DEFAULT_QUEUE = 'default'
-CELERY_TASK_CREATE_MISSING_QUEUES = True
-
-# 任务优先级
-CELERY_TASK_QUEUE_MAX_PRIORITY = 10
-CELERY_TASK_DEFAULT_PRIORITY = 5

@@ -1,142 +1,190 @@
 """
-Orders API endpoints with tenant isolation
+Order management endpoints
 """
 
-from typing import Any, List
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from typing import List, Optional
+from datetime import datetime
 
 from app.core.database import get_async_db
-from app.core.api_key_auth import get_api_key_auth, require_permission, require_frontend_server_key
+from app.core.api_key_auth import require_permission
 from app.models.api_key import ApiKey
 from app.models.tenant import Tenant
-from app.models.customer import Customer
-from app.models.order import Order
-from app.schemas.order import OrderResponse, OrderListResponse
+from app.schemas.order import OrderResponse, OrderListResponse, OrderSyncResponse
+from app.services.shopify.order_service import ShopifyOrderService
+from app.tasks.shopify_tasks import sync_shopify_orders_task
 
 router = APIRouter()
 
 
 @router.get("/", response_model=OrderListResponse)
 async def get_orders(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
+    skip: int = 0,
+    limit: int = 100,
+    status: Optional[str] = None,
     db: AsyncSession = Depends(get_async_db),
     auth: tuple[ApiKey, Tenant] = Depends(require_permission("orders:read"))
-) -> Any:
+) -> OrderListResponse:
     """
-    Get orders for the authenticated tenant
+    获取订单列表
     """
     api_key, tenant = auth
     
-    # Query orders for the specific tenant
-    result = await db.execute(
-        select(Order)
-        .join(Customer)
-        .where(Customer.tenant_id == tenant.id)
-        .offset(skip)
-        .limit(limit)
-    )
-    orders = result.scalars().all()
+    order_service = ShopifyOrderService(db)
     
-    return {
-        "orders": orders,
-        "total": len(orders),
-        "skip": skip,
-        "limit": limit
-    }
-
-
-@router.get("/{order_id}", response_model=OrderResponse)
-async def get_order(
-    order_id: int,
-    db: AsyncSession = Depends(get_async_db),
-    auth: tuple[ApiKey, Tenant] = Depends(require_permission("orders:read"))
-) -> Any:
-    """
-    Get specific order for the authenticated tenant
-    """
-    api_key, tenant = auth
-    
-    # Query order for the specific tenant
-    result = await db.execute(
-        select(Order)
-        .join(Customer)
-        .where(Order.id == order_id, Customer.tenant_id == tenant.id)
-    )
-    order = result.scalar_one_or_none()
-    
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Order not found"
+    if status:
+        orders = await order_service.get_orders_by_status(
+            tenant_id=tenant.id,
+            status=status,
+            limit=limit
         )
+        total = len(orders)
+    else:
+        orders = await order_service.get_recent_orders(
+            tenant_id=tenant.id,
+            hours=24,
+            limit=limit
+        )
+        total = len(orders)
     
-    return order
+    # 转换为响应格式
+    order_responses = []
+    for order in orders:
+        order_responses.append(OrderResponse.from_orm(order))
+    
+    return OrderListResponse(
+        orders=order_responses,
+        total=total,
+        skip=skip,
+        limit=limit
+    )
 
 
-@router.post("/{order_id}/fulfill")
-async def fulfill_order(
-    order_id: int,
+@router.post("/sync", response_model=OrderSyncResponse)
+async def sync_orders(
+    sync_recent_only: bool = True,
+    max_orders: Optional[int] = 100,
+    background_tasks: BackgroundTasks = None,
     db: AsyncSession = Depends(get_async_db),
     auth: tuple[ApiKey, Tenant] = Depends(require_permission("orders:write"))
-) -> Any:
+) -> OrderSyncResponse:
     """
-    Fulfill an order (requires write permission)
+    手动触发订单同步
     """
     api_key, tenant = auth
     
-    # Query order for the specific tenant
-    result = await db.execute(
-        select(Order)
-        .join(Customer)
-        .where(Order.id == order_id, Customer.tenant_id == tenant.id)
-    )
-    order = result.scalar_one_or_none()
+    order_service = ShopifyOrderService(db)
     
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Order not found"
+    try:
+        result = await order_service.sync_orders(
+            tenant_id=tenant.id,
+            sync_recent_only=sync_recent_only,
+            max_orders=max_orders
         )
-    
-    # Update order status
-    order.status = "fulfilled"
-    await db.commit()
-    
-    return {"message": "Order fulfilled successfully"}
+        
+        return OrderSyncResponse(**result)
+        
+    except Exception as e:
+        return OrderSyncResponse(
+            success=False,
+            error=str(e),
+            orders_fetched=0,
+            orders_saved=0,
+            orders_updated=0,
+            errors=[str(e)]
+        )
 
 
-# Example of an endpoint that only allows frontend server access
-@router.get("/orders/internal/stats")
-async def get_order_stats(
-    db: AsyncSession = Depends(get_async_db),
-    auth: tuple[ApiKey, Tenant] = Depends(require_frontend_server_key)
-) -> Any:
+@router.post("/sync/background")
+async def sync_orders_background(
+    sync_recent_only: bool = True,
+    max_orders: Optional[int] = 100,
+    background_tasks: BackgroundTasks = None,
+    auth: tuple[ApiKey, Tenant] = Depends(require_permission("orders:write"))
+):
     """
-    Get internal order statistics (only accessible by frontend server)
+    后台异步同步订单
     """
     api_key, tenant = auth
     
-    # This endpoint is only accessible by frontend server API keys
-    # It can provide more detailed statistics for the frontend dashboard
-    
-    # Query order statistics for the tenant
-    result = await db.execute(
-        select(Order)
-        .join(Customer)
-        .where(Customer.tenant_id == tenant.id)
+    # 启动后台任务
+    task = sync_shopify_orders_task.delay(
+        tenant_id=tenant.id,
+        sync_recent_only=sync_recent_only,
+        max_orders=max_orders
     )
-    orders = result.scalars().all()
-    
-    total_orders = len(orders)
-    pending_orders = len([o for o in orders if o.status == "pending"])
-    fulfilled_orders = len([o for o in orders if o.status == "fulfilled"])
     
     return {
-        "total_orders": total_orders,
-        "pending_orders": pending_orders,
-        "fulfilled_orders": fulfilled_orders,
-        "fulfillment_rate": fulfilled_orders / total_orders if total_orders > 0 else 0
+        "message": "订单同步任务已启动",
+        "task_id": task.id,
+        "status": "PENDING"
     }
+
+
+@router.post("/sync/full")
+async def full_sync_orders(
+    auth: tuple[ApiKey, Tenant] = Depends(require_permission("orders:write"))
+):
+    """
+    完全重新同步所有Shopify订单（不限制数量和时间）
+    """
+    api_key, tenant = auth
+    
+    # 启动后台任务，完全重新同步
+    task = sync_shopify_orders_task.delay(
+        tenant_id=tenant.id,
+        sync_recent_only=False,  # 完全重新同步
+        max_orders=None  # 不限制数量
+    )
+    
+    return {
+        "message": "完全重新同步任务已启动",
+        "task_id": task.id,
+        "status": "PENDING",
+        "sync_type": "full_resync"
+    }
+
+
+@router.get("/recent", response_model=List[OrderResponse])
+async def get_recent_orders(
+    hours: int = 24,
+    limit: int = 50,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[ApiKey, Tenant] = Depends(require_permission("orders:read"))
+) -> List[OrderResponse]:
+    """
+    获取最近的订单
+    """
+    api_key, tenant = auth
+    
+    order_service = ShopifyOrderService(db)
+    orders = await order_service.get_recent_orders(
+        tenant_id=tenant.id,
+        hours=hours,
+        limit=limit
+    )
+    
+    return [OrderResponse.from_orm(order) for order in orders]
+
+
+@router.get("/status/{status}", response_model=List[OrderResponse])
+async def get_orders_by_status(
+    status: str,
+    limit: int = 100,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[ApiKey, Tenant] = Depends(require_permission("orders:read"))
+) -> List[OrderResponse]:
+    """
+    根据状态获取订单
+    """
+    api_key, tenant = auth
+    
+    order_service = ShopifyOrderService(db)
+    orders = await order_service.get_orders_by_status(
+        tenant_id=tenant.id,
+        status=status,
+        limit=limit
+    )
+    
+    return [OrderResponse.from_orm(order) for order in orders]

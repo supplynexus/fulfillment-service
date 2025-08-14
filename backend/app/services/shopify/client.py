@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 import logging
 
 from app.core.config import settings
+from app.utils.retry_client import RetryableHTTPClient, create_shopify_retry_config, retry_async
 
 logger = logging.getLogger(__name__)
 
@@ -25,30 +26,35 @@ class ShopifyGraphQLClient:
             'Content-Type': 'application/json',
             'X-Shopify-Access-Token': access_token
         }
+        # 创建针对Shopify优化的重试配置
+        self.retry_config = create_shopify_retry_config()
     
+    @retry_async(max_retries=5, base_delay=2.0, max_delay=60.0)
     async def _make_request(self, query: str, variables: Dict = None) -> Dict[str, Any]:
-        """发送 GraphQL 请求"""
+        """发送 GraphQL 请求（带重试机制）"""
         payload = {"query": query}
         if variables:
             payload["variables"] = variables
-            
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
+        
+        # 使用可重试的HTTP客户端
+        async with RetryableHTTPClient(self.retry_config) as client:
+            response = await client.post(
                 self.base_url,
                 headers=self.headers,
-                json=payload,
+                json_data=payload,
                 timeout=aiohttp.ClientTimeout(total=30)
-            ) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    if 'errors' in data:
-                        logger.error(f"GraphQL errors: {data['errors']}")
-                        raise Exception(f"GraphQL errors: {data['errors']}")
-                    return data.get('data', {})
-                else:
-                    error_text = await response.text()
-                    logger.error(f"HTTP {response.status}: {error_text}")
-                    raise Exception(f"HTTP {response.status}: {error_text}")
+            )
+            
+            if response.status == 200:
+                data = await response.json()
+                if 'errors' in data:
+                    logger.error(f"GraphQL errors: {data['errors']}")
+                    raise Exception(f"GraphQL errors: {data['errors']}")
+                return data.get('data', {})
+            else:
+                error_text = await response.text()
+                logger.error(f"HTTP {response.status}: {error_text}")
+                raise Exception(f"HTTP {response.status}: {error_text}")
     
     async def get_shop_info(self) -> Dict[str, Any]:
         """获取商店基本信息"""
@@ -305,6 +311,171 @@ class ShopifyGraphQLClient:
             orders.append(order)
         
         return orders
+
+    async def get_products_batch(
+        self, 
+        limit: int = 250,
+        cursor: Optional[str] = None,
+        query_filter: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        批量获取商品
+        
+        Args:
+            limit: 每次获取的商品数量 (最大250)
+            cursor: 分页游标
+            query_filter: 商品过滤条件
+        """
+        # 构建查询参数
+        args = [f"first: {min(limit, 250)}"]
+        if cursor:
+            args.append(f'after: "{cursor}"')
+        if query_filter:
+            args.append(f'query: "{query_filter}"')
+        
+        query = f"""
+        query {{
+          products({", ".join(args)}) {{
+            edges {{
+              cursor
+              node {{
+                id
+                title
+                description
+                status
+                createdAt
+                updatedAt
+                tags
+                images(first: 10) {{
+                  edges {{
+                    node {{
+                      id
+                      url
+                      altText
+                    }}
+                  }}
+                }}
+                variants(first: 50) {{
+                  edges {{
+                    node {{
+                      id
+                      title
+                      sku
+                      price
+                      compareAtPrice
+                      inventoryQuantity
+                    }}
+                  }}
+                }}
+              }}
+            }}
+            pageInfo {{
+              hasNextPage
+              endCursor
+            }}
+          }}
+        }}
+        """
+        
+        result = await self._make_request(query)
+        return result.get('products', {})
+    
+    async def get_all_products(
+        self,
+        query_filter: Optional[str] = None,
+        max_products: Optional[int] = None
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """
+        获取所有商品
+        
+        Args:
+            query_filter: 商品过滤条件，例如:
+                - "updated_at:>2024-01-01"
+                - "status:active"
+                - "available_for_sale:true"
+            max_products: 最大商品数量限制
+        
+        Yields:
+            单个商品数据
+        """
+        cursor = None
+        total_fetched = 0
+        
+        while True:
+            try:
+                # 获取一批商品
+                result = await self.get_products_batch(
+                    limit=250,
+                    cursor=cursor,
+                    query_filter=query_filter
+                )
+                
+                products_data = result
+                edges = products_data.get('edges', [])
+                page_info = products_data.get('pageInfo', {})
+                
+                # 处理这批商品
+                for edge in edges:
+                    product = edge.get('node', {})
+                    yield product
+                    
+                    total_fetched += 1
+                    if max_products and total_fetched >= max_products:
+                        logger.info(f"达到最大商品数量限制: {max_products}")
+                        return
+                
+                # 检查是否还有下一页
+                if not page_info.get('hasNextPage', False):
+                    logger.info(f"所有商品获取完成，总计: {total_fetched}")
+                    break
+                
+                # 更新游标
+                cursor = page_info.get('endCursor')
+                logger.info(f"已获取 {total_fetched} 个商品，继续获取下一批...")
+                
+                # 避免请求过于频繁
+                await asyncio.sleep(0.5)
+                
+            except Exception as e:
+                logger.error(f"获取商品批次时出错: {e}")
+                raise
+
+    async def get_recent_products(self, hours: int = 24) -> List[Dict[str, Any]]:
+        """
+        获取最近的商品
+        
+        Args:
+            hours: 最近几小时的商品
+        """
+        # 计算时间过滤条件
+        since_time = datetime.utcnow() - timedelta(hours=hours)
+        query_filter = f"updated_at:>={since_time.isoformat()}"
+        
+        products = []
+        async for product in self.get_all_products(query_filter=query_filter):
+            products.append(product)
+        
+        return products
+
+    async def get_active_products(self) -> List[Dict[str, Any]]:
+        """获取活跃的商品"""
+        query_filter = "status:active"
+        
+        products = []
+        async for product in self.get_all_products(query_filter=query_filter):
+            products.append(product)
+        
+        return products
+
+    async def get_available_products(self) -> List[Dict[str, Any]]:
+        """获取可购买的商品"""
+        query_filter = "available_for_sale:true"
+        
+        products = []
+        async for product in self.get_all_products(query_filter=query_filter):
+            products.append(product)
+        
+        return products
 
 
 # 工厂函数

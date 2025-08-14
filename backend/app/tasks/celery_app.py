@@ -4,13 +4,17 @@ Celery application configuration
 
 from celery import Celery
 from app.core.config import settings
+from app.tasks.celery_beat_schedule import CELERY_BEAT_SCHEDULE
 
 # Create Celery app
 celery_app = Celery(
     "fulfillment_service",
-    broker=settings.REDIS_URL,
-    backend=settings.REDIS_URL,
-    include=["app.tasks.product_tasks"]  # 暂时只包含 product_tasks 来测试
+    broker=settings.CELERY_BROKER_URL,
+    backend=settings.CELERY_RESULT_BACKEND,
+    include=[
+        "app.tasks.shopify_tasks",
+        "app.tasks.order_tasks"
+    ]
 )
 
 # Import beat schedule
@@ -29,9 +33,26 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,
     worker_max_tasks_per_child=1000,
     
-    # Beat schedule configuration
+    # 定时任务配置
     beat_schedule=CELERY_BEAT_SCHEDULE,
-    task_routes=CELERY_TASK_ROUTES,
+    
+    # 队列配置
+    task_default_queue="default",
+    task_routes={
+        "app.tasks.shopify_tasks.*": {"queue": "shopify"},
+        "app.tasks.order_tasks.*": {"queue": "orders"},
+    },
+    
+    # 结果后端配置
+    result_expires=3600,  # 结果保存1小时
+    
+    # 任务重试配置
+    task_acks_late=True,
+    task_reject_on_worker_lost=True,
+    
+    # 监控配置
+    worker_send_task_events=True,
+    task_send_sent_event=True,
 )
 
 # Auto-discover tasks

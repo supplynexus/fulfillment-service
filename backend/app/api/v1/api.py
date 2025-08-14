@@ -17,6 +17,7 @@ api_router.include_router(webhooks.router, prefix="/webhooks", tags=["webhooks"]
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
 api_router.include_router(health.router, tags=["health"])
 api_router.include_router(external_systems.router, prefix="/external-systems", tags=["external-systems"])
+api_router.include_router(sync_status.router, prefix="/sync", tags=["sync"])
 api_router.include_router(shopify_orders.router, prefix="/shopify", tags=["shopify"])
 api_router.include_router(shopify_products.router, prefix="/shopify", tags=["shopify-products"])
 api_router.include_router(sync_configs.router, prefix="/sync-configs", tags=["sync-configs"])
