@@ -14,7 +14,7 @@ from app.tasks.celery_app import celery_app
 from app.core.database import get_sync_db
 from app.services.shopify.client import create_shopify_client
 from app.models.order import Order
-from app.schemas.order import OrderCreate
+# from app.schemas.order import OrderCreate  # 暂时注释掉，因为 OrderCreate 不存在
 
 logger = logging.getLogger(__name__)
 
@@ -145,8 +145,8 @@ async def _fetch_orders_async(
     }
 
 
-def _convert_shopify_order_to_schema(order_data: Dict[str, Any]) -> OrderCreate:
-    """将 Shopify 订单数据转换为数据库模式"""
+def _convert_shopify_order_to_schema(order_data: Dict[str, Any]) -> Dict[str, Any]:
+    """将 Shopify 订单数据转换为数据库模式（临时修复）"""
     
     # 提取基本信息
     shopify_id = order_data.get('id', '').split('/')[-1]  # 从 GID 中提取 ID
@@ -181,40 +181,40 @@ def _convert_shopify_order_to_schema(order_data: Dict[str, Any]) -> OrderCreate:
             'fulfillment_status': item.get('fulfillmentStatus')
         })
     
-    return OrderCreate(
-        shopify_order_id=shopify_id,
-        order_name=order_data.get('name'),
-        email=order_data.get('email'),
-        phone=order_data.get('phone'),
-        financial_status=order_data.get('displayFinancialStatus'),
-        fulfillment_status=order_data.get('displayFulfillmentStatus'),
-        total_price=float(total_price_data.get('amount', '0')),
-        subtotal_price=float(subtotal_price_data.get('amount', '0')),
-        total_tax=float(total_tax_data.get('amount', '0')),
-        currency=total_price_data.get('currencyCode', 'USD'),
+    return {
+        'shopify_order_id': shopify_id,
+        'order_name': order_data.get('name'),
+        'email': order_data.get('email'),
+        'phone': order_data.get('phone'),
+        'financial_status': order_data.get('displayFinancialStatus'),
+        'fulfillment_status': order_data.get('displayFulfillmentStatus'),
+        'total_price': float(total_price_data.get('amount', '0')),
+        'subtotal_price': float(subtotal_price_data.get('amount', '0')),
+        'total_tax': float(total_tax_data.get('amount', '0')),
+        'currency': total_price_data.get('currencyCode', 'USD'),
         
         # 客户信息
-        customer_shopify_id=customer_data.get('id', '').split('/')[-1] if customer_data.get('id') else None,
-        customer_email=customer_data.get('email'),
-        customer_phone=customer_data.get('phone'),
-        customer_name=customer_data.get('displayName'),
+        'customer_shopify_id': customer_data.get('id', '').split('/')[-1] if customer_data.get('id') else None,
+        'customer_email': customer_data.get('email'),
+        'customer_phone': customer_data.get('phone'),
+        'customer_name': customer_data.get('displayName'),
         
         # 地址信息
-        shipping_address=shipping_address,
-        billing_address=billing_address,
+        'shipping_address': shipping_address,
+        'billing_address': billing_address,
         
         # 其他信息
-        note=order_data.get('note'),
-        tags=order_data.get('tags', []),
+        'note': order_data.get('note'),
+        'tags': order_data.get('tags', []),
         
         # 时间信息
-        created_at=datetime.fromisoformat(order_data.get('createdAt', '').replace('Z', '+00:00')),
-        updated_at=datetime.fromisoformat(order_data.get('updatedAt', '').replace('Z', '+00:00')),
-        processed_at=datetime.fromisoformat(order_data.get('processedAt', '').replace('Z', '+00:00')) if order_data.get('processedAt') else None,
+        'created_at': datetime.fromisoformat(order_data.get('createdAt', '').replace('Z', '+00:00')),
+        'updated_at': datetime.fromisoformat(order_data.get('updatedAt', '').replace('Z', '+00:00')),
+        'processed_at': datetime.fromisoformat(order_data.get('processedAt', '').replace('Z', '+00:00')) if order_data.get('processedAt') else None,
         
         # 订单项
-        line_items=line_items
-    )
+        'line_items': line_items
+    }
 
 
 @celery_app.task(name="fetch_recent_orders")

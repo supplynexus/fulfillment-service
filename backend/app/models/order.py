@@ -36,8 +36,11 @@ class Order(Base):
     external_order_name = Column(String, nullable=True)
     
     # Order information
+    order_number = Column(String, nullable=True)  # Human readable order number
     status = Column(String, default=OrderStatus.PENDING.value, index=True)
     total_amount = Column(Numeric(10, 2), nullable=False)
+    subtotal_amount = Column(Numeric(10, 2), nullable=True)
+    tax_amount = Column(Numeric(10, 2), nullable=True)
     currency = Column(String(3), default="USD")
     
     # Customer information
@@ -51,6 +54,11 @@ class Order(Base):
     
     # Order items and details
     line_items = Column(JSON, nullable=False)
+    
+    # Shopify specific data (mixed model approach)
+    shopify_raw_data = Column(JSON, nullable=True)  # Raw Shopify API response
+    shopify_processed = Column(JSON, nullable=True)  # Processed Shopify data
+    external_data = Column(JSON, nullable=True)  # Generic external system data
     
     # Processing information
     error_message = Column(Text, nullable=True)
