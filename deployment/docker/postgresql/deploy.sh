@@ -60,18 +60,18 @@ case $ENVIRONMENT in
         ;;
 esac
 
-# 检查配置文件
-CONFIG_FILE="environment.$ENVIRONMENT"
-if [ ! -f "$CONFIG_FILE" ]; then
-    print_error "配置文件不存在: $CONFIG_FILE"
+# 检查环境文件
+ENV_FILE="../../environments/env.$ENVIRONMENT"
+if [ ! -f "$ENV_FILE" ]; then
+    print_error "环境文件不存在: $ENV_FILE"
     exit 1
 fi
 
 print_status "开始部署 SupplyNexus PostgreSQL ($ENVIRONMENT 环境)"
 
 # 复制环境配置
-print_status "复制环境配置: $CONFIG_FILE -> .env"
-cp "$CONFIG_FILE" .env
+print_status "复制环境配置: $ENV_FILE -> .env"
+cp "$ENV_FILE" .env
 
 # 确保数据目录存在
 DATA_DIR=$(grep DATA_DIR .env | cut -d'=' -f2)
