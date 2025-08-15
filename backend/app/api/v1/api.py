@@ -4,7 +4,7 @@ API version 1 router
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, customers, orders, products, webhooks, dashboard, health, external_systems, shopify_orders, shopify_products, sync_configs
+from app.api.v1.endpoints import auth, customers, orders, products, webhooks, dashboard, health, external_systems, shopify_orders, shopify_products, sync_configs, sync_status
 
 api_router = APIRouter()
 
