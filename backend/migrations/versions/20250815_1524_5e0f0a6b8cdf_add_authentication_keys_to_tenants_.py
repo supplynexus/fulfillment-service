@@ -25,85 +25,87 @@ def upgrade() -> None:
     #         "last_product_sync_at", sa.DateTime(timezone=True), nullable=True
     #     ),
     # )
-    op.add_column(
-        "orders", sa.Column("order_number", sa.String(), nullable=True)
-    )
-    op.add_column(
-        "orders",
-        sa.Column(
-            "subtotal_amount", sa.Numeric(precision=10, scale=2), nullable=True
-        ),
-    )
-    op.add_column(
-        "orders",
-        sa.Column(
-            "tax_amount", sa.Numeric(precision=10, scale=2), nullable=True
-        ),
-    )
-    op.add_column(
-        "orders", sa.Column("shopify_raw_data", sa.JSON(), nullable=True)
-    )
-    op.add_column(
-        "orders", sa.Column("shopify_processed", sa.JSON(), nullable=True)
-    )
-    op.add_column(
-        "orders", sa.Column("external_data", sa.JSON(), nullable=True)
-    )
-    op.add_column(
-        "products", sa.Column("handle", sa.String(length=255), nullable=True)
-    )
-    op.add_column(
-        "products",
-        sa.Column("product_type", sa.String(length=100), nullable=True),
-    )
-    op.add_column(
-        "products", sa.Column("vendor", sa.String(length=100), nullable=True)
-    )
-    op.add_column("products", sa.Column("status", sa.String(), nullable=True))
-    op.add_column(
-        "products", sa.Column("tracks_inventory", sa.Boolean(), nullable=True)
-    )
-    op.add_column(
-        "products",
-        sa.Column("has_out_of_stock_variants", sa.Boolean(), nullable=True),
-    )
-    op.add_column(
-        "products",
-        sa.Column("has_only_default_variant", sa.Boolean(), nullable=True),
-    )
-    op.add_column(
-        "products", sa.Column("total_inventory", sa.Integer(), nullable=True)
-    )
-    op.add_column("products", sa.Column("seo", sa.JSON(), nullable=True))
-    op.add_column(
-        "products",
-        sa.Column("online_store_url", sa.String(length=500), nullable=True),
-    )
-    op.add_column(
-        "products",
-        sa.Column("published_at", sa.DateTime(timezone=True), nullable=True),
-    )
-    op.create_index(
-        "idx_products_handle", "products", ["handle"], unique=False
-    )
-    op.create_index(
-        "idx_products_inventory", "products", ["total_inventory"], unique=False
-    )
-    op.create_index(
-        "idx_products_published", "products", ["published_at"], unique=False
-    )
-    op.create_index(
-        "idx_products_tenant_status",
-        "products",
-        ["tenant_id", "status"],
-        unique=False,
-    )
-    op.create_index(
-        "idx_products_type", "products", ["product_type"], unique=False
-    )
-    op.create_index(
-        "idx_products_vendor", "products", ["vendor"], unique=False
-    )
+    # Note: orders columns already exist from 13392266efa0 migration
+    # op.add_column(
+    #     "orders", sa.Column("order_number", sa.String(), nullable=True)
+    # )
+    # op.add_column(
+    #     "orders",
+    #     sa.Column(
+    #         "subtotal_amount", sa.Numeric(precision=10, scale=2), nullable=True
+    #     ),
+    # )
+    # op.add_column(
+    #     "orders",
+    #     sa.Column(
+    #         "tax_amount", sa.Numeric(precision=10, scale=2), nullable=True
+    #     ),
+    # )
+    # op.add_column(
+    #     "orders", sa.Column("shopify_raw_data", sa.JSON(), nullable=True)
+    # )
+    # op.add_column(
+    #     "orders", sa.Column("shopify_processed", sa.JSON(), nullable=True)
+    # )
+    # op.add_column(
+    #     "orders", sa.Column("external_data", sa.JSON(), nullable=True)
+    # )
+    # Note: products columns already exist from 07810f82b1ea migration
+    # op.add_column(
+    #     "products", sa.Column("handle", sa.String(length=255), nullable=True)
+    # )
+    # op.add_column(
+    #     "products",
+    #     sa.Column("product_type", sa.String(length=100), nullable=True),
+    # )
+    # op.add_column(
+    #     "products", sa.Column("vendor", sa.String(length=100), nullable=True)
+    # )
+    # op.add_column("products", sa.Column("status", sa.String(), nullable=True))
+    # op.add_column(
+    #     "products", sa.Column("tracks_inventory", sa.Boolean(), nullable=True)
+    # )
+    # op.add_column(
+    #     "products",
+    #     sa.Column("has_out_of_stock_variants", sa.Boolean(), nullable=True),
+    # )
+    # op.add_column(
+    #     "products",
+    #     sa.Column("has_only_default_variant", sa.Boolean(), nullable=True),
+    # )
+    # op.add_column(
+    #     "products", sa.Column("total_inventory", sa.Integer(), nullable=True)
+    # )
+    # op.add_column("products", sa.Column("seo", sa.JSON(), nullable=True))
+    # op.add_column(
+    #     "products",
+    #     sa.Column("online_store_url", sa.String(length=500), nullable=True),
+    # )
+    # op.add_column(
+    #     "products",
+    #     sa.Column("published_at", sa.DateTime(timezone=True), nullable=True),
+    # )
+    # op.create_index(
+    #     "idx_products_handle", "products", ["handle"], unique=False
+    # )
+    # op.create_index(
+    #     "idx_products_inventory", "products", ["total_inventory"], unique=False
+    # )
+    # op.create_index(
+    #     "idx_products_published", "products", ["published_at"], unique=False
+    # )
+    # op.create_index(
+    #     "idx_products_tenant_status",
+    #     "products",
+    #     ["tenant_id", "status"],
+    #     unique=False,
+    # )
+    # op.create_index(
+    #     "idx_products_type", "products", ["product_type"], unique=False
+    # )
+    # op.create_index(
+    #     "idx_products_vendor", "products", ["vendor"], unique=False
+    # )
     op.add_column("tenants", sa.Column("public_key", sa.Text(), nullable=True))
     op.add_column(
         "tenants", sa.Column("key_id", sa.String(length=255), nullable=True)
@@ -125,29 +127,31 @@ def downgrade() -> None:
     op.drop_column("tenants", "key_type")
     op.drop_column("tenants", "key_id")
     op.drop_column("tenants", "public_key")
-    op.drop_index("idx_products_vendor", table_name="products")
-    op.drop_index("idx_products_type", table_name="products")
-    op.drop_index("idx_products_tenant_status", table_name="products")
-    op.drop_index("idx_products_published", table_name="products")
-    op.drop_index("idx_products_inventory", table_name="products")
-    op.drop_index("idx_products_handle", table_name="products")
-    op.drop_column("products", "published_at")
-    op.drop_column("products", "online_store_url")
-    op.drop_column("products", "seo")
-    op.drop_column("products", "total_inventory")
-    op.drop_column("products", "has_only_default_variant")
-    op.drop_column("products", "has_out_of_stock_variants")
-    op.drop_column("products", "tracks_inventory")
-    op.drop_column("products", "status")
-    op.drop_column("products", "vendor")
-    op.drop_column("products", "product_type")
-    op.drop_column("products", "handle")
-    op.drop_column("orders", "external_data")
-    op.drop_column("orders", "shopify_processed")
-    op.drop_column("orders", "shopify_raw_data")
-    op.drop_column("orders", "tax_amount")
-    op.drop_column("orders", "subtotal_amount")
-    op.drop_column("orders", "order_number")
+    # Note: products columns and indexes should not be dropped here as they were added in previous migrations
+    # op.drop_index("idx_products_vendor", table_name="products")
+    # op.drop_index("idx_products_type", table_name="products")
+    # op.drop_index("idx_products_tenant_status", table_name="products")
+    # op.drop_index("idx_products_published", table_name="products")
+    # op.drop_index("idx_products_inventory", table_name="products")
+    # op.drop_index("idx_products_handle", table_name="products")
+    # op.drop_column("products", "published_at")
+    # op.drop_column("products", "online_store_url")
+    # op.drop_column("products", "seo")
+    # op.drop_column("products", "total_inventory")
+    # op.drop_column("products", "has_only_default_variant")
+    # op.drop_column("products", "has_out_of_stock_variants")
+    # op.drop_column("products", "tracks_inventory")
+    # op.drop_column("products", "status")
+    # op.drop_column("products", "vendor")
+    # op.drop_column("products", "product_type")
+    # op.drop_column("products", "handle")
+    # Note: orders columns should not be dropped here as they were added in previous migrations
+    # op.drop_column("orders", "external_data")
+    # op.drop_column("orders", "shopify_processed")
+    # op.drop_column("orders", "shopify_raw_data")
+    # op.drop_column("orders", "tax_amount")
+    # op.drop_column("orders", "subtotal_amount")
+    # op.drop_column("orders", "order_number")
     # Note: last_product_sync_at column should not be dropped here as it was added in a previous migration
     # op.drop_column("external_systems", "last_product_sync_at")
     # ### end Alembic commands ###
