@@ -23,7 +23,7 @@ class Product(Base):
     
     # Product identifiers
     title = Column(String, nullable=False)
-    handle = Column(String(255), nullable=True, unique=True)  # URL handle for Shopify products
+    handle = Column(String(255), nullable=True)  # URL handle for Shopify products
     description = Column(Text, nullable=True)
     
     # Product details
@@ -49,11 +49,8 @@ class Product(Base):
     total_inventory = Column(Integer, nullable=True)
     
     # Product metadata
-    handle = Column(String, nullable=True)
-    product_type = Column(String, nullable=True)
-    vendor = Column(String, nullable=True)
     seo = Column(JSON, nullable=True)
-    online_store_url = Column(String, nullable=True)
+    online_store_url = Column(String(500), nullable=True)
     published_at = Column(DateTime(timezone=True), nullable=True)
     
     # External system specific data

@@ -13,28 +13,28 @@ from app.core.database import Base
 
 class SyncType(enum.Enum):
     """同步类型"""
-    PRODUCTS = "products"
-    ORDERS = "orders"
-    CUSTOMERS = "customers"
-    INVENTORY = "inventory"
+    PRODUCTS = "PRODUCTS"
+    ORDERS = "ORDERS"
+    CUSTOMERS = "CUSTOMERS"
+    INVENTORY = "INVENTORY"
 
 
 class SyncFrequency(enum.Enum):
     """同步频率"""
-    MANUAL = "manual"           # 手动触发
-    HOURLY = "hourly"          # 每小时
-    DAILY = "daily"            # 每天
-    WEEKLY = "weekly"          # 每周
-    CUSTOM = "custom"          # 自定义间隔
+    MANUAL = "MANUAL"           # 手动触发
+    HOURLY = "HOURLY"          # 每小时
+    DAILY = "DAILY"            # 每天
+    WEEKLY = "WEEKLY"          # 每周
+    CUSTOM = "CUSTOM"          # 自定义间隔
 
 
 class SyncJobStatus(enum.Enum):
     """同步任务状态"""
-    PENDING = "pending"         # 等待中
-    RUNNING = "running"         # 执行中
-    SUCCESS = "success"         # 成功
-    FAILED = "failed"           # 失败
-    CANCELLED = "cancelled"     # 已取消
+    PENDING = "PENDING"         # 等待中
+    RUNNING = "RUNNING"         # 执行中
+    SUCCESS = "SUCCESS"         # 成功
+    FAILED = "FAILED"           # 失败
+    CANCELLED = "CANCELLED"     # 已取消
 
 
 class SyncConfig(Base):
