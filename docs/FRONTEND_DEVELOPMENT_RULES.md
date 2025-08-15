@@ -25,6 +25,11 @@
 - **Emotion 11.14.0** - CSS-in-JS 解决方案
 - **MUI Theme** - 统一的设计系统
 
+### 认证和 API 集成
+- **RSA 签名认证** - 用于服务间通信
+- **JWT 令牌** - 用于前端用户认证
+- **Axios** - HTTP 客户端
+
 ## 2. 项目结构规范
 
 ### 目录结构
@@ -510,6 +515,271 @@ NEXT_PUBLIC_TENANT_HASHID=PoRpOk2e
 - [ ] 权限控制正确
 - [ ] 无安全漏洞
 
+## 14. 高级集成规范
+
+### tRPC 集成（可选）
+
+如果项目需要端到端类型安全的 API，可以考虑集成 tRPC：
+
+#### 项目结构
+```
+src/
+├── server/
+│   ├── routers/
+│   │   ├── _app.ts          # 主路由
+│   │   ├── user.ts          # 用户相关路由
+│   │   └── order.ts         # 订单相关路由
+│   ├── context.ts           # 上下文创建
+│   └── trpc.ts              # tRPC 配置
+└── utils/
+    └── trpc.ts              # 客户端配置
+```
+
+#### 服务器端设置
+```typescript
+// server/trpc.ts
+import { initTRPC } from '@trpc/server';
+import { z } from 'zod';
+
+const t = initTRPC.create({
+  transformer: superjson,
+});
+
+export const router = t.router;
+export const publicProcedure = t.procedure;
+
+// 认证中间件
+const isAuthed = t.middleware(({ next, ctx }) => {
+  if (!ctx.user) {
+    throw new TRPCError({ code: 'UNAUTHORIZED' });
+  }
+  return next({ ctx: { user: ctx.user } });
+});
+
+export const protectedProcedure = t.procedure.use(isAuthed);
+```
+
+#### 客户端设置
+```typescript
+// utils/trpc.ts
+import { createTRPCNext } from '@trpc/next';
+import { httpBatchLink } from '@trpc/client';
+import type { AppRouter } from '../server/routers/_app';
+
+export const trpc = createTRPCNext<AppRouter>({
+  config() {
+    return {
+      links: [
+        httpBatchLink({
+          url: `${getBaseUrl()}/api/trpc`,
+        }),
+      ],
+    };
+  },
+  ssr: false,
+});
+```
+
+#### 使用示例
+```typescript
+// hooks/useUsers.ts
+import { trpc } from '@/utils/trpc';
+
+export function useUsers() {
+  return trpc.user.list.useQuery();
+}
+
+export function useCreateUser() {
+  const utils = trpc.useUtils();
+  
+  return trpc.user.create.useMutation({
+    onSuccess: () => {
+      utils.user.list.invalidate();
+    },
+  });
+}
+```
+
+### Supabase Auth 集成（可选）
+
+如果需要更强大的认证功能，可以考虑集成 Supabase Auth：
+
+#### 环境变量
+```bash
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+```
+
+#### 客户端配置
+```typescript
+// lib/supabase/client.ts
+import { createBrowserClient } from '@supabase/ssr';
+
+export function createClient() {
+  return createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+}
+```
+
+#### 服务器端配置
+```typescript
+// lib/supabase/server.ts
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
+
+export async function createClient() {
+  const cookieStore = await cookies();
+
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            );
+          } catch {
+            // 忽略服务器组件的 setAll 调用
+          }
+        },
+      },
+    }
+  );
+}
+```
+
+#### 中间件配置
+```typescript
+// middleware.ts
+import { createServerClient } from '@supabase/ssr';
+import { NextResponse, type NextRequest } from 'next/server';
+
+export async function middleware(request: NextRequest) {
+  let supabaseResponse = NextResponse.next({ request });
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => 
+            request.cookies.set(name, value)
+          );
+          supabaseResponse = NextResponse.next({ request });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            supabaseResponse.cookies.set(name, value, options)
+          );
+        },
+      },
+    }
+  );
+
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user && !request.nextUrl.pathname.startsWith('/login')) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/login';
+    return NextResponse.redirect(url);
+  }
+
+  return supabaseResponse;
+}
+```
+
+### Trigger.dev 集成（可选）
+
+如果需要后台任务处理，可以考虑集成 Trigger.dev：
+
+#### 安装和配置
+```bash
+npm install @trigger.dev/sdk@latest
+npx trigger.dev@latest init
+```
+
+#### 任务定义
+```typescript
+// trigger/tasks/email.ts
+import { task } from "@trigger.dev/sdk/v3";
+
+export const sendWelcomeEmail = task({
+  id: "send-welcome-email",
+  run: async (payload: { email: string; name: string }) => {
+    // 发送欢迎邮件的逻辑
+    console.log(`Sending welcome email to ${payload.email}`);
+  },
+});
+
+export const processOrder = task({
+  id: "process-order",
+  retry: {
+    maxAttempts: 3,
+    factor: 2,
+  },
+  run: async (payload: { orderId: string }) => {
+    // 处理订单的逻辑
+    console.log(`Processing order ${payload.orderId}`);
+  },
+});
+```
+
+#### 从后端触发任务
+```typescript
+// services/taskService.ts
+import { tasks } from "@trigger.dev/sdk/v3";
+
+export async function triggerWelcomeEmail(email: string, name: string) {
+  return await tasks.trigger("send-welcome-email", { email, name });
+}
+
+export async function triggerOrderProcessing(orderId: string) {
+  return await tasks.trigger("process-order", { orderId });
+}
+```
+
+#### 实时监控
+```typescript
+// hooks/useTaskStatus.ts
+import { useRun } from "@trigger.dev/react-hooks";
+
+export function useTaskStatus(taskId: string) {
+  return useRun(taskId);
+}
+```
+
+## 15. 最佳实践总结
+
+### 开发流程
+1. **需求分析** - 明确功能需求和用户故事
+2. **技术选型** - 根据需求选择合适的技术栈
+3. **架构设计** - 设计组件结构和数据流
+4. **开发实现** - 按照规范进行开发
+5. **测试验证** - 单元测试和集成测试
+6. **代码审查** - 使用审查清单进行检查
+7. **部署上线** - 按环境配置进行部署
+
+### 持续改进
+- **定期回顾** - 定期回顾开发过程和代码质量
+- **技术更新** - 关注技术栈的更新和最佳实践
+- **性能优化** - 持续监控和优化应用性能
+- **安全加固** - 定期进行安全审计和加固
+
+### 团队协作
+- **代码规范** - 统一代码风格和命名规范
+- **文档维护** - 及时更新技术文档和 API 文档
+- **知识分享** - 定期进行技术分享和培训
+- **工具使用** - 合理使用开发工具和自动化流程
+
 ---
 
-**注意**: 这些规则应该根据项目发展和团队反馈持续更新和改进。
+**注意**: 这些规则应该根据项目发展和团队反馈持续更新和改进。高级集成规范（tRPC、Supabase Auth、Trigger.dev）是可选的，应根据项目实际需求决定是否采用。
