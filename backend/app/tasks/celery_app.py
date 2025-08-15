@@ -18,7 +18,7 @@ celery_app = Celery(
 )
 
 # Import beat schedule
-from app.tasks.celery_beat_schedule import CELERY_BEAT_SCHEDULE, CELERY_TASK_ROUTES
+from app.tasks.celery_beat_schedule import CELERY_BEAT_SCHEDULE
 
 # Celery configuration
 celery_app.conf.update(

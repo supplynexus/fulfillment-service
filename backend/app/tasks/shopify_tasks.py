@@ -16,7 +16,7 @@ from app.services.shopify.client import create_shopify_client
 from app.services.shopify.order_service import ShopifyOrderService
 from app.services.shopify.product_service import ShopifyProductService
 from app.models.order import Order
-# from app.schemas.order import OrderCreate  # 暂时注释掉，因为 OrderCreate 不存在
+from app.schemas.order import OrderCreate
 
 logger = logging.getLogger(__name__)
 
