@@ -61,7 +61,7 @@ case $ENVIRONMENT in
 esac
 
 # 检查环境文件
-ENV_FILE="../../environments/env.$ENVIRONMENT"
+ENV_FILE="environment.$ENVIRONMENT"
 if [ ! -f "$ENV_FILE" ]; then
     print_error "环境文件不存在: $ENV_FILE"
     exit 1
@@ -75,7 +75,7 @@ cp "$ENV_FILE" .env
 
 # 确保数据目录存在
 DATA_DIR=$(grep DATA_DIR .env | cut -d'=' -f2)
-if [ ! -d "$DATA_DIR" ]; then
+if [ -n "$DATA_DIR" ] && [ ! -d "$DATA_DIR" ]; then
     print_status "创建数据目录: $DATA_DIR"
     mkdir -p "$DATA_DIR"
 fi
