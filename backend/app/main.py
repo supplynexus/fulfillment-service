@@ -15,7 +15,8 @@ from datetime import datetime
 
 from app.core.config import settings
 from app.core.database import init_db
-from app.core.logging import setup_logging, get_logger
+from app.core.logging import setup_logging, get_logger, RequestLogger
+from app.core.request_middleware import RequestIDMiddleware
 from app.api.v1.api import api_router
 
 # 设置日志配置
@@ -51,6 +52,9 @@ app = FastAPI(
 allowed_hosts = settings.ALLOWED_HOSTS.split(",") if isinstance(settings.ALLOWED_HOSTS, str) else settings.ALLOWED_HOSTS
 allowed_origins = settings.ALLOWED_ORIGINS.split(",") if isinstance(settings.ALLOWED_ORIGINS, str) else settings.ALLOWED_ORIGINS
 
+# 添加请求ID中间件（必须在其他中间件之前）
+app.add_middleware(RequestIDMiddleware)
+
 # Security middleware
 app.add_middleware(
     TrustedHostMiddleware, 
@@ -70,11 +74,15 @@ app.add_middleware(
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Global exception handler for unhandled errors"""
-    logger.error(
+    request_logger = RequestLogger(__name__)
+    request_logger.error(
         "Unhandled exception occurred",
         path=request.url.path,
         method=request.method,
+        client_ip=request.client.host if request.client else None,
+        user_agent=request.headers.get("User-Agent"),
         error=str(exc),
+        error_type=type(exc).__name__,
         exc_info=True
     )
     return JSONResponse(

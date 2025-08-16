@@ -99,10 +99,13 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 pids
 *.pid
 
-# Frontend keys (never commit to git)
-frontend/keys/*.pem
-frontend/keys/*.key
-frontend/keys/*.crt
+# Keys directories (never commit to git)
+keys/
+frontend/keys/
+backend/keys/
+*.pem
+*.key
+*.crt
 
 *.seed
 *.pid.lock

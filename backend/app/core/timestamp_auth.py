@@ -6,6 +6,8 @@ import hashlib
 import hmac
 import time
 import secrets
+import base64
+import json
 from typing import Optional, Dict, Any, Tuple
 from datetime import datetime, timedelta
 from cryptography.hazmat.primitives import serialization, hashes
@@ -21,18 +23,20 @@ from app.models.user import User
 from app.models.tenant import Tenant
 from app.models.user_tenant import UserTenant
 from app.core.redis_client import redis_client
+from app.core.logging import RequestLogger
 
 
 class TimestampAuthService:
     """Service for timestamp-based signature authentication"""
-    
+
     def __init__(self, db: AsyncSession):
         self.db = db
-    
+        self.logger = RequestLogger(__name__)
+
     def generate_nonce(self) -> str:
         """Generate a random nonce"""
         return secrets.token_urlsafe(32)
-    
+
     def create_signature_string(
         self,
         method: str,
@@ -47,7 +51,7 @@ class TimestampAuthService:
         # Format: METHOD + PATH + TIMESTAMP + NONCE + TENANT_ID + USER_ID + BODY
         user_part = f"{user_id}" if user_id else ""
         return f"{method.upper()}{path}{timestamp}{nonce}{tenant_id}{user_part}{body}"
-    
+
     async def verify_timestamp_signature(
         self,
         request: Request,
@@ -56,175 +60,380 @@ class TimestampAuthService:
         key_id: Optional[str] = None
     ) -> Tuple[bool, int, int, str, int]:
         """
-        Verify timestamp-based signature
-        Args:
-            request: FastAPI request object
-            signature: X-Signature header value
-            tenant_hashid: X-Tenant-ID header value (hashids encoded)
-            key_id: Optional key ID to use
-        Returns: (is_valid, tenant_id, user_id, nonce, timestamp)
+        Verify timestamp-based signature for tenant authentication
+        
+        Returns:
+            Tuple[bool, int, int, str, int]: (is_valid, tenant_id, user_id, nonce, timestamp)
         """
-        """Verify timestamp-based signature"""
-        
-        # 1. Try to extract information from signature
-        # For now, we'll use a simple approach - in production, you might want to use JWT or other structured format
-        try:
-            # Decode signature to extract information
-            # This is a simplified approach - in real implementation, you might use JWT or structured format
-            import base64
-            import json
-            
-            # Assuming signature contains encoded information
-            decoded_signature = base64.b64decode(signature).decode()
-            signature_data = json.loads(decoded_signature)
-            
-            # Decode tenant ID from hashids
-            from app.core.hashids_utils import decode_tenant_id
-            tenant_id = decode_tenant_id(tenant_hashid)
-            
-            if not tenant_id:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid tenant ID"
-                )
-            
-            timestamp = signature_data.get("timestamp")
-            nonce = signature_data.get("nonce")
-            user_id = signature_data.get("user_id")  # Optional
-            actual_signature = signature_data.get("signature")
-            
-            if not all([timestamp, nonce, actual_signature]):
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid signature format - missing required fields"
-                )
-            
-        except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"Failed to decode signature: {str(e)}"
-            )
-        
-        # 2. Check timestamp validity (prevent replay attacks)
-        current_time = int(time.time())
-        time_diff = abs(current_time - timestamp)
-        
-        # Allow 5 minutes time difference
-        if time_diff > 300:  # 5 minutes = 300 seconds
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"Timestamp expired. Time difference: {time_diff} seconds"
-            )
-        
-        # 3. Check nonce to prevent replay attacks
-        try:
-            nonce_key = f"used_nonce:{tenant_id}:{nonce}"
-            is_used = await redis_client.client.get(nonce_key)
-            if is_used:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Nonce already used"
-                )
-        except Exception as e:
-            # If Redis is not available, skip nonce check for now
-            print(f"Warning: Redis nonce check failed: {e}")
-            pass
-        
-        # 4. Get user's public key (if user_id provided)
-        if user_id:
-            query = select(UserKey).where(
-                UserKey.user_id == user_id,
-                UserKey.is_active == True
-            )
-        else:
-            # For tenant-only operations, use the frontend server key
-            query = select(UserKey).where(
-                UserKey.key_id == "frontend-server-1",
-                UserKey.is_active == True
-            )
-        
-        if key_id:
-            query = query.where(UserKey.key_id == key_id)
-        else:
-            query = query.where(UserKey.is_primary == True)
-        
-        result = await self.db.execute(query)
-        user_key = result.scalar_one_or_none()
-        
-        if not user_key:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="User key not found"
-            )
-        
-        # 5. Create signature string
-        try:
-            body = await request.body()
-            body_str = body.decode() if body else ""
-        except (AttributeError, TypeError):
-            # Handle case where request.body is not a coroutine (e.g., mock objects)
-            body = getattr(request, 'body', b'')
-            body_str = body.decode() if isinstance(body, bytes) else str(body or "")
-        
-        signature_string = self.create_signature_string(
-            method=request.method,
-            path=str(request.url.path),
-            timestamp=timestamp,
-            nonce=nonce,
-            tenant_id=tenant_id,
-            user_id=user_id,
-            body=body_str
+        self.logger.info(
+            "Starting signature verification",
+            tenant_hashid=tenant_hashid,
+            has_signature=bool(signature),
+            key_id=key_id
         )
         
-        # 5. Verify signature
         try:
-            # Load public key
-            public_key = serialization.load_pem_public_key(
-                user_key.public_key.encode(),
-                backend=default_backend()
+            # Decode tenant ID from hashid
+            from app.core.config import settings
+            from hashids import Hashids
+            
+            hashids = Hashids(settings.HASHIDS_SALT, min_length=settings.HASHIDS_MIN_LENGTH)
+            tenant_id = hashids.decode(tenant_hashid)
+            
+            if not tenant_id:
+                self.logger.warning(
+                    "Signature verification failed - invalid tenant hashid",
+                    tenant_hashid=tenant_hashid
+                )
+                return False, 0, 0, "", 0
+            
+            tenant_id = tenant_id[0]  # hashids.decode returns a list
+            self.logger.info(
+                "Tenant ID decoded",
+                tenant_hashid=tenant_hashid,
+                tenant_id=tenant_id
+            )
+            
+            # Get timestamp and nonce from headers
+            timestamp_str = request.headers.get("X-Timestamp")
+            nonce = request.headers.get("X-Nonce")
+            
+            if not timestamp_str or not nonce:
+                self.logger.warning(
+                    "Signature verification failed - missing timestamp or nonce",
+                    tenant_id=tenant_id,
+                    has_timestamp=bool(timestamp_str),
+                    has_nonce=bool(nonce)
+                )
+                return False, 0, 0, "", 0
+            
+            try:
+                timestamp = int(timestamp_str)
+            except ValueError:
+                self.logger.warning(
+                    "Signature verification failed - invalid timestamp format",
+                    tenant_id=tenant_id,
+                    timestamp_str=timestamp_str
+                )
+                return False, 0, 0, "", 0
+            
+            self.logger.info(
+                "Headers parsed",
+                tenant_id=tenant_id,
+                timestamp=timestamp,
+                nonce=nonce
+            )
+            
+            # Check timestamp validity (within 5 minutes)
+            current_time = int(time.time())
+            if abs(current_time - timestamp) > 300:  # 5 minutes
+                self.logger.warning(
+                    "Signature verification failed - timestamp expired",
+                    tenant_id=tenant_id,
+                    timestamp=timestamp,
+                    current_time=current_time,
+                    time_diff=abs(current_time - timestamp)
+                )
+                return False, 0, 0, "", 0
+            
+            # Check nonce reuse
+            nonce_key = f"nonce:{tenant_id}:{nonce}"
+            if await redis_client.is_blacklisted(nonce_key):
+                self.logger.warning(
+                    "Signature verification failed - nonce reused",
+                    tenant_id=tenant_id,
+                    nonce=nonce
+                )
+                return False, 0, 0, "", 0
+            
+            # Get tenant public key
+            tenant_result = await self.db.execute(
+                select(Tenant).where(Tenant.id == tenant_id)
+            )
+            tenant = tenant_result.scalar_one_or_none()
+            
+            if not tenant:
+                self.logger.warning(
+                    "Signature verification failed - tenant not found",
+                    tenant_id=tenant_id
+                )
+                return False, 0, 0, "", 0
+            
+            if not tenant.public_key:
+                self.logger.warning(
+                    "Signature verification failed - tenant has no public key",
+                    tenant_id=tenant_id,
+                    tenant_name=tenant.name
+                )
+                return False, 0, 0, "", 0
+            
+            self.logger.info(
+                "Tenant found",
+                tenant_id=tenant_id,
+                tenant_name=tenant.name,
+                has_public_key=bool(tenant.public_key)
+            )
+            
+            # Get request body
+            body = await request.body()
+            body_str = body.decode('utf-8') if body else ""
+            
+            self.logger.info(
+                "Request body retrieved",
+                tenant_id=tenant_id,
+                body_length=len(body_str)
+            )
+            
+            # Construct signature string
+            method = request.method.upper()
+            path = request.url.path
+            signature_string = f"{method}{path}{timestamp}{nonce}{tenant_id}{body_str}"
+            
+            self.logger.info(
+                "Signature string constructed",
+                tenant_id=tenant_id,
+                method=method,
+                path=path,
+                signature_string_length=len(signature_string)
             )
             
             # Verify signature
-            if user_key.key_type == "rsa":
-                # Convert hex signature to bytes
-                signature_bytes = bytes.fromhex(actual_signature)
+            try:
+                # Load public key
+                public_key = serialization.load_pem_public_key(
+                    tenant.public_key.encode(),
+                    backend=default_backend()
+                )
                 
+                # Decode signature
+                signature_bytes = base64.b64decode(signature)
+                
+                # Verify signature
                 public_key.verify(
                     signature_bytes,
                     signature_string.encode(),
-                    padding.PSS(
-                        mgf=padding.MGF1(hashes.SHA256()),
-                        salt_length=padding.PSS.MAX_LENGTH
-                    ),
+                    padding.PKCS1v15(),
                     hashes.SHA256()
                 )
-            else:
-                raise NotImplementedError(f"Key type {user_key.key_type} not supported")
-            
-            # 6. Mark nonce as used (with TTL to prevent memory leaks)
-            try:
-                if redis_client.client:
-                    await redis_client.client.setex(nonce_key, 600, "1")  # 10 minutes TTL
+                
+                self.logger.info(
+                    "Signature verification successful",
+                    tenant_id=tenant_id,
+                    tenant_name=tenant.name
+                )
+                
+                # Store nonce to prevent reuse
+                await redis_client.add_to_blacklist(
+                    nonce_key, 
+                    datetime.utcnow() + timedelta(minutes=10),  # 10 minutes TTL
+                    user_id=0,  # Not applicable for nonce
+                    customer_id=None
+                )
+                
+                return True, tenant_id, 0, nonce, timestamp
+                
             except Exception as e:
-                # If Redis is not available, skip nonce tracking
-                print(f"Warning: Redis nonce tracking failed: {e}")
-                pass
-            
-            # 7. Update usage tracking
-            user_key.last_used_at = datetime.utcnow()
-            if user_key.usage_count is None:
-                user_key.usage_count = 1
-            else:
-                user_key.usage_count += 1
-            await self.db.commit()
-            
-            return True, tenant_id, user_id, nonce, timestamp
-            
+                self.logger.error(
+                    "Signature verification failed",
+                    tenant_id=tenant_id,
+                    tenant_name=tenant.name,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    exc_info=True
+                )
+                return False, 0, 0, "", 0
+                
         except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"Signature verification failed: {str(e)}"
+            self.logger.error(
+                "Signature verification failed with exception",
+                tenant_hashid=tenant_hashid,
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=True
             )
+            return False, 0, 0, "", 0
+    
+    async def verify_timestamp_signature_with_body(
+        self,
+        signature: str,
+        tenant_hashid: str,
+        timestamp: str,
+        nonce: str,
+        method: str,
+        path: str,
+        body: str
+    ) -> Tuple[bool, int, int, str, int]:
+        """
+        Verify timestamp-based signature for tenant authentication with provided body
+        
+        Returns:
+            Tuple[bool, int, int, str, int]: (is_valid, tenant_id, user_id, nonce, timestamp)
+        """
+        self.logger.info(
+            "Starting signature verification with body",
+            tenant_hashid=tenant_hashid,
+            has_signature=bool(signature),
+            method=method,
+            path=path,
+            body_length=len(body)
+        )
+        
+        try:
+            # Decode tenant ID from hashid
+            from app.core.config import settings
+            from hashids import Hashids
+            
+            hashids = Hashids(settings.HASHIDS_SALT, min_length=settings.HASHIDS_MIN_LENGTH)
+            tenant_id = hashids.decode(tenant_hashid)
+            
+            if not tenant_id:
+                self.logger.warning(
+                    "Signature verification failed - invalid tenant hashid",
+                    tenant_hashid=tenant_hashid
+                )
+                return False, 0, 0, "", 0
+            
+            tenant_id = tenant_id[0]  # hashids.decode returns a list
+            self.logger.info(
+                "Tenant ID decoded",
+                tenant_hashid=tenant_hashid,
+                tenant_id=tenant_id
+            )
+            
+            # Parse timestamp
+            try:
+                timestamp_int = int(timestamp)
+            except ValueError:
+                self.logger.warning(
+                    "Signature verification failed - invalid timestamp format",
+                    tenant_id=tenant_id,
+                    timestamp=timestamp
+                )
+                return False, 0, 0, "", 0
+            
+            self.logger.info(
+                "Parameters parsed",
+                tenant_id=tenant_id,
+                timestamp=timestamp_int,
+                nonce=nonce
+            )
+            
+            # Check timestamp validity (within 5 minutes)
+            current_time = int(time.time())
+            if abs(current_time - timestamp_int) > 300:  # 5 minutes
+                self.logger.warning(
+                    "Signature verification failed - timestamp expired",
+                    tenant_id=tenant_id,
+                    timestamp=timestamp_int,
+                    current_time=current_time,
+                    time_diff=abs(current_time - timestamp_int)
+                )
+                return False, 0, 0, "", 0
+            
+            # Check nonce reuse
+            nonce_key = f"nonce:{tenant_id}:{nonce}"
+            if await redis_client.is_blacklisted(nonce_key):
+                self.logger.warning(
+                    "Signature verification failed - nonce reused",
+                    tenant_id=tenant_id,
+                    nonce=nonce
+                )
+                return False, 0, 0, "", 0
+            
+            # Get tenant public key
+            tenant_result = await self.db.execute(
+                select(Tenant).where(Tenant.id == tenant_id)
+            )
+            tenant = tenant_result.scalar_one_or_none()
+            
+            if not tenant:
+                self.logger.warning(
+                    "Signature verification failed - tenant not found",
+                    tenant_id=tenant_id
+                )
+                return False, 0, 0, "", 0
+            
+            if not tenant.public_key:
+                self.logger.warning(
+                    "Signature verification failed - tenant has no public key",
+                    tenant_id=tenant_id,
+                    tenant_name=tenant.name
+                )
+                return False, 0, 0, "", 0
+            
+            self.logger.info(
+                "Tenant found",
+                tenant_id=tenant_id,
+                tenant_name=tenant.name,
+                has_public_key=bool(tenant.public_key)
+            )
+            
+            # Construct signature string
+            signature_string = f"{method.upper()}{path}{timestamp_int}{nonce}{tenant_id}{body}"
+            
+            self.logger.info(
+                "Signature string constructed",
+                tenant_id=tenant_id,
+                method=method.upper(),
+                path=path,
+                signature_string_length=len(signature_string)
+            )
+            
+            # Verify signature
+            try:
+                # Load public key
+                public_key = serialization.load_pem_public_key(
+                    tenant.public_key.encode(),
+                    backend=default_backend()
+                )
+                
+                # Decode signature
+                signature_bytes = base64.b64decode(signature)
+                
+                # Verify signature
+                public_key.verify(
+                    signature_bytes,
+                    signature_string.encode(),
+                    padding.PKCS1v15(),
+                    hashes.SHA256()
+                )
+                
+                self.logger.info(
+                    "Signature verification successful",
+                    tenant_id=tenant_id,
+                    tenant_name=tenant.name
+                )
+                
+                # Store nonce to prevent reuse
+                await redis_client.add_to_blacklist(
+                    nonce_key, 
+                    datetime.utcnow() + timedelta(minutes=10),  # 10 minutes TTL
+                    user_id=0,  # Not applicable for nonce
+                    customer_id=None
+                )
+                
+                return True, tenant_id, 0, nonce, timestamp_int
+                
+            except Exception as e:
+                self.logger.error(
+                    "Signature verification failed",
+                    tenant_id=tenant_id,
+                    tenant_name=tenant.name,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    exc_info=True
+                )
+                return False, 0, 0, "", 0
+                
+        except Exception as e:
+            self.logger.error(
+                "Signature verification failed with exception",
+                tenant_hashid=tenant_hashid,
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=True
+            )
+            return False, 0, 0, "", 0
     
     async def create_system_signature(
         self,
@@ -293,8 +502,6 @@ class TimestampAuthService:
         }
         
         # Encode as base64
-        import base64
-        import json
         encoded_signature = base64.b64encode(
             json.dumps(signature_data).encode()
         ).decode()
