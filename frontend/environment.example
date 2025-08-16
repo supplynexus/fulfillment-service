@@ -14,6 +14,14 @@ FRONTEND_USER_EMAIL=frontend@supplynexus.store
 # Tenant Configuration
 NEXT_PUBLIC_TENANT_HASHID=PoRpOk2e
 
+# Tenant Authentication Keys
+# 租户认证私钥（用于登录时的签名）
+NEXT_PUBLIC_TENANT_PRIVATE_KEY=-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----
+
+# Tenant Configuration
+# 租户配置（租户名称 -> 租户ID的映射）
+NEXT_PUBLIC_TENANT_CONFIG={"test900000": {"id": 1, "name": "test900000"}}
+
 # Development Settings
 NODE_ENV=development
 NEXT_PUBLIC_ENVIRONMENT=local

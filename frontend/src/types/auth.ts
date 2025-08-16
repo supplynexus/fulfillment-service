@@ -9,8 +9,9 @@ export interface User {
 }
 
 export interface LoginCredentials {
-  email: string;
+  username: string;
   password: string;
+  tenantName: string;
 }
 
 export interface RegisterData {
@@ -21,5 +22,7 @@ export interface RegisterData {
 
 export interface TokenResponse {
   access_token: string;
+  refresh_token: string;
   token_type: string;
+  tenant_name?: string;  // 添加 tenant_name
 }

@@ -5,3 +5,8 @@
 .env.prod
 .env.stg
 *.backup
+
+# Keys directory - contains sensitive private/public keys
+keys/
+*.pem
+*.key

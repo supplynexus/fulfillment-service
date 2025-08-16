@@ -1,8 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    appDir: true,
-  },
   env: {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
     NEXT_PUBLIC_APP_NAME: 'SupplyNexus Fulfillment Service',
@@ -24,9 +21,6 @@ const nextConfig = {
   },
   // Enable strict mode for better dev experience
   reactStrictMode: true,
-  
-  // Optimize fonts
-  optimizeFonts: true,
   
   // Security headers
   async headers() {
