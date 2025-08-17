@@ -75,5 +75,9 @@ keys/
 *.pem
 *.key
 
+# Test configuration files
+test-config.js
+temp/
+
 # TypeScript
 *.tsbuildinfo

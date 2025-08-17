@@ -235,6 +235,13 @@ case $ACTION in
         else
             print_error "Flower: 未运行"
         fi
+        
+        # 检查 Frontend
+        if docker-compose ps frontend | grep -q "Up"; then
+            print_success "Frontend: 运行中"
+        else
+            print_error "Frontend: 未运行"
+        fi
         ;;
         
     "clean")
@@ -286,3 +293,18 @@ case $ACTION in
 esac
 
 print_status "🎉 操作完成！"
+
+# 显示访问信息
+if [ "$ACTION" = "up" ] || [ "$ACTION" = "build" ]; then
+    echo ""
+    print_status "🌐 服务访问地址:"
+    print_success "Frontend: http://localhost:${FRONTEND_PORT:-3000}"
+    print_success "Backend API: http://localhost:${BACKEND_PORT:-8000}"
+    print_success "Flower (Celery): http://localhost:${FLOWER_PORT:-5555}"
+    print_success "PostgreSQL: localhost:${POSTGRES_PORT:-5432}"
+    print_success "Redis: localhost:${REDIS_PORT:-6379}"
+    echo ""
+    print_status "📊 健康检查:"
+    print_success "Frontend Health: http://localhost:${FRONTEND_PORT:-3000}/api/health"
+    print_success "Backend Health: http://localhost:${BACKEND_PORT:-8000}/health"
+fi

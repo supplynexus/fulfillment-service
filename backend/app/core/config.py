@@ -35,8 +35,9 @@ class Settings(BaseSettings):
     
     # 应用配置
     ENVIRONMENT: str = "dev"
-    ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:3001"
-    ALLOWED_HOSTS: str = "localhost,127.0.0.1"
+    # 开发环境：允许所有来源和主机
+    ALLOWED_ORIGINS: str = "*"
+    ALLOWED_HOSTS: str = "*"
     
     # API 配置
     API_V1_STR: str = "/api/v1"

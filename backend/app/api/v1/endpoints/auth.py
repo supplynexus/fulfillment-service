@@ -17,7 +17,7 @@ from app.core.security import create_access_token, create_refresh_token, get_cur
 from app.core.logging import RequestLogger
 from app.models.user import User
 from app.models.user_tenant import UserTenant
-from app.schemas.auth import Token, UserCreate, UserResponse
+from app.schemas.auth import Token, TenantLoginResponse, UserCreate, UserResponse
 from app.services.user_service import UserService
 
 router = APIRouter()
@@ -118,11 +118,10 @@ async def login_for_access_token(
     }
 
 
-@router.post("/login/tenant", response_model=Token)
+@router.post("/login/tenant", response_model=TenantLoginResponse)
 async def login_with_tenant(
     request: Request,
-    db: AsyncSession = Depends(get_async_db),
-    form_data: OAuth2PasswordRequestForm = Depends()
+    db: AsyncSession = Depends(get_async_db)
 ) -> Any:
     """
     Tenant-based login with signature verification
@@ -138,9 +137,74 @@ async def login_with_tenant(
     timestamp = request.headers.get("X-Timestamp")
     nonce = request.headers.get("X-Nonce")
     
+    # 从请求体中提取表单数据
+    try:
+        body_bytes = await request.body()
+        body_str = body_bytes.decode('utf-8')
+        
+        logger.info(
+            "Request body received",
+            body_length=len(body_str),
+            body_content=body_str[:200] + "..." if len(body_str) > 200 else body_str,
+            client_ip=request.client.host if request.client else None
+        )
+        
+        # 解析表单数据
+        from urllib.parse import parse_qs
+        parsed_data = parse_qs(body_str)
+        
+        logger.info(
+            "Form data parsed",
+            parsed_keys=list(parsed_data.keys()),
+            client_ip=request.client.host if request.client else None
+        )
+        
+        username = parsed_data.get('username', [None])[0]
+        password = parsed_data.get('password', [None])[0]
+        tenant_name = parsed_data.get('tenant_name', [None])[0]
+        
+        logger.info(
+            "Form fields extracted",
+            has_username=bool(username),
+            has_password=bool(password),
+            has_tenant_name=bool(tenant_name),
+            username_length=len(username) if username else 0,
+            password_length=len(password) if password else 0,
+            tenant_name_value=tenant_name,
+            client_ip=request.client.host if request.client else None
+        )
+        
+        if not all([username, password, tenant_name]):
+            logger.warning(
+                "Tenant login failed - missing required fields",
+                has_username=bool(username),
+                has_password=bool(password),
+                has_tenant_name=bool(tenant_name),
+                username_value=username,
+                tenant_name_value=tenant_name,
+                client_ip=request.client.host if request.client else None
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Missing required fields: username, password, tenant_name",
+            )
+    except Exception as e:
+        logger.error(
+            "Failed to parse request body",
+            error=str(e),
+            error_type=type(e).__name__,
+            client_ip=request.client.host if request.client else None,
+            exc_info=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid request body format",
+        )
+    
     logger.info(
         "Tenant login attempt",
-        username=form_data.username,
+        username=username,
+        tenant_name=tenant_name,
         tenant_hashid=tenant_hashid,
         timestamp=timestamp,
         nonce=nonce,
@@ -151,7 +215,8 @@ async def login_with_tenant(
     if not all([signature, tenant_hashid, timestamp, nonce]):
         logger.warning(
             "Tenant login failed - missing headers",
-            username=form_data.username,
+            username=username,
+            tenant_name=tenant_name,
             tenant_hashid=tenant_hashid,
             timestamp=timestamp,
             nonce=nonce,
@@ -167,7 +232,19 @@ async def login_with_tenant(
     auth_service = TimestampAuthService(db)
     try:
         # 构造请求体字符串用于签名验证
-        body_str = f"username={form_data.username}&password={form_data.password}&tenant_name=impeach"
+        body_str = f"username={username}&password={password}&tenant_name={tenant_name}"
+        
+        logger.info(
+            "Starting signature verification",
+            signature_length=len(signature) if signature else 0,
+            tenant_hashid=tenant_hashid,
+            timestamp=timestamp,
+            nonce=nonce,
+            method=request.method,
+            path=request.url.path,
+            body_str=body_str,
+            client_ip=request.client.host if request.client else None
+        )
         
         is_valid, tenant_id, user_id, verified_nonce, verified_timestamp = await auth_service.verify_timestamp_signature_with_body(
             signature=signature,
@@ -181,7 +258,8 @@ async def login_with_tenant(
         
         logger.info(
             "Signature verification completed",
-            username=form_data.username,
+            username=username,
+            tenant_name=tenant_name,
             tenant_hashid=tenant_hashid,
             tenant_id=tenant_id,
             is_valid=is_valid,
@@ -191,7 +269,8 @@ async def login_with_tenant(
     except Exception as e:
         logger.error(
             "Signature verification failed with exception",
-            username=form_data.username,
+            username=username,
+            tenant_name=tenant_name,
             tenant_hashid=tenant_hashid,
             error=str(e),
             error_type=type(e).__name__,
@@ -207,7 +286,8 @@ async def login_with_tenant(
     if not is_valid:
         logger.warning(
             "Tenant login failed - invalid signature",
-            username=form_data.username,
+            username=username,
+            tenant_name=tenant_name,
             tenant_hashid=tenant_hashid,
             tenant_id=tenant_id,
             client_ip=request.client.host if request.client else None
@@ -227,7 +307,7 @@ async def login_with_tenant(
     if not tenant:
         logger.warning(
             "Tenant login failed - tenant not found",
-            username=form_data.username,
+            username=username,
             tenant_id=tenant_id,
             client_ip=request.client.host if request.client else None
         )
@@ -240,7 +320,7 @@ async def login_with_tenant(
     if not tenant.is_active:
         logger.warning(
             "Tenant login failed - tenant inactive",
-            username=form_data.username,
+            username=username,
             tenant_id=tenant_id,
             tenant_name=tenant.name,
             client_ip=request.client.host if request.client else None
@@ -252,16 +332,34 @@ async def login_with_tenant(
         )
     
     # Authenticate user with email and password
+    logger.info(
+        "Starting user authentication",
+        username=username,
+        tenant_id=tenant_id,
+        tenant_name=tenant.name,
+        client_ip=request.client.host if request.client else None
+    )
+    
     user_service = UserService(db)
     user, auth_message = await user_service.authenticate(
-        email=form_data.username, 
-        password=form_data.password
+        email=username, 
+        password=password
+    )
+    
+    logger.info(
+        "User authentication completed",
+        username=username,
+        user_found=bool(user),
+        user_id=user.id if user else None,
+        user_active=user.is_active if user else None,
+        auth_message=auth_message,
+        client_ip=request.client.host if request.client else None
     )
     
     if not user:
         logger.warning(
             "Tenant login failed - authentication failed",
-            username=form_data.username,
+            username=username,
             tenant_id=tenant_id,
             tenant_name=tenant.name,
             auth_message=auth_message,
@@ -275,7 +373,7 @@ async def login_with_tenant(
     elif not user.is_active:
         logger.warning(
             "Tenant login failed - inactive user",
-            username=form_data.username,
+            username=username,
             user_id=user.id,
             tenant_id=tenant_id,
             tenant_name=tenant.name,
@@ -287,6 +385,15 @@ async def login_with_tenant(
         )
     
     # Verify user has access to this tenant
+    logger.info(
+        "Checking user-tenant access",
+        username=username,
+        user_id=user.id,
+        tenant_id=tenant_id,
+        tenant_name=tenant.name,
+        client_ip=request.client.host if request.client else None
+    )
+    
     user_tenant_result = await db.execute(
         select(UserTenant).where(
             UserTenant.user_id == user.id,
@@ -296,10 +403,21 @@ async def login_with_tenant(
     )
     user_tenant = user_tenant_result.scalar_one_or_none()
     
+    logger.info(
+        "User-tenant access check completed",
+        username=username,
+        user_id=user.id,
+        tenant_id=tenant_id,
+        tenant_name=tenant.name,
+        user_tenant_found=bool(user_tenant),
+        user_tenant_active=user_tenant.is_active if user_tenant else None,
+        client_ip=request.client.host if request.client else None
+    )
+    
     if not user_tenant:
         logger.warning(
             "Tenant login failed - user has no access to tenant",
-            username=form_data.username,
+            username=username,
             user_id=user.id,
             tenant_id=tenant_id,
             tenant_name=tenant.name,
@@ -311,38 +429,29 @@ async def login_with_tenant(
             headers={"WWW-Authenticate": "TenantSignature"},
         )
     
-    # Create tokens
-    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    refresh_token_expires = timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
-    
-    access_token = create_access_token(
-        data={"sub": str(user.id), "tenant_id": tenant_id}, 
-        expires_delta=access_token_expires
-    )
-    refresh_token = create_refresh_token(
-        data={"sub": str(user.id), "tenant_id": tenant_id}, 
-        expires_delta=refresh_token_expires
-    )
-    
     logger.info(
         "Tenant login successful",
-        username=form_data.username,
+        username=username,
         user_id=user.id,
         tenant_id=tenant_id,
         tenant_name=tenant.name,
         client_ip=request.client.host if request.client else None
     )
     
+    # 返回用户信息，不返回 JWT
     return {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "token_type": "bearer",
-        "tenant_name": tenant.name,  # 添加 tenant_name 到根级别
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "tenant_id": tenant_id,
+            "is_active": user.is_active
+        },
         "tenant": {
             "id": tenant.id,
             "name": tenant.name,
             "display_name": tenant.display_name
-        }
+        },
+        "tenant_name": tenant.name
     }
 
 

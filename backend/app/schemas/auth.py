@@ -12,6 +12,12 @@ class Token(BaseModel):
     refresh_token: Optional[str] = None
 
 
+class TenantLoginResponse(BaseModel):
+    user: dict
+    tenant: dict
+    tenant_name: str
+
+
 class TokenData(BaseModel):
     username: Optional[str] = None
 

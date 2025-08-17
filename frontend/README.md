@@ -64,16 +64,12 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 NEXT_PUBLIC_APP_NAME=SupplyNexus Fulfillment Service
 
 # Frontend 服务器认证
-FRONTEND_PRIVATE_KEY_PATH=./keys/frontend_private_key.pem
-FRONTEND_KEY_ID=frontend-server-1
-FRONTEND_USER_EMAIL=frontend@supplynexus.store
+# 注意：私钥通过 keyLoader 动态加载，不需要环境变量配置
 
 # 租户配置
-NEXT_PUBLIC_TENANT_HASHID=PoRpOk2e
+# 注意：租户配置在前端代码中硬编码，私钥从文件系统加载
 
-# 认证设置
-NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=your-nextauth-secret-change-this-in-prod
+
 ```
 
 ### 4. 启动开发服务器
@@ -95,7 +91,7 @@ open http://localhost:3000
 
 ### 租户配置
 
-- **Tenant Hashid**: 使用 `NEXT_PUBLIC_TENANT_HASHID` 环境变量配置
+- **Tenant Configuration**: 租户配置在前端代码中硬编码，私钥从文件系统加载
 - **本地开发**: 固定使用 `PoRpOk2e` (对应 Tenant ID: 1)
 - **生产环境**: 根据实际租户配置相应的 hashid
 

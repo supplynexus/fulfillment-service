@@ -5,6 +5,7 @@ Timestamp signature authentication middleware
 from typing import Optional, Tuple
 from fastapi import Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
+import os
 
 from app.core.database import get_async_db
 from app.core.timestamp_auth import TimestampAuthService
@@ -92,9 +93,10 @@ async def verify_timestamp_auth(
     
     # If no user_id provided, create a system user for frontend authentication
     if not user:
+        system_user_email = os.getenv('SYSTEM_USER_EMAIL', 'frontend@supplynexus.store')
         user = User(
             id=0,  # System user ID
-            email="frontend@supplynexus.store",
+            email=system_user_email,
             hashed_password="",  # System user doesn't need password
             is_active=True
         )

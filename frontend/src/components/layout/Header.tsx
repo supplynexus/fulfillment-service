@@ -67,18 +67,18 @@ export function Header() {
   const getInitials = (name: string) => {
     return name
       .split(' ')
-      .map((n) => n[0])
+      .map(n => n[0])
       .join('')
       .toUpperCase()
       .slice(0, 2);
   };
 
   return (
-    <AppBar position="static" elevation={1}>
+    <AppBar position='static' elevation={1}>
       <Toolbar>
         <Typography
-          variant="h6"
-          component="div"
+          variant='h6'
+          component='div'
           sx={{ flexGrow: 1, cursor: 'pointer' }}
           onClick={() => router.push('/dashboard')}
         >
@@ -88,19 +88,19 @@ export function Header() {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           {/* 用户信息 */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Typography variant="body2" color="inherit">
+            <Typography variant='body2' color='inherit'>
               {user?.full_name || user?.email || '用户'}
             </Typography>
           </Box>
 
           {/* 用户菜单 */}
           <IconButton
-            size="large"
-            aria-label="用户菜单"
-            aria-controls="menu-appbar"
-            aria-haspopup="true"
+            size='large'
+            aria-label='用户菜单'
+            aria-controls='menu-appbar'
+            aria-haspopup='true'
             onClick={handleMenu}
-            color="inherit"
+            color='inherit'
           >
             <Avatar
               sx={{
@@ -115,7 +115,7 @@ export function Header() {
           </IconButton>
 
           <Menu
-            id="menu-appbar"
+            id='menu-appbar'
             anchorEl={anchorEl}
             anchorOrigin={{
               vertical: 'bottom',
@@ -139,19 +139,19 @@ export function Header() {
               <Dashboard sx={{ mr: 2, fontSize: 20 }} />
               仪表板
             </MenuItem>
-            
+
             <MenuItem onClick={handleProfile}>
               <AccountCircle sx={{ mr: 2, fontSize: 20 }} />
               个人资料
             </MenuItem>
-            
+
             <MenuItem onClick={handleSettings}>
               <Settings sx={{ mr: 2, fontSize: 20 }} />
               设置
             </MenuItem>
-            
+
             <Divider />
-            
+
             <MenuItem onClick={handleLogout} sx={{ color: 'error.main' }}>
               <Logout sx={{ mr: 2, fontSize: 20 }} />
               退出登录

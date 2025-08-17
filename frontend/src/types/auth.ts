@@ -24,5 +24,11 @@ export interface TokenResponse {
   access_token: string;
   refresh_token: string;
   token_type: string;
-  tenant_name?: string;  // 添加 tenant_name
+  user: {
+    id: number;
+    email: string;
+    tenant_id: number;
+    is_active: boolean;
+  };
+  tenant_name: string;
 }

@@ -11,7 +11,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <Header />
-      <Box component="main" sx={{ flexGrow: 1, bgcolor: 'grey.50' }}>
+      <Box component='main' sx={{ flexGrow: 1, bgcolor: 'grey.50' }}>
         {children}
       </Box>
     </Box>

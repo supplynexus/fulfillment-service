@@ -2,7 +2,7 @@
 const nextConfig = {
   env: {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
-    NEXT_PUBLIC_APP_NAME: 'SupplyNexus Fulfillment Service',
+    NEXT_PUBLIC_APP_NAME: process.env.NEXT_PUBLIC_APP_NAME || 'SupplyNexus Fulfillment Service',
   },
   async rewrites() {
     return [
@@ -15,6 +15,8 @@ const nextConfig = {
   images: {
     domains: [
       'localhost',
+      'admin.supplynexus.store',
+      'supplynexus.store',
       'api.supplynexus.store',
       'images.printify.com',
     ],
@@ -40,9 +42,21 @@ const nextConfig = {
             key: 'Referrer-Policy',
             value: 'origin-when-cross-origin',
           },
+          {
+            key: 'X-XSS-Protection',
+            value: '1; mode=block',
+          },
         ],
       },
     ];
+  },
+  
+  // Output configuration for Docker
+  output: 'standalone',
+  
+  // Experimental features
+  experimental: {
+    // Removed outputFileTracingRoot as it's no longer needed in Next.js 15
   },
 };
 
