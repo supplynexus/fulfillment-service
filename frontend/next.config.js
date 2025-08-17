@@ -24,6 +24,15 @@ const nextConfig = {
   // Enable strict mode for better dev experience
   reactStrictMode: true,
   
+  // Webpack configuration for path aliases
+  webpack: (config, { buildId, dev, isServer, defaultLoaders, webpack }) => {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      '@': require('path').resolve(__dirname, 'src'),
+    };
+    return config;
+  },
+  
   // Security headers
   async headers() {
     return [
