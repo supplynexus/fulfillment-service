@@ -42,7 +42,7 @@ services:
       context: ../../backend
       dockerfile: Dockerfile
     env_file:
-      - ../environments/${ENV_FILE:-env.dev}
+      - ../environments/backend/${ENV_FILE:-.env.dev}
     volumes:
       - ../../backend:/app
       - backend_logs:/app/logs
@@ -70,7 +70,7 @@ services:
       dockerfile: Dockerfile
     command: celery -A app.tasks.celery_app worker --loglevel=info
     env_file:
-      - ../environments/${ENV_FILE:-env.dev}
+      - ../environments/backend/${ENV_FILE:-.env.dev}
     volumes:
       - ../../backend:/app
       - worker_logs:/app/logs
@@ -90,7 +90,7 @@ services:
       dockerfile: Dockerfile
     command: celery -A app.tasks.celery_app beat --loglevel=info
     env_file:
-      - ../environments/${ENV_FILE:-env.dev}
+      - ../environments/backend/${ENV_FILE:-.env.dev}
     volumes:
       - ../../backend:/app
       - beat_logs:/app/logs
@@ -110,7 +110,7 @@ services:
       dockerfile: Dockerfile
     command: celery -A app.tasks.celery_app flower --port=5555
     env_file:
-      - ../environments/${ENV_FILE:-env.dev}
+      - ../environments/backend/${ENV_FILE:-.env.dev}
     ports:
       - "${FLOWER_PORT:-5555}:5555"
     depends_on:
@@ -159,7 +159,7 @@ services:
       # 挂载日志目录
       - frontend_logs:/var/log/app
       # 挂载环境变量文件
-      - ${ENV_FILE:-../../frontend/.env.production}:/app/.env.production:ro
+      - ${ENV_FILE:-../environments/frontend/env.local}:/app/.env.local:ro
 
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]

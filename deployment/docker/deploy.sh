@@ -101,15 +101,30 @@ PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 print_status "项目根目录: $PROJECT_ROOT"
 
 # 检查环境文件
-ENV_FILE="../environments/env.$ENVIRONMENT"
+ENV_FILE="../environments/backend/.env.$ENVIRONMENT"
 if [ ! -f "$ENV_FILE" ]; then
-    print_error "环境文件不存在: $ENV_FILE"
-    print_status "可用的环境文件:"
-    ls -la ../environments/env.* 2>/dev/null || echo "No env files found"
-    exit 1
+    print_warning "环境文件不存在: $ENV_FILE"
+    print_status "从示例文件创建环境文件..."
+    EXAMPLE_FILE="../environments/backend/env.example"
+    if [ -f "$EXAMPLE_FILE" ]; then
+        cp "$EXAMPLE_FILE" "$ENV_FILE"
+        print_status "✅ 环境文件已创建: $ENV_FILE"
+        print_warning "请编辑 $ENV_FILE 文件并配置正确的环境变量"
+        print_warning "然后重新运行此脚本"
+        exit 1
+    else
+        print_error "示例文件不存在: $EXAMPLE_FILE"
+        exit 1
+    fi
 fi
 
 print_status "环境文件: $ENV_FILE"
+
+# 显示环境文件信息
+print_status "环境文件信息:"
+echo "  文件: $(basename "$ENV_FILE")"
+echo "  大小: $(ls -lh "$ENV_FILE" | awk '{print $5}')"
+echo "  修改时间: $(ls -lh "$ENV_FILE" | awk '{print $6, $7, $8}')"
 
 # 检查 Docker 是否运行
 if ! docker info > /dev/null 2>&1; then
