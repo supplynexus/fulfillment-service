@@ -120,12 +120,74 @@ services:
       - fulfillment_network
     restart: unless-stopped
 
+  # Frontend Application
+  frontend:
+    build:
+      context: ../../frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+        NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-SupplyNexus Fulfillment Service}
+    image: supplynexus-frontend:${FRONTEND_VERSION:-latest}
+    container_name: supplynexus-frontend-${ENVIRONMENT:-local}
+    ports:
+      - '${FRONTEND_PORT:-3000}:3000'
+    restart: unless-stopped
+    environment:
+      # === 运行时配置 ===
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+
+      # === 应用配置 ===
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      - NEXT_PUBLIC_APP_NAME=${NEXT_PUBLIC_APP_NAME:-SupplyNexus Fulfillment Service}
+      - NEXT_PUBLIC_ENVIRONMENT=${NEXT_PUBLIC_ENVIRONMENT:-production}
+
+      # === 认证配置 ===
+      # 注意：私钥通过 keyLoader 动态加载，不需要环境变量配置
+
+      # === 租户配置 ===
+      # 注意：租户配置在前端代码中硬编码，私钥从文件系统加载
+
+      # === 日志配置 ===
+      - LOG_DIR=/var/log/app
+
+    volumes:
+      # 挂载密钥目录（从宿主机）
+      - ${KEYS_PATH:-../../frontend/keys}:/app/keys:ro
+      # 挂载日志目录
+      - frontend_logs:/var/log/app
+      # 挂载环境变量文件
+      - ${ENV_FILE:-../../frontend/.env.production}:/app/.env.production:ro
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+
+    depends_on:
+      backend:
+        condition: service_healthy
+
+    networks:
+      - fulfillment_network
+
 volumes:
   postgres_data:
   redis_data:
   backend_logs:
   worker_logs:
   beat_logs:
+  frontend_logs:
 
 networks:
   fulfillment_network:

@@ -1,85 +1,74 @@
 import { NextRequest, NextResponse } from 'next/server';
-import crypto from 'crypto';
-import Hashids from 'hashids';
-import { createLogger, setRequestId, generateRequestId } from '@/lib/logger';
+import { createLogger } from '@/lib/logger';
+import { jwtUtilsServer } from '@/lib/jwt-utils-server';
 import { keyLoader } from '@/lib/key-loader';
+import { generateBackendSignature } from '@/lib/signature';
+import { hashids } from '@/lib/hashids';
 
-// 创建日志记录器
 const logger = createLogger('auth.login');
-
-// 租户配置（只包含 ID，私钥从文件加载）
-const TENANT_CONFIG = {
-  'impeach': {
-    id: 1
-  }
-};
-
-// 创建 hashids 实例（使用与后端相同的配置）
-const hashids = new Hashids('dev-hashids-salt-change-in-prod', 8);
-
-// 生成随机 nonce
-function generateNonce(): string {
-  return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-}
-
-// 生成签名
-function generateSignature(privateKey: string, signatureString: string): string {
-  try {
-    const sign = crypto.createSign('RSA-SHA256');
-    sign.update(signatureString);
-    const rsaSignature = sign.sign(privateKey, 'base64');
-    return rsaSignature;
-  } catch (error) {
-    logger.error('Signature generation failed', { error: String(error) });
-    throw new Error('Failed to generate signature');
-  }
-}
-
-// 生成符合后端期望的签名格式
-function generateBackendSignature(privateKey: string, signatureString: string, timestamp: number, nonce: string, tenantId: number): string {
-  try {
-    // 生成 RSA 签名
-    const rsaSignature = generateSignature(privateKey, signatureString);
-    
-    // 直接返回 RSA 签名，不包装在 JSON 中
-    return rsaSignature;
-  } catch (error) {
-    logger.error('Backend signature generation failed', { error: String(error) });
-    throw new Error('Failed to generate backend signature');
-  }
-}
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
-  
-  // 确保有请求ID
-  if (!request.headers.get('X-Request-ID')) {
-    setRequestId(generateRequestId());
-  }
-  
-  logger.requestStart('POST', '/api/auth/login', {
-    userAgent: request.headers.get('User-Agent'),
-    contentType: request.headers.get('Content-Type'),
-  });
 
   try {
-    const formData = await request.formData();
+    logger.requestStart(request.method, request.url, {
+      userAgent: request.headers.get('user-agent'),
+      contentType: request.headers.get('content-type'),
+    });
+
+    // 解析表单数据
+    let formData: FormData;
+    try {
+      // 添加更详细的调试信息
+      const contentType = request.headers.get('content-type');
+      const contentLength = request.headers.get('content-length');
+
+      logger.info('Attempting to parse FormData', {
+        contentType,
+        contentLength,
+        hasBody: !!request.body,
+      });
+
+      formData = await request.formData();
+
+      logger.info('FormData parsed successfully', {
+        formDataKeys: Array.from(formData.keys()),
+        formDataSize: Array.from(formData.entries()).length,
+      });
+    } catch (formDataError) {
+      logger.error('FormData parsing failed', {
+        error: String(formDataError),
+        contentType: request.headers.get('content-type'),
+        contentLength: request.headers.get('content-length'),
+        errorType:
+          formDataError instanceof Error
+            ? formDataError.constructor.name
+            : 'Unknown',
+        errorStack:
+          formDataError instanceof Error ? formDataError.stack : undefined,
+      });
+      return NextResponse.json(
+        { detail: 'Invalid form data format' },
+        { status: 400 }
+      );
+    }
+
     const username = formData.get('username') as string;
     const password = formData.get('password') as string;
     const tenantName = formData.get('tenant_name') as string;
 
-    logger.info('Form data received', { 
-      username, 
-      tenantName, 
+    logger.info('Form data received', {
+      username,
+      tenantName,
       hasPassword: !!password,
-      formDataKeys: Array.from(formData.keys())
+      formDataKeys: Array.from(formData.keys()),
     });
 
     if (!username || !password || !tenantName) {
-      logger.warn('Missing required fields', { 
-        hasUsername: !!username, 
-        hasPassword: !!password, 
-        hasTenantName: !!tenantName 
+      logger.warn('Missing required fields', {
+        username: !!username,
+        password: !!password,
+        tenantName: !!tenantName,
       });
       return NextResponse.json(
         { detail: '用户名、密码和租户名称都是必需的' },
@@ -87,60 +76,43 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 获取租户配置
-    const tenantConfig = TENANT_CONFIG[tenantName as keyof typeof TENANT_CONFIG];
-    if (!tenantConfig) {
-      logger.warn('Tenant not found', { tenantName });
-      return NextResponse.json(
-        { detail: '租户不存在' },
-        { status: 400 }
-      );
-    }
-
     // 生成签名
-    logger.info('Generating signature', { tenantName });
-    const method = 'POST';
-    const path = '/api/v1/auth/login/tenant';
+    logger.info('Generating backend signature for tenant', { tenantName });
+
     const timestamp = Math.floor(Date.now() / 1000);
-    const nonce = generateNonce();
-    const tenantId = tenantConfig.id;
-    
-    // 构造与后端期望格式一致的body字符串
+    const nonce = Math.random().toString(36).substring(2, 12);
+    const tenantId = await keyLoader.getTenantId(tenantName);
     const body = `username=${username}&password=${password}&tenant_name=${tenantName}`;
 
-    // 格式: METHOD + PATH + TIMESTAMP + NONCE + TENANT_ID + BODY
-    const signatureString = `${method.toUpperCase()}${path}${timestamp}${nonce}${tenantId}${body}`;
-    
-    logger.debug('Signature string constructed', { 
-      signatureStringLength: signatureString.length,
-      method: method.toUpperCase(),
-      path,
+    // 使用后端期望的路径格式
+    const backendPath = '/api/v1/auth/login/tenant';
+    const signatureString = `POST${backendPath}${timestamp}${nonce}${tenantId}${body}`;
+
+    const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
+    const signature = generateBackendSignature(
+      privateKey,
+      signatureString,
       timestamp,
       nonce,
-      tenantId,
-      bodyLength: body.length,
-      body: body
-    });
-    
-    // 从文件加载私钥
-    const privateKey = keyLoader.loadTenantPrivateKey(tenantName);
-    const signature = generateBackendSignature(privateKey, signatureString, timestamp, nonce, tenantId);
-    logger.info('Signature generated successfully', { 
+      tenantId
+    );
+
+    logger.info('Backend signature generated successfully', {
       signatureLength: signature.length,
       tenantName,
-      tenantId 
+      tenantId,
     });
 
-    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-    const backendEndpoint = `${backendUrl}/api/v1/auth/login/tenant`;
+    // 转发到后端
+    const backendUrl =
+      process.env.BACKEND_API_URL ||
+      process.env.NEXT_PUBLIC_API_URL ||
+      'http://localhost:8000';
+    const backendEndpoint = `${backendUrl}${backendPath}`;
     logger.info('Forwarding request to backend', { backendEndpoint });
 
     // 编码租户 ID 为 hashids 格式
     const tenantHashId = hashids.encode(tenantId);
-    logger.debug('Tenant ID encoded', { 
-      originalId: tenantId, 
-      encodedId: tenantHashId 
-    });
 
     const response = await fetch(backendEndpoint, {
       method: 'POST',
@@ -159,41 +131,130 @@ export async function POST(request: NextRequest) {
     });
 
     const duration = Date.now() - startTime;
-    logger.info('Backend response received', { 
+    logger.info('Backend response received', {
       status: response.status,
       statusText: response.statusText,
-      duration: `${duration}ms`
+      duration: `${duration}ms`,
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ detail: '登录失败' }));
-      logger.warn('Backend request failed', { 
+      const errorData = await response
+        .json()
+        .catch(() => ({ detail: '登录失败' }));
+      logger.warn('Backend request failed', {
         status: response.status,
         errorData,
-        duration: `${duration}ms`
+        duration: `${duration}ms`,
       });
       return NextResponse.json(errorData, { status: response.status });
     }
 
-    const data = await response.json();
-    logger.requestComplete('POST', '/api/auth/login', response.status, duration / 1000, {
-      tenantName,
-      username,
-      hasAccessToken: !!data.access_token
+    const backendData = await response.json();
+    logger.info('Backend authentication successful', {
+      userId: backendData.user?.id,
+      tenantId: backendData.user?.tenant_id,
+      tenantName: backendData.tenant_name,
     });
-    
-    return NextResponse.json(data);
 
+    // 生成 Frontend JWT (使用前端private key)
+    logger.info('Generating Frontend JWT using frontend private key');
+
+    try {
+      const frontendJWT = jwtUtilsServer.generateToken(
+        {
+          sub: backendData.user?.id?.toString() || '0',
+          tenant_id: backendData.user?.tenant_id || tenantId,
+          email: backendData.user?.email || username,
+          tenant_name: backendData.tenant_name || tenantName,
+          type: 'access',
+        },
+        3600
+      ); // 1 hour
+
+      logger.info(
+        'Frontend JWT access token generated successfully (using frontend private key)',
+        {
+          tokenLength: frontendJWT.length,
+          userId: backendData.user?.id,
+          tenantId: backendData.user?.tenant_id || tenantId,
+          jwtSource: 'frontend-generated',
+          keyUsed: 'frontend_jwt_private_key.pem',
+        }
+      );
+
+      const refreshToken = jwtUtilsServer.generateToken(
+        {
+          sub: backendData.user?.id?.toString() || '0',
+          tenant_id: backendData.user?.tenant_id || tenantId,
+          email: backendData.user?.email || username,
+          tenant_name: backendData.tenant_name || tenantName,
+          type: 'refresh',
+        },
+        604800
+      ); // 7 days
+
+      logger.info(
+        'Frontend JWT refresh token generated successfully (using frontend private key)',
+        {
+          tokenLength: refreshToken.length,
+          userId: backendData.user?.id,
+          tenantId: backendData.user?.tenant_id || tenantId,
+          jwtSource: 'frontend-generated',
+          keyUsed: 'frontend_jwt_private_key.pem',
+        }
+      );
+
+      // 返回 Frontend JWT
+      const frontendResponse = {
+        access_token: frontendJWT,
+        refresh_token: refreshToken,
+        token_type: 'bearer',
+        user: backendData.user,
+        tenant_name: backendData.tenant_name || tenantName,
+      };
+
+      logger.info('Frontend response prepared', {
+        hasAccessToken: !!frontendJWT,
+        hasRefreshToken: !!refreshToken,
+        hasUser: !!backendData.user,
+        responseKeys: Object.keys(frontendResponse),
+      });
+
+      logger.requestComplete(
+        'POST',
+        '/api/auth/login',
+        response.status,
+        duration / 1000,
+        {
+          tenantName,
+          username,
+          hasAccessToken: !!frontendJWT,
+          jwtGenerated: true,
+        }
+      );
+
+      return NextResponse.json(frontendResponse);
+    } catch (jwtError) {
+      logger.error('JWT generation failed', {
+        error: String(jwtError),
+        errorStack: jwtError instanceof Error ? jwtError.stack : undefined,
+        backendData: {
+          userId: backendData.user?.id,
+          tenantId: backendData.user?.tenant_id,
+          email: backendData.user?.email,
+          tenantName: backendData.tenant_name,
+        },
+      });
+
+      return NextResponse.json({ detail: 'JWT生成失败' }, { status: 500 });
+    }
   } catch (error) {
     const duration = Date.now() - startTime;
     logger.requestError('POST', '/api/auth/login', error, duration / 1000, {
       errorMessage: error instanceof Error ? error.message : String(error),
-      errorStack: error instanceof Error ? error.stack : undefined
+      errorStack: error instanceof Error ? error.stack : undefined,
     });
-    
-    return NextResponse.json(
-      { detail: '服务器内部错误' },
-      { status: 500 }
-    );
+
+    return NextResponse.json({ detail: '服务器内部错误' }, { status: 500 });
   }
 }

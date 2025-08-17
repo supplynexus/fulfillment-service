@@ -6,14 +6,14 @@ export function middleware(request: NextRequest) {
   if (request.nextUrl.pathname.startsWith('/api/')) {
     const requestId = generateRequestId();
     setRequestId(requestId);
-    
+
     // 在响应头中添加请求ID
     const response = NextResponse.next();
     response.headers.set('X-Request-ID', requestId);
-    
+
     return response;
   }
-  
+
   return NextResponse.next();
 }
 

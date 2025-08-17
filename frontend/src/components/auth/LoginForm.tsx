@@ -15,21 +15,21 @@ import {
   Alert,
   CircularProgress,
 } from '@mui/material';
-import { Visibility, VisibilityOff, Person, Lock, Business } from '@mui/icons-material';
+import {
+  Visibility,
+  VisibilityOff,
+  Person,
+  Lock,
+  Business,
+} from '@mui/icons-material';
 
 import { useAuth } from '@/lib/auth-context';
 import { LoginCredentials } from '@/types/auth';
 
 // Validation schema
 const loginSchema = z.object({
-  username: z
-    .string()
-    .min(1, '用户名不能为空')
-    .min(3, '用户名至少需要3个字符'),
-  password: z
-    .string()
-    .min(1, '密码不能为空')
-    .min(6, '密码至少需要6个字符'),
+  username: z.string().min(1, '用户名不能为空').min(3, '用户名至少需要3个字符'),
+  password: z.string().min(1, '密码不能为空').min(6, '密码至少需要6个字符'),
   tenantName: z
     .string()
     .min(1, '租户名称不能为空')
@@ -67,9 +67,7 @@ export function LoginForm() {
       await login(credentials);
     } catch (err: any) {
       setError(
-        err.response?.data?.detail || 
-        err.message || 
-        '登录失败，请检查您的凭据'
+        err.response?.data?.detail || err.message || '登录失败，请检查您的凭据'
       );
     }
   };
@@ -89,9 +87,13 @@ export function LoginForm() {
         borderRadius: 2,
       }}
     >
-      <Box component="form" onSubmit={handleSubmit(onSubmit)} sx={{ width: '100%' }}>
+      <Box
+        component='form'
+        onSubmit={handleSubmit(onSubmit)}
+        sx={{ width: '100%' }}
+      >
         {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
+          <Alert severity='error' sx={{ mb: 2 }}>
             {error}
           </Alert>
         )}
@@ -99,15 +101,15 @@ export function LoginForm() {
         <TextField
           {...register('tenantName')}
           fullWidth
-          label="租户名称"
-          variant="outlined"
-          margin="normal"
+          label='租户名称'
+          variant='outlined'
+          margin='normal'
           error={!!errors.tenantName}
           helperText={errors.tenantName?.message}
           InputProps={{
             startAdornment: (
-              <InputAdornment position="start">
-                <Business color="action" />
+              <InputAdornment position='start'>
+                <Business color='action' />
               </InputAdornment>
             ),
           }}
@@ -117,15 +119,15 @@ export function LoginForm() {
         <TextField
           {...register('username')}
           fullWidth
-          label="用户名"
-          variant="outlined"
-          margin="normal"
+          label='用户名'
+          variant='outlined'
+          margin='normal'
           error={!!errors.username}
           helperText={errors.username?.message}
           InputProps={{
             startAdornment: (
-              <InputAdornment position="start">
-                <Person color="action" />
+              <InputAdornment position='start'>
+                <Person color='action' />
               </InputAdornment>
             ),
           }}
@@ -135,24 +137,24 @@ export function LoginForm() {
         <TextField
           {...register('password')}
           fullWidth
-          label="密码"
+          label='密码'
           type={showPassword ? 'text' : 'password'}
-          variant="outlined"
-          margin="normal"
+          variant='outlined'
+          margin='normal'
           error={!!errors.password}
           helperText={errors.password?.message}
           InputProps={{
             startAdornment: (
-              <InputAdornment position="start">
-                <Lock color="action" />
+              <InputAdornment position='start'>
+                <Lock color='action' />
               </InputAdornment>
             ),
             endAdornment: (
-              <InputAdornment position="end">
+              <InputAdornment position='end'>
                 <IconButton
-                  aria-label="toggle password visibility"
+                  aria-label='toggle password visibility'
                   onClick={handleTogglePasswordVisibility}
-                  edge="end"
+                  edge='end'
                   disabled={isSubmitting || isLoading}
                 >
                   {showPassword ? <VisibilityOff /> : <Visibility />}
@@ -164,15 +166,15 @@ export function LoginForm() {
         />
 
         <Button
-          type="submit"
+          type='submit'
           fullWidth
-          variant="contained"
-          size="large"
+          variant='contained'
+          size='large'
           sx={{ mt: 3, mb: 2, py: 1.5 }}
           disabled={isSubmitting || isLoading}
           startIcon={
             isSubmitting || isLoading ? (
-              <CircularProgress size={20} color="inherit" />
+              <CircularProgress size={20} color='inherit' />
             ) : null
           }
         >
@@ -180,7 +182,7 @@ export function LoginForm() {
         </Button>
 
         <Box sx={{ textAlign: 'center', mt: 2 }}>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant='body2' color='text.secondary'>
             忘记密码？请联系管理员
           </Typography>
         </Box>

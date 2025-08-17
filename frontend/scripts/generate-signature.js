@@ -79,7 +79,7 @@ class SignatureGenerator {
     
     return {
       'X-Signature': signature,
-      'X-Tenant-ID': process.env.NEXT_PUBLIC_TENANT_HASHID || 'PoRpOk2e', // Use environment variable or fallback
+      'X-Tenant-ID': 'PoRpOk2e', // 硬编码的租户 hashid
       'Content-Type': 'application/json'
     };
   }
@@ -89,7 +89,7 @@ function main() {
   console.log("=== Frontend Signature Generator ===\n");
 
   // Check if private key exists
-  const privateKeyPath = process.env.FRONTEND_PRIVATE_KEY_PATH || path.join(__dirname, '../keys/frontend_private_key.pem');
+  const privateKeyPath = path.join(__dirname, '../keys/frontend_private_key.pem');
   
   if (!fs.existsSync(privateKeyPath)) {
     console.error(`❌ Private key not found at: ${privateKeyPath}`);
@@ -146,7 +146,7 @@ function main() {
 
   const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-  const tenantHashid = process.env.NEXT_PUBLIC_TENANT_HASHID || 'PoRpOk2e';
+  const tenantHashid = 'PoRpOk2e'; // 硬编码的租户 hashid
   
   console.log("# 1. Test tenant-level API");
   console.log(`curl -X GET '${baseUrl}/api/v1/orders' \\`);

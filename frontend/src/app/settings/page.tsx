@@ -12,16 +12,16 @@ export default function SettingsPage() {
   return (
     <ProtectedRoute>
       <DashboardLayout>
-        <Container maxWidth="lg" sx={{ py: 4 }}>
-          <Typography variant="h4" component="h1" gutterBottom>
+        <Container maxWidth='lg' sx={{ py: 4 }}>
+          <Typography variant='h4' component='h1' gutterBottom>
             设置
           </Typography>
-          
+
           <Paper sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant='h6' gutterBottom>
               系统设置
             </Typography>
-            <Typography variant="body1" color="text.secondary">
+            <Typography variant='body1' color='text.secondary'>
               设置页面正在开发中...
             </Typography>
           </Paper>

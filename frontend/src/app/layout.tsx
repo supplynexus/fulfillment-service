@@ -34,9 +34,7 @@ export default function RootLayout({
           <CssBaseline />
           <ClientThemeProvider>
             <QueryProvider>
-              <AuthProvider>
-                {children}
-              </AuthProvider>
+              <AuthProvider>{children}</AuthProvider>
             </QueryProvider>
           </ClientThemeProvider>
         </AppRouterCacheProvider>

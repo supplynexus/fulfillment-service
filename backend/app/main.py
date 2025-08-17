@@ -55,11 +55,12 @@ allowed_origins = settings.ALLOWED_ORIGINS.split(",") if isinstance(settings.ALL
 # 添加请求ID中间件（必须在其他中间件之前）
 app.add_middleware(RequestIDMiddleware)
 
-# Security middleware
-app.add_middleware(
-    TrustedHostMiddleware, 
-    allowed_hosts=allowed_hosts
-)
+# Security middleware - 只在非开发环境启用
+if settings.ENVIRONMENT not in ["local", "development", "dev"]:
+    app.add_middleware(
+        TrustedHostMiddleware, 
+        allowed_hosts=allowed_hosts
+    )
 
 # CORS middleware
 app.add_middleware(

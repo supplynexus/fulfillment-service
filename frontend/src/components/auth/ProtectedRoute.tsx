@@ -44,7 +44,7 @@ export function ProtectedRoute({
         }}
       >
         <CircularProgress size={40} />
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant='body2' color='text.secondary'>
           加载中...
         </Typography>
       </Box>

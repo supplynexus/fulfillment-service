@@ -8,6 +8,11 @@
 ┌─────────────────────────────────────────────────────────────┐
 │                    应用层 (Application Layer)                │
 ├─────────────────────────────────────────────────────────────┤
+│  Frontend (Next.js/React)                                   │
+│  - 现代化的 Web 应用界面                                     │
+│  - 支持多租户认证                                           │
+│  - RSA 签名认证机制                                         │
+│                                                             │
 │  Backend (Python/FastAPI)                                   │
 │  - 使用已启动的基础设施服务                                  │
 │  - 通过环境变量连接数据库和缓存                              │
@@ -44,14 +49,22 @@ deployment/
 │   │   ├── environment.prod        # 生产环境配置（不提交到 git）
 │   │   └── data-*/                 # 数据持久化目录
 │   │
-│   └── redis/                      # Redis 独立配置
-│       ├── docker-compose.yml      # Redis Docker Compose
-│       ├── deploy.sh               # Redis 部署脚本
-│       ├── environment.example     # 环境配置模板
-│       ├── environment.dev         # 开发环境配置（不提交到 git）
-│       ├── environment.stg     # 测试环境配置（不提交到 git）
-│       ├── environment.prod        # 生产环境配置（不提交到 git）
-│       └── data-*/                 # 数据持久化目录
+│   ├── redis/                      # Redis 独立配置
+│   │   ├── docker-compose.yml      # Redis Docker Compose
+│   │   ├── deploy.sh               # Redis 部署脚本
+│   │   ├── environment.example     # 环境配置模板
+│   │   ├── environment.dev         # 开发环境配置（不提交到 git）
+│   │   ├── environment.stg     # 测试环境配置（不提交到 git）
+│   │   ├── environment.prod        # 生产环境配置（不提交到 git）
+│   │   └── data-*/                 # 数据持久化目录
+│   │
+│   ├── frontend/                   # Frontend 独立配置
+│   │   ├── docker-compose.yml      # Frontend Docker Compose
+│   │   ├── deploy.sh               # Frontend 部署脚本
+│   │   ├── README.md               # Frontend 部署文档
+│   │   └── logs-*/                 # 各环境日志目录
+│   │
+│   └── docker-compose.yml          # 总体 Docker Compose（包含所有服务）
 │
 ├── environments/                    # 应用层环境配置
 │   ├── env.example                 # 应用环境配置模板

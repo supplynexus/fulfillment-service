@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 export default function LoginPage() {
   return (
     <ProtectedRoute requireAuth={false}>
-      <Container maxWidth="sm">
+      <Container maxWidth='sm'>
         <Box
           sx={{
             display: 'flex',
@@ -22,8 +22,8 @@ export default function LoginPage() {
           }}
         >
           <Typography
-            variant="h3"
-            component="h1"
+            variant='h3'
+            component='h1'
             sx={{
               fontWeight: 700,
               color: 'white',
@@ -34,7 +34,7 @@ export default function LoginPage() {
             SupplyNexus
           </Typography>
           <Typography
-            variant="h6"
+            variant='h6'
             sx={{
               color: 'rgba(255,255,255,0.9)',
               fontWeight: 400,
