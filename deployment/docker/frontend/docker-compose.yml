@@ -10,6 +10,8 @@ services:
         NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-SupplyNexus Fulfillment Service}
     image: supplynexus-frontend:${VERSION:-latest}
     container_name: supplynexus-frontend-${ENVIRONMENT:-local}
+    env_file:
+      - ${ENV_FILE:-../../environments/frontend/env.local}
     ports:
       - '${FRONTEND_PORT:-3000}:3000'
     restart: unless-stopped
@@ -40,10 +42,10 @@ services:
       # 挂载密钥文件目录
       - ../../../frontend/keys:/app/keys:ro
       # 挂载日志目录
-      - ./logs-local:/app/logs
-      - ./logs-local:/var/log/app
+      - ./logs-${ENVIRONMENT:-local}:/app/logs
+      - ./logs-${ENVIRONMENT:-local}:/var/log/app
       # 挂载环境变量文件（如果需要）
-      - ${ENV_FILE:-../../frontend/.env.local}:/app/.env.local:ro
+      - ${ENV_FILE:-../../environments/frontend/env.local}:/app/.env.local:ro
 
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]

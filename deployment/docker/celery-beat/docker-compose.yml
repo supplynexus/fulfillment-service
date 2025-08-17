@@ -7,7 +7,7 @@ services:
       dockerfile: Dockerfile
     command: celery -A app.tasks.celery_app beat --loglevel=info
     env_file:
-      - ../../environments/${ENV_FILE:-env.dev}
+      - ../../environments/backend/${ENV_FILE:-.env.dev}
     volumes:
       - ../../../backend:/app
       - beat_logs:/app/logs

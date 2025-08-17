@@ -82,13 +82,30 @@ case $ACTION in
 esac
 
 # 检查环境文件
-ENV_FILE="environment.$ENVIRONMENT"
+ENV_FILE="../../environments/infrastructure/redis/env.$ENVIRONMENT"
 if [ ! -f "$ENV_FILE" ]; then
-    print_error "环境文件不存在: $ENV_FILE"
-    exit 1
+    print_warning "环境文件不存在: $ENV_FILE"
+    print_status "从示例文件创建环境文件..."
+    EXAMPLE_FILE="../../environments/infrastructure/redis/env.example"
+    if [ -f "$EXAMPLE_FILE" ]; then
+        cp "$EXAMPLE_FILE" "$ENV_FILE"
+        print_status "✅ 环境文件已创建: $ENV_FILE"
+        print_warning "请编辑 $ENV_FILE 文件并配置正确的环境变量"
+        print_warning "然后重新运行此脚本"
+        exit 1
+    else
+        print_error "示例文件不存在: $EXAMPLE_FILE"
+        exit 1
+    fi
 fi
 
 print_status "开始操作 SupplyNexus Redis ($ENVIRONMENT 环境, $ACTION 操作)"
+
+# 显示环境文件信息
+print_status "环境文件信息:"
+echo "  文件: $(basename "$ENV_FILE")"
+echo "  大小: $(ls -lh "$ENV_FILE" | awk '{print $5}')"
+echo "  修改时间: $(ls -lh "$ENV_FILE" | awk '{print $6, $7, $8}')"
 
 # 复制环境配置
 print_status "复制环境配置: $ENV_FILE -> .env"

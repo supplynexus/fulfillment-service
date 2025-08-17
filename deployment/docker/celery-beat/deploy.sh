@@ -83,7 +83,31 @@ esac
 # 设置环境变量
 export ENV_FILE="env.$ENVIRONMENT"
 
+# 检查环境文件
+ENV_FILE_PATH="../../environments/backend/.env.$ENVIRONMENT"
+if [ ! -f "$ENV_FILE_PATH" ]; then
+    print_warning "环境文件不存在: $ENV_FILE_PATH"
+    print_status "从示例文件创建环境文件..."
+    EXAMPLE_FILE="../../environments/backend/env.example"
+    if [ -f "$EXAMPLE_FILE" ]; then
+        cp "$EXAMPLE_FILE" "$ENV_FILE_PATH"
+        print_status "✅ 环境文件已创建: $ENV_FILE_PATH"
+        print_warning "请编辑 $ENV_FILE_PATH 文件并配置正确的环境变量"
+        print_warning "然后重新运行此脚本"
+        exit 1
+    else
+        print_error "示例文件不存在: $EXAMPLE_FILE"
+        exit 1
+    fi
+fi
+
 print_status "开始操作 SupplyNexus Celery Beat ($ENVIRONMENT 环境, $ACTION 操作)"
+
+# 显示环境文件信息
+print_status "环境文件信息:"
+echo "  文件: $(basename "$ENV_FILE_PATH")"
+echo "  大小: $(ls -lh "$ENV_FILE_PATH" | awk '{print $5}')"
+echo "  修改时间: $(ls -lh "$ENV_FILE_PATH" | awk '{print $6, $7, $8}')"
 
 # 确保日志目录存在
 LOGS_DIR="logs-$ENVIRONMENT"

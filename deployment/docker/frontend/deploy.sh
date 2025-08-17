@@ -134,20 +134,20 @@ check_environment() {
         log_warning "请将密钥文件放入 $KEYS_PATH 目录"
     fi
     
-    # 检查环境变量文件
-    ENV_FILE="${ENV_FILE:-$PROJECT_ROOT/deployment/environments/env.frontend.$ENVIRONMENT}"
+    # 检查环境文件
+    ENV_FILE="${ENV_FILE:-$PROJECT_ROOT/deployment/environments/frontend/env.$ENVIRONMENT}"
     if [[ ! -f "$ENV_FILE" ]]; then
         log_warning "环境变量文件不存在: $ENV_FILE"
-        if [[ -f "$PROJECT_ROOT/deployment/environments/env.frontend.example" ]]; then
-            log_info "复制环境变量示例文件..."
-            cp "$PROJECT_ROOT/deployment/environments/env.frontend.example" "$ENV_FILE"
-            log_warning "请编辑 $ENV_FILE 文件并配置正确的环境变量"
-        fi
+        log_warning "创建默认环境文件..."
+        cp "$PROJECT_ROOT/deployment/environments/frontend/env.example" "$ENV_FILE"
+        log_warning "请编辑 $ENV_FILE 文件并配置正确的环境变量"
+        log_warning "然后重新运行此脚本"
+        exit 1
     fi
     
     # 设置密钥路径
     export KEYS_PATH="${KEYS_PATH:-$PROJECT_ROOT/frontend/keys}"
-    export ENV_FILE="${ENV_FILE:-$PROJECT_ROOT/deployment/environments/env.frontend.$ENVIRONMENT}"
+    export ENV_FILE="${ENV_FILE:-$PROJECT_ROOT/deployment/environments/frontend/env.$ENVIRONMENT}"
     
     log_success "环境检查完成"
 }
@@ -172,7 +172,7 @@ set_environment() {
     
     # 设置密钥路径
     export KEYS_PATH="${KEYS_PATH:-$PROJECT_ROOT/frontend/keys}"
-    export ENV_FILE="${ENV_FILE:-$PROJECT_ROOT/deployment/environments/env.frontend.$ENVIRONMENT}"
+    export ENV_FILE="${ENV_FILE:-$PROJECT_ROOT/deployment/environments/frontend/env.$ENVIRONMENT}"
     
     log_info "环境变量设置完成:"
     log_info "  环境: $ENVIRONMENT"

@@ -265,10 +265,22 @@ webhook_logs/
 .env.prod
 
 # Deployment environment files (DO NOT commit actual environment files)
-deployment/environments/env.local
-deployment/environments/env.dev
-deployment/environments/env.stg
-deployment/environments/env.prod
+deployment/environments/frontend/env.local
+deployment/environments/frontend/env.dev
+deployment/environments/frontend/env.stg
+deployment/environments/frontend/env.prod
+deployment/environments/backend/.env.local
+deployment/environments/backend/.env.dev
+deployment/environments/backend/.env.stg
+deployment/environments/backend/.env.prod
+deployment/environments/infrastructure/postgresql/env.local
+deployment/environments/infrastructure/postgresql/env.dev
+deployment/environments/infrastructure/postgresql/env.stg
+deployment/environments/infrastructure/postgresql/env.prod
+deployment/environments/infrastructure/redis/env.local
+deployment/environments/infrastructure/redis/env.dev
+deployment/environments/infrastructure/redis/env.stg
+deployment/environments/infrastructure/redis/env.prod
 
 # Infrastructure environment files (DO NOT commit actual environment files)
 deployment/docker/postgresql/environment.local
