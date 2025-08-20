@@ -4,16 +4,23 @@
 
 ## 🚀 项目状态
 
-**当前状态**: 核心功能已完成，准备进入业务功能开发阶段  
-**最后更新**: 2025-08-17
+**当前状态**: 核心功能已完成，Docker 部署问题已修复，准备进入业务功能开发阶段  
+**最后更新**: 2025-08-20
 
 ### ✅ 已完成功能
 
 - **认证系统**: RSA签名验证 + 前端JWT自主管理
 - **前端应用**: Next.js + React + TypeScript，完整的登录流程
 - **后端API**: FastAPI + PostgreSQL，完整的RESTful API
-- **Docker部署**: 完整的容器化部署配置
+- **Docker部署**: 完整的容器化部署配置，已修复构建问题
 - **开发环境**: 热重载、调试工具、环境管理
+
+### 🔧 最近修复
+
+- **修复了 Docker 构建问题**: 解决了缺失的 `frontend/src/lib/` 文件问题
+- **修复了 .gitignore 规则**: 确保前端源文件被正确跟踪
+- **添加了必要的目录**: 确保 `public/` 目录存在并被跟踪
+- **生成了密钥文件**: 创建了必要的 JWT 密钥对
 
 ## 🏃‍♂️ 快速开始
 
@@ -42,7 +49,7 @@
 
 ```bash
 cd deployment/docker/frontend
-./deploy.sh local
+./deploy.sh dev up
 ```
 
 ### 验证部署
@@ -92,6 +99,11 @@ cd deployment/docker/frontend
 - 运行时通过卷挂载提供密钥
 - 支持多租户密钥管理
 
+### 文件结构
+- `frontend/src/lib/`: 前端核心库文件（认证、API、主题等）
+- `frontend/public/`: 静态资源目录
+- `frontend/keys/`: JWT 密钥文件目录
+
 ## 📚 详细文档
 
 - **项目进度**: [docs/PROGRESS_LOG.md](docs/PROGRESS_LOG.md)
@@ -113,6 +125,6 @@ cd deployment/docker/frontend
 
 ---
 
-**项目状态**: 核心功能已完成，准备进入业务功能开发阶段  
-**最后更新**: 2025-08-17  
+**项目状态**: 核心功能已完成，Docker 部署问题已修复，准备进入业务功能开发阶段  
+**最后更新**: 2025-08-20  
 **下一步重点**: Shopify和Printify集成
