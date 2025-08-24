@@ -8,6 +8,7 @@ from typing import Optional
 from fastapi import HTTPException, Request, status
 from fastapi.responses import JSONResponse
 import redis.asyncio as redis
+from redis import Redis
 import structlog
 
 from app.core.config import settings

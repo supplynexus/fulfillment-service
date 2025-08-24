@@ -10,6 +10,11 @@ NEXT_PUBLIC_APP_NAME=SupplyNexus Fulfillment Service
 FRONTEND_JWT_PRIVATE_KEY_PATH=./keys/frontend_jwt_private_key.pem
 FRONTEND_JWT_PUBLIC_KEY_PATH=./keys/frontend_jwt_public_key.pem
 
+# Keys Directory Configuration
+# Optional: Override default keys directory (relative to project root or absolute path)
+# FRONTEND_KEYS_DIRECTORY=./keys
+# FRONTEND_KEYS_DIRECTORY=/absolute/path/to/keys
+
 # Development Settings
 NODE_ENV=development
 NEXT_PUBLIC_ENVIRONMENT=local

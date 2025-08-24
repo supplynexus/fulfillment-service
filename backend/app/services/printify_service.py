@@ -5,7 +5,6 @@ Printify API service for product and order management
 import logging
 from typing import List, Dict, Any, Optional
 import httpx
-from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -13,10 +12,10 @@ logger = logging.getLogger(__name__)
 class PrintifyService:
     """Service for interacting with Printify API"""
     
-    def __init__(self):
+    def __init__(self, printify_api_token: str):
         self.base_url = "https://api.printify.com/v1"
         self.headers = {
-            "Authorization": f"Bearer {settings.PRINTIFY_API_TOKEN}",
+            "Authorization": f"Bearer {printify_api_token}",
             "Content-Type": "application/json",
         }
     

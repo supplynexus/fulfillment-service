@@ -8,9 +8,9 @@ from typing import List, Optional
 from datetime import datetime
 
 from app.core.database import get_async_db
-from app.core.api_key_auth import require_permission
-from app.models.api_key import ApiKey
+from app.core.tenant_auth_dependency import verify_tenant_auth
 from app.models.tenant import Tenant
+from app.models.user import User
 from app.schemas.order import OrderResponse, OrderListResponse, OrderSyncResponse
 from app.services.shopify.order_service import ShopifyOrderService
 from app.tasks.shopify_tasks import sync_shopify_orders_task
@@ -24,12 +24,12 @@ async def get_orders(
     limit: int = 100,
     status: Optional[str] = None,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple[ApiKey, Tenant] = Depends(require_permission("orders:read"))
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
 ) -> OrderListResponse:
     """
     获取订单列表
     """
-    api_key, tenant = auth
+    tenant, user = auth
     
     order_service = ShopifyOrderService(db)
     
@@ -67,12 +67,12 @@ async def sync_orders(
     max_orders: Optional[int] = 100,
     background_tasks: BackgroundTasks = None,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple[ApiKey, Tenant] = Depends(require_permission("orders:write"))
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
 ) -> OrderSyncResponse:
     """
     手动触发订单同步
     """
-    api_key, tenant = auth
+    tenant, user = auth
     
     order_service = ShopifyOrderService(db)
     
@@ -101,12 +101,12 @@ async def sync_orders_background(
     sync_recent_only: bool = True,
     max_orders: Optional[int] = 100,
     background_tasks: BackgroundTasks = None,
-    auth: tuple[ApiKey, Tenant] = Depends(require_permission("orders:write"))
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
 ):
     """
     后台异步同步订单
     """
-    api_key, tenant = auth
+    tenant, user = auth
     
     # 启动后台任务
     task = sync_shopify_orders_task.delay(
@@ -124,12 +124,12 @@ async def sync_orders_background(
 
 @router.post("/sync/full")
 async def full_sync_orders(
-    auth: tuple[ApiKey, Tenant] = Depends(require_permission("orders:write"))
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
 ):
     """
     完全重新同步所有Shopify订单（不限制数量和时间）
     """
-    api_key, tenant = auth
+    tenant, user = auth
     
     # 启动后台任务，完全重新同步
     task = sync_shopify_orders_task.delay(
@@ -151,12 +151,12 @@ async def get_recent_orders(
     hours: int = 24,
     limit: int = 50,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple[ApiKey, Tenant] = Depends(require_permission("orders:read"))
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
 ) -> List[OrderResponse]:
     """
     获取最近的订单
     """
-    api_key, tenant = auth
+    tenant, user = auth
     
     order_service = ShopifyOrderService(db)
     orders = await order_service.get_recent_orders(
@@ -173,12 +173,12 @@ async def get_orders_by_status(
     status: str,
     limit: int = 100,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple[ApiKey, Tenant] = Depends(require_permission("orders:read"))
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
 ) -> List[OrderResponse]:
     """
     根据状态获取订单
     """
-    api_key, tenant = auth
+    tenant, user = auth
     
     order_service = ShopifyOrderService(db)
     orders = await order_service.get_orders_by_status(

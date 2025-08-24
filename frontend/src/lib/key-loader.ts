@@ -16,8 +16,22 @@ export class KeyLoader {
   };
 
   private constructor() {
-    // 密钥文件目录
-    this.keysDir = path.join(process.cwd(), 'keys');
+    // 密钥文件目录 - 支持环境变量配置
+    const keysDirFromEnv = process.env.FRONTEND_KEYS_DIRECTORY;
+    if (keysDirFromEnv) {
+      // 如果是绝对路径，直接使用
+      if (path.isAbsolute(keysDirFromEnv)) {
+        this.keysDir = keysDirFromEnv;
+      } else {
+        // 如果是相对路径，相对于项目根目录
+        this.keysDir = path.resolve(process.cwd(), keysDirFromEnv);
+      }
+    } else {
+      // 默认使用项目根目录下的 keys 文件夹
+      this.keysDir = path.join(process.cwd(), 'keys');
+    }
+    
+    console.log(`🔑 Keys directory configured: ${this.keysDir}`);
   }
 
   static getInstance(): KeyLoader {

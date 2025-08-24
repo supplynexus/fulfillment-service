@@ -479,12 +479,20 @@ class ShopifyGraphQLClient:
 
 
 # 工厂函数
-def create_shopify_client(shop_name: str = None, access_token: str = None) -> ShopifyGraphQLClient:
-    """创建 Shopify 客户端实例"""
-    shop_name = shop_name or settings.SHOPIFY_SHOP_NAME
-    access_token = access_token or settings.SHOPIFY_ACCESS_TOKEN
+def create_shopify_client(shop_name: str, access_token: str) -> ShopifyGraphQLClient:
+    """创建 Shopify 客户端实例
     
+    Args:
+        shop_name: Shopify 商店名称（必需）
+        access_token: Shopify 访问令牌（必需）
+    
+    Returns:
+        ShopifyGraphQLClient 实例
+    
+    Raises:
+        ValueError: 如果缺少必需的参数
+    """
     if not shop_name or not access_token:
-        raise ValueError("缺少 Shopify 配置信息")
+        raise ValueError("shop_name 和 access_token 都是必需的参数")
     
     return ShopifyGraphQLClient(shop_name, access_token)

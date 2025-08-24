@@ -7,6 +7,7 @@ import hashlib
 from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
 import redis.asyncio as redis
+from redis import Redis
 from app.core.config import settings
 
 

@@ -17,21 +17,14 @@ class Settings(BaseSettings):
     CELERY_BROKER_URL: str = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/1")
     CELERY_RESULT_BACKEND: str = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/2")
     
-    # Shopify API 配置
-    SHOPIFY_SHOP_NAME: Optional[str] = os.getenv("SHOPIFY_SHOP_NAME")
-    SHOPIFY_ACCESS_TOKEN: Optional[str] = os.getenv("SHOPIFY_ACCESS_TOKEN")
-    SHOPIFY_API_KEY: Optional[str] = os.getenv("SHOPIFY_API_KEY")
-    SHOPIFY_API_SECRET: Optional[str] = os.getenv("SHOPIFY_API_SECRET")
-    
-    # Printify API 配置
-    PRINTIFY_API_TOKEN: Optional[str] = os.getenv("PRINTIFY_API_TOKEN")
+    # Shopify API 配置（多租户系统 - 每个租户的配置存储在数据库中）
+    # 注意：不要使用环境变量配置 Shopify 凭据
     
     # 安全配置
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "dev-jwt-secret-key-change-in-prod")
-    ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
-    REFRESH_TOKEN_EXPIRE_DAYS: int = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
     WEBHOOK_SECRET: str = os.getenv("WEBHOOK_SECRET", "dev-webhook-secret-change-in-prod")
+    
+    # System API Key for system-level endpoints
+    SYSTEM_API_KEY: str = os.getenv("SYSTEM_API_KEY", "system-api-key-change-in-prod")
     
     # 应用配置
     ENVIRONMENT: str = "dev"
@@ -54,9 +47,6 @@ class Settings(BaseSettings):
     HASHIDS_SALT: str = os.getenv("HASHIDS_SALT", "dev-hashids-salt-change-in-prod")
     HASHIDS_MIN_LENGTH: int = int(os.getenv("HASHIDS_MIN_LENGTH", "8"))
     
-    # Swagger 调试模式配置
-    SWAGGER_DEBUG_MODE: bool = os.getenv("SWAGGER_DEBUG_MODE", "false").lower() == "true"
-    
     class Config:
         # 支持从ENV_FILE环境变量读取配置文件
         # 如果没有指定ENV_FILE，则按优先级查找：
@@ -65,6 +55,51 @@ class Settings(BaseSettings):
         # 3. .env (默认)
         env_file = os.getenv("ENV_FILE") or ".env.local"
         extra = "ignore"  # Ignore extra fields instead of raising validation error
+
+    def get_env_file_path(self) -> str:
+        """获取当前使用的环境文件绝对路径"""
+        env_file = os.getenv("ENV_FILE") or ".env.local"
+        
+        # 如果是绝对路径，直接返回
+        if os.path.isabs(env_file):
+            return env_file
+        
+        # 获取当前工作目录
+        current_dir = os.getcwd()
+        
+        # 尝试在当前目录查找
+        local_path = os.path.join(current_dir, env_file)
+        if os.path.exists(local_path):
+            return os.path.abspath(local_path)
+        
+        # 尝试在上级目录的 deployment/environments/backend 查找
+        deployment_path = os.path.join(current_dir, "..", "deployment", "environments", "backend", env_file)
+        if os.path.exists(deployment_path):
+            return os.path.abspath(deployment_path)
+        
+        # 如果都找不到，返回预期的路径
+        return os.path.abspath(local_path)
+
+    def get_important_env_vars(self) -> dict:
+        """获取重要的环境变量（显示完整值）"""
+        return {
+            "ENVIRONMENT": self.ENVIRONMENT,
+            "DATABASE_URL": self.DATABASE_URL,
+            "REDIS_URL": self.REDIS_URL,
+            "CELERY_BROKER_URL": self.CELERY_BROKER_URL,
+            "CELERY_RESULT_BACKEND": self.CELERY_RESULT_BACKEND,
+            "WEBHOOK_SECRET": self.WEBHOOK_SECRET,
+            "HEALTH_CHECK_API_KEY": self.HEALTH_CHECK_API_KEY,
+            "HEALTH_CHECK_RATE_LIMIT": self.HEALTH_CHECK_RATE_LIMIT,
+            "HEALTH_CHECK_RATE_WINDOW": self.HEALTH_CHECK_RATE_WINDOW,
+            "SYSTEM_API_KEY": self.SYSTEM_API_KEY,
+            "HASHIDS_SALT": self.HASHIDS_SALT,
+            "HASHIDS_MIN_LENGTH": self.HASHIDS_MIN_LENGTH,
+            "ALLOWED_ORIGINS": self.ALLOWED_ORIGINS,
+            "ALLOWED_HOSTS": self.ALLOWED_HOSTS,
+            "API_V1_STR": self.API_V1_STR,
+            "BACKEND_PORT": getattr(self, 'BACKEND_PORT', 8000),
+        }
 
 
 settings = Settings()

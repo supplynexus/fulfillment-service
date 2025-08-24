@@ -4,7 +4,7 @@ API version 1 router
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, customers, orders, products, webhooks, dashboard, health, external_systems, shopify_orders, shopify_products, sync_configs, sync_status
+from app.api.v1.endpoints import auth, customers, orders, products, webhooks, dashboard, health, external_systems, shopify_orders, shopify_products, sync_configs, sync_status, system
 
 api_router = APIRouter()
 
@@ -21,4 +21,6 @@ api_router.include_router(sync_status.router, prefix="/sync", tags=["sync"])
 api_router.include_router(shopify_orders.router, prefix="/shopify", tags=["shopify"])
 api_router.include_router(shopify_products.router, prefix="/shopify", tags=["shopify-products"])
 api_router.include_router(sync_configs.router, prefix="/sync-configs", tags=["sync-configs"])
+
+api_router.include_router(system.router, prefix="/system", tags=["system"])
 

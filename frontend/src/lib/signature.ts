@@ -6,7 +6,7 @@ import crypto from 'crypto';
  * @param signatureString 签名字符串
  * @param timestamp 时间戳
  * @param nonce 随机数
- * @param tenantId 租户ID
+ * @param tenantName 租户名称
  * @returns 签名
  */
 export function generateBackendSignature(
@@ -14,7 +14,7 @@ export function generateBackendSignature(
   signatureString: string,
   timestamp: number,
   nonce: string,
-  tenantId: number
+  tenantName: string
 ): string {
   try {
     // 生成 RSA 签名

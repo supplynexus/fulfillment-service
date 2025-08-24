@@ -9,9 +9,9 @@ from pydantic import BaseModel
 from datetime import datetime
 
 from app.core.database import get_async_db
-from app.core.api_key_auth import require_permission
-from app.models.api_key import ApiKey
+from app.core.tenant_auth_dependency import verify_tenant_auth
 from app.models.tenant import Tenant
+from app.models.user import User
 from app.models.external_system import ExternalSystem, ExternalSystemType
 from app.tasks.celery_app import celery_app
 from sqlalchemy import select
@@ -49,12 +49,12 @@ class SyncSummary(BaseModel):
 @router.get("/tasks/{task_id}", response_model=TaskStatus)
 async def get_task_status(
     task_id: str,
-    auth: tuple[ApiKey, Tenant] = Depends(require_permission("sync:read"))
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
 ):
     """
     获取任务状态
     """
-    api_key, tenant = auth
+    tenant, user = auth
     
     try:
         task = celery_app.AsyncResult(task_id)
@@ -75,12 +75,12 @@ async def get_task_status(
 @router.get("/tasks", response_model=List[TaskStatus])
 async def get_recent_tasks(
     limit: int = 20,
-    auth: tuple[ApiKey, Tenant] = Depends(require_permission("sync:read"))
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
 ):
     """
     获取最近的任务列表
     """
-    api_key, tenant = auth
+    tenant, user = auth
     
     try:
         # 这里需要根据你的Celery配置来获取任务列表
@@ -94,12 +94,12 @@ async def get_recent_tasks(
 @router.get("/status", response_model=List[SyncStatus])
 async def get_sync_status(
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple[ApiKey, Tenant] = Depends(require_permission("sync:read"))
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
 ):
     """
     获取所有租户的同步状态
     """
-    api_key, tenant = auth
+    tenant, user = auth
     
     try:
         # 获取所有外部系统
@@ -128,12 +128,12 @@ async def get_sync_status(
 @router.get("/summary", response_model=SyncSummary)
 async def get_sync_summary(
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple[ApiKey, Tenant] = Depends(require_permission("sync:read"))
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
 ):
     """
     获取同步摘要信息
     """
-    api_key, tenant = auth
+    tenant, user = auth
     
     try:
         # 获取所有外部系统
@@ -178,12 +178,12 @@ async def get_sync_summary(
 @router.post("/tasks/{task_id}/cancel")
 async def cancel_task(
     task_id: str,
-    auth: tuple[ApiKey, Tenant] = Depends(require_permission("sync:write"))
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
 ):
     """
     取消正在运行的任务
     """
-    api_key, tenant = auth
+    tenant, user = auth
     
     try:
         task = celery_app.AsyncResult(task_id)
@@ -201,12 +201,12 @@ async def cancel_task(
 async def reset_sync_timestamp(
     tenant_id: Optional[int] = None,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple[ApiKey, Tenant] = Depends(require_permission("sync:write"))
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
 ):
     """
     重置同步时间戳（强制下次同步为完全重新同步）
     """
-    api_key, tenant = auth
+    tenant, user = auth
     
     try:
         from sqlalchemy import update

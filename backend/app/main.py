@@ -99,6 +99,19 @@ async def global_exception_handler(request: Request, exc: Exception):
 async def startup_event():
     """Initialize application on startup"""
     logger.info("Starting SupplyNexus Fulfillment Service")
+    
+    # 输出环境文件路径
+    env_file_path = settings.get_env_file_path()
+    logger.info(f"Environment file: {env_file_path}")
+    print(f"🌍 Environment file: {env_file_path}")
+    
+    # 输出重要环境变量
+    env_vars = settings.get_important_env_vars()
+    logger.info("Environment variables loaded", **env_vars)
+    print("🔧 Environment variables:")
+    for key, value in env_vars.items():
+        print(f"   {key}: {value}")
+    
     # Temporarily skip database initialization for quick start
     # await init_db()
     logger.info("Application started successfully")

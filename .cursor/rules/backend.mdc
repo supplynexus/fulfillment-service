@@ -1,9 +1,7 @@
 ---
-alwaysApply: true
+description: Backend 开发环境规则和启动命令规范
+alwaysApply: false
 ---
-
-
-
 # Backend 开发环境规则
 
 ## 1. 环境配置规则
@@ -13,6 +11,13 @@ alwaysApply: true
 - 环境变量必须通过 `.env` 文件或环境配置文件设置
 
 ## 2. 服务启动规则
+
+### 标准启动命令
+当需要启动 backend 服务时，**必须使用以下命令**：
+
+```bash
+cd backend && source .venv/bin/activate && python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
 
 ### 开发环境启动（推荐方式）
 使用三个终端分别启动服务：
@@ -72,6 +77,7 @@ cd backend && source .venv/bin/activate && ./scripts/start_celery.sh
 - **临时测试文件必须放入 `temp/` 目录**，方便事后统一删除
 
 
+
 # Backend 开发环境规则
 
 ## 1. 环境配置规则
@@ -81,6 +87,13 @@ cd backend && source .venv/bin/activate && ./scripts/start_celery.sh
 - 环境变量必须通过 `.env` 文件或环境配置文件设置
 
 ## 2. 服务启动规则
+
+### 标准启动命令
+当需要启动 backend 服务时，**必须使用以下命令**：
+
+```bash
+cd backend && source .venv/bin/activate && python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
 
 ### 开发环境启动（推荐方式）
 使用三个终端分别启动服务：

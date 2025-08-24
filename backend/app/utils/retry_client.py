@@ -7,6 +7,7 @@ import asyncio
 import aiohttp
 import logging
 from typing import Optional, Dict, Any, Callable, Union
+from aiohttp import ClientTimeout, ClientResponse, ClientSession
 from datetime import datetime, timedelta
 import random
 

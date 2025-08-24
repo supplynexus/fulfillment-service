@@ -3,7 +3,6 @@ import { createLogger } from '@/lib/logger';
 import { jwtUtilsServer } from '@/lib/jwt-utils-server';
 import { keyLoader } from '@/lib/key-loader';
 import { generateBackendSignature } from '@/lib/signature';
-import { hashids } from '@/lib/hashids';
 
 const logger = createLogger('auth.login');
 
@@ -81,12 +80,21 @@ export async function POST(request: NextRequest) {
 
     const timestamp = Math.floor(Date.now() / 1000);
     const nonce = Math.random().toString(36).substring(2, 12);
-    const tenantId = await keyLoader.getTenantId(tenantName);
     const body = `username=${username}&password=${password}&tenant_name=${tenantName}`;
 
     // 使用后端期望的路径格式
     const backendPath = '/api/v1/auth/login/tenant';
-    const signatureString = `POST${backendPath}${timestamp}${nonce}${tenantId}${body}`;
+    const signatureString = `POST${backendPath}${timestamp}${nonce}${tenantName}${body}`;
+
+    logger.info('🔍 Frontend 签名生成调试信息:', {
+      timestamp,
+      nonce,
+      body,
+      backendPath,
+      signatureString,
+      signatureStringLength: signatureString.length,
+      tenantName,
+    });
 
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
     const signature = generateBackendSignature(
@@ -94,13 +102,13 @@ export async function POST(request: NextRequest) {
       signatureString,
       timestamp,
       nonce,
-      tenantId
+      tenantName
     );
 
     logger.info('Backend signature generated successfully', {
       signatureLength: signature.length,
+      signature: signature.substring(0, 50) + '...', // 只显示前50个字符
       tenantName,
-      tenantId,
     });
 
     // 转发到后端
@@ -111,15 +119,12 @@ export async function POST(request: NextRequest) {
     const backendEndpoint = `${backendUrl}${backendPath}`;
     logger.info('Forwarding request to backend', { backendEndpoint });
 
-    // 编码租户 ID 为 hashids 格式
-    const tenantHashId = hashids.encode(tenantId);
-
     const response = await fetch(backendEndpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'X-Signature': signature,
-        'X-Tenant-ID': tenantHashId,
+        'X-Tenant-Name': tenantName,
         'X-Timestamp': timestamp.toString(),
         'X-Nonce': nonce,
       },
@@ -163,7 +168,7 @@ export async function POST(request: NextRequest) {
       const frontendJWT = jwtUtilsServer.generateToken(
         {
           sub: backendData.user?.id?.toString() || '0',
-          tenant_id: backendData.user?.tenant_id || tenantId,
+          tenant_id: backendData.user?.tenant_id,
           email: backendData.user?.email || username,
           tenant_name: backendData.tenant_name || tenantName,
           type: 'access',
@@ -176,7 +181,7 @@ export async function POST(request: NextRequest) {
         {
           tokenLength: frontendJWT.length,
           userId: backendData.user?.id,
-          tenantId: backendData.user?.tenant_id || tenantId,
+          tenantId: backendData.user?.tenant_id,
           jwtSource: 'frontend-generated',
           keyUsed: 'frontend_jwt_private_key.pem',
         }
@@ -185,7 +190,7 @@ export async function POST(request: NextRequest) {
       const refreshToken = jwtUtilsServer.generateToken(
         {
           sub: backendData.user?.id?.toString() || '0',
-          tenant_id: backendData.user?.tenant_id || tenantId,
+          tenant_id: backendData.user?.tenant_id,
           email: backendData.user?.email || username,
           tenant_name: backendData.tenant_name || tenantName,
           type: 'refresh',
@@ -198,7 +203,7 @@ export async function POST(request: NextRequest) {
         {
           tokenLength: refreshToken.length,
           userId: backendData.user?.id,
-          tenantId: backendData.user?.tenant_id || tenantId,
+          tenantId: backendData.user?.tenant_id,
           jwtSource: 'frontend-generated',
           keyUsed: 'frontend_jwt_private_key.pem',
         }

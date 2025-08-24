@@ -11,7 +11,9 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel, Field
 
 from app.core.database import get_async_db
-from app.core.timestamp_auth_middleware import verify_timestamp_auth
+from app.core.tenant_auth_dependency import verify_tenant_auth
+from app.models.tenant import Tenant
+from app.models.user import User
 from app.models.sync_config import SyncConfig, SyncJob, SyncType, SyncFrequency, SyncJobStatus
 from app.models.external_system import ExternalSystem, ExternalSystemType
 
@@ -114,13 +116,14 @@ async def get_sync_configs(
     skip: int = Query(0, ge=0, description="跳过数量"),
     limit: int = Query(10, ge=1, le=100, description="返回数量"),
     db: Session = Depends(get_async_db),
-    auth: dict = Depends(verify_timestamp_auth)
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
 ) -> Any:
     """
     获取租户的同步配置列表
     """
     try:
-        if auth.get("tenant_id") != tenant_id:
+        tenant, user = auth
+        if tenant.id != tenant_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied to this tenant"
@@ -167,13 +170,14 @@ async def create_sync_config(
     tenant_id: int = Query(..., description="租户ID"),
     config: SyncConfigCreate = None,
     db: Session = Depends(get_async_db),
-    auth: dict = Depends(verify_timestamp_auth)
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
 ) -> Any:
     """
     创建新的同步配置
     """
     try:
-        if auth.get("tenant_id") != tenant_id:
+        tenant, user = auth
+        if tenant.id != tenant_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied to this tenant"
@@ -271,13 +275,14 @@ async def update_sync_config(
     tenant_id: int = Query(..., description="租户ID"),
     config: SyncConfigUpdate = None,
     db: Session = Depends(get_async_db),
-    auth: dict = Depends(verify_timestamp_auth)
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
 ) -> Any:
     """
     更新同步配置
     """
     try:
-        if auth.get("tenant_id") != tenant_id:
+        tenant, user = auth
+        if tenant.id != tenant_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied to this tenant"
@@ -357,13 +362,14 @@ async def delete_sync_config(
     config_id: int,
     tenant_id: int = Query(..., description="租户ID"),
     db: Session = Depends(get_async_db),
-    auth: dict = Depends(verify_timestamp_auth)
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
 ) -> Any:
     """
     删除同步配置
     """
     try:
-        if auth.get("tenant_id") != tenant_id:
+        tenant, user = auth
+        if tenant.id != tenant_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied to this tenant"
@@ -405,13 +411,14 @@ async def trigger_sync(
     config_id: int,
     tenant_id: int = Query(..., description="租户ID"),
     db: Session = Depends(get_async_db),
-    auth: dict = Depends(verify_timestamp_auth)
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
 ) -> Any:
     """
     手动触发同步任务
     """
     try:
-        if auth.get("tenant_id") != tenant_id:
+        tenant, user = auth
+        if tenant.id != tenant_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied to this tenant"
@@ -480,13 +487,14 @@ async def get_sync_jobs(
     skip: int = Query(0, ge=0, description="跳过数量"),
     limit: int = Query(10, ge=1, le=100, description="返回数量"),
     db: Session = Depends(get_async_db),
-    auth: dict = Depends(verify_timestamp_auth)
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
 ) -> Any:
     """
     获取同步任务的执行历史
     """
     try:
-        if auth.get("tenant_id") != tenant_id:
+        tenant, user = auth
+        if tenant.id != tenant_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied to this tenant"
@@ -537,13 +545,14 @@ async def get_sync_jobs(
 async def get_sync_stats(
     tenant_id: int = Query(..., description="租户ID"),
     db: Session = Depends(get_async_db),
-    auth: dict = Depends(verify_timestamp_auth)
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
 ) -> Any:
     """
     获取同步统计信息
     """
     try:
-        if auth.get("tenant_id") != tenant_id:
+        tenant, user = auth
+        if tenant.id != tenant_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied to this tenant"

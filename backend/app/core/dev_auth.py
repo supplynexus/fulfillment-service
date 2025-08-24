@@ -24,7 +24,7 @@ async def dev_auth_bypass(
     """
     
     # Only allow in development
-    if not settings.DEBUG:
+    if settings.ENVIRONMENT not in ["dev", "development", "local"]:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Development authentication not allowed in production"

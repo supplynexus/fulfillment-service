@@ -7,9 +7,9 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_async_db
-from app.core.api_key_auth import require_permission
-from app.models.api_key import ApiKey
+from app.core.tenant_auth_dependency import verify_tenant_auth
 from app.models.tenant import Tenant
+from app.models.user import User
 from app.models.external_system import ExternalSystem, ExternalSystemType
 from app.services.external_system_service import ExternalSystemService
 from app.schemas.external_system import (
@@ -26,12 +26,12 @@ router = APIRouter()
 async def create_external_system(
     external_system_data: ExternalSystemCreate,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple[ApiKey, Tenant] = Depends(require_permission("external_systems:write"))
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
 ) -> Any:
     """
     Create a new external system integration
     """
-    api_key, tenant = auth
+    tenant, user = auth
     
     service = ExternalSystemService(db)
     
@@ -63,12 +63,12 @@ async def get_external_systems(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple[ApiKey, Tenant] = Depends(require_permission("external_systems:read"))
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
 ) -> Any:
     """
     Get external systems for the authenticated tenant
     """
-    api_key, tenant = auth
+    tenant, user = auth
     
     service = ExternalSystemService(db)
     
@@ -105,12 +105,12 @@ async def get_external_systems(
 async def get_external_system(
     external_system_id: int,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple[ApiKey, Tenant] = Depends(require_permission("external_systems:read"))
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
 ) -> Any:
     """
     Get specific external system
     """
-    api_key, tenant = auth
+    tenant, user = auth
     
     service = ExternalSystemService(db)
     external_system = await service.get_external_system(external_system_id, tenant.id)
@@ -129,12 +129,12 @@ async def update_external_system(
     external_system_id: int,
     external_system_data: ExternalSystemUpdate,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple[ApiKey, Tenant] = Depends(require_permission("external_systems:write"))
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
 ) -> Any:
     """
     Update external system
     """
-    api_key, tenant = auth
+    tenant, user = auth
     
     service = ExternalSystemService(db)
     
@@ -173,12 +173,12 @@ async def update_external_system(
 async def delete_external_system(
     external_system_id: int,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple[ApiKey, Tenant] = Depends(require_permission("external_systems:write"))
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
 ) -> Any:
     """
     Delete external system (soft delete)
     """
-    api_key, tenant = auth
+    tenant, user = auth
     
     service = ExternalSystemService(db)
     success = await service.delete_external_system(external_system_id, tenant.id)

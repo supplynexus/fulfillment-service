@@ -32,7 +32,6 @@ class User(Base):
 
     # Relationships
     user_tenants = relationship("UserTenant", back_populates="user")
-    user_keys = relationship("UserKey", back_populates="user")
 
     def set_password(self, password: str) -> tuple[bool, str]:
         """

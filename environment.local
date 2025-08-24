@@ -1,23 +1,66 @@
-# 本地开发环境配置
+# =================================================================
+# SupplyNexus Fulfillment Service - 本地开发环境配置
+# =================================================================
+
+# =================================================================
+# 必需配置
+# =================================================================
+
+# 数据库配置
 DATABASE_URL=postgresql+asyncpg://supplynexus_admin:IVzrm2bKlWyxWzhU3KVJUOdwU6IEwG32@localhost:5433/supplynexus
+
+# Redis 配置
 REDIS_URL=redis://localhost:6379/0
 
-# Alembic 使用的同步数据库 URL  
-DATABASE_URL_SYNC=postgresql://supplynexus_admin:IVzrm2bKlWyxWzhU3KVJUOdwU6IEwG32@localhost:5433/supplynexus
+# 健康检查配置
+HEALTH_CHECK_API_KEY=4df1b63b84f3d0d15eb4bcbe2d443efb
+HEALTH_CHECK_RATE_LIMIT=10
+HEALTH_CHECK_RATE_WINDOW=60
 
-# API 密钥（开发环境）
-SHOPIFY_API_KEY=dev-shopify-api-key
-SHOPIFY_API_SECRET=dev-shopify-api-secret
-PRINTIFY_API_TOKEN=dev-printify-api-token
+# 系统 API 配置
+SYSTEM_API_KEY=system-api-key-change-in-prod
+
+# 安全配置
 WEBHOOK_SECRET=dev-webhook-secret
-JWT_SECRET=dev-jwt-secret-key
 
 # 开发环境设置
 ENVIRONMENT=dev
 ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001
 ALLOWED_HOSTS=localhost,127.0.0.1
 
-# 健康检查配置
-HEALTH_CHECK_API_KEY=4df1b63b84f3d0d15eb4bcbe2d443efb
-HEALTH_CHECK_RATE_LIMIT=10
-HEALTH_CHECK_RATE_WINDOW=60
+# =================================================================
+# 可选配置（有默认值）
+# =================================================================
+
+# API 配置
+API_V1_STR=/api/v1
+BACKEND_PORT=8000
+
+# Celery 配置（用于异步任务）
+CELERY_BROKER_URL=redis://localhost:6379/1
+CELERY_RESULT_BACKEND=redis://localhost:6379/2
+
+# Hashids 配置
+HASHIDS_SALT=dev-hashids-salt-change-in-prod
+HASHIDS_MIN_LENGTH=8
+
+# 安全配置
+
+# =================================================================
+# 可选配置（开发环境可以留空）
+# =================================================================
+
+# Shopify API 配置（多租户系统 - 每个租户的配置存储在数据库中）
+# 注意：不要在此处配置 Shopify 凭据，每个租户都有自己的配置
+
+# 错误监控（开发环境可以留空）
+# SENTRY_DSN=
+
+# 邮件配置（开发环境可以留空）
+# SMTP_TLS=true
+# SMTP_PORT=587
+# SMTP_HOST=smtp.gmail.com
+# SMTP_USER=your-email@gmail.com
+# SMTP_PASSWORD=your-email-password
+# EMAILS_FROM_EMAIL=noreply@supplynexus.store
+# EMAILS_FROM_NAME=SupplyNexus

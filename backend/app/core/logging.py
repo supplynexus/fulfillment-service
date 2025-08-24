@@ -103,20 +103,40 @@ class RequestLogger:
     
     def info(self, message: str, **kwargs):
         """记录信息日志"""
-        self.logger.info(message, **kwargs)
+        try:
+            self.logger.info(message, **kwargs)
+        except Exception as e:
+            # 如果结构化日志失败，回退到简单日志
+            self.logger.info(f"{message} - {kwargs}")
     
     def error(self, message: str, **kwargs):
         """记录错误日志"""
-        self.logger.error(message, **kwargs)
+        try:
+            self.logger.error(message, **kwargs)
+        except Exception as e:
+            # 如果结构化日志失败，回退到简单日志
+            self.logger.error(f"{message} - {kwargs}")
     
     def warning(self, message: str, **kwargs):
         """记录警告日志"""
-        self.logger.warning(message, **kwargs)
+        try:
+            self.logger.warning(message, **kwargs)
+        except Exception as e:
+            # 如果结构化日志失败，回退到简单日志
+            self.logger.warning(f"{message} - {kwargs}")
     
     def debug(self, message: str, **kwargs):
         """记录调试日志"""
-        self.logger.debug(message, **kwargs)
+        try:
+            self.logger.debug(message, **kwargs)
+        except Exception as e:
+            # 如果结构化日志失败，回退到简单日志
+            self.logger.debug(f"{message} - {kwargs}")
     
     def exception(self, message: str, **kwargs):
         """记录异常日志（包含堆栈跟踪）"""
-        self.logger.exception(message, **kwargs)
+        try:
+            self.logger.exception(message, **kwargs)
+        except Exception as e:
+            # 如果结构化日志失败，回退到简单日志
+            self.logger.exception(f"{message} - {kwargs}")

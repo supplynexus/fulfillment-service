@@ -25,6 +25,22 @@ class UserService:
         result = await self.db.execute(select(User).where(User.email == email))
         return result.scalar_one_or_none()
 
+    async def get_by_email_and_tenant(self, email: str, tenant_id: int) -> Optional[User]:
+        """Get user by email and tenant ID (handling many-to-many relationship)"""
+        from app.models.user_tenant import UserTenant
+        
+        # Join users with user_tenants to find user in specific tenant
+        result = await self.db.execute(
+            select(User)
+            .join(UserTenant, User.id == UserTenant.user_id)
+            .where(User.email == email, UserTenant.tenant_id == tenant_id, UserTenant.is_active == True)
+        )
+        return result.scalar_one_or_none()
+
+    async def verify_password(self, password: str, hashed_password: str) -> bool:
+        """Verify password against hashed password"""
+        return verify_password(password, hashed_password)
+
     async def create(self, obj_in: dict) -> Tuple[Optional[User], str]:
         """
         Create new user with password validation
