@@ -159,7 +159,7 @@ services:
       # 挂载日志目录
       - frontend_logs:/var/log/app
       # 挂载环境变量文件
-      - ${ENV_FILE:-../environments/frontend/env.local}:/app/.env.local:ro
+      - ../environments/frontend/${ENV_FILE:-env.local}:/app/.env.local:ro
 
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
