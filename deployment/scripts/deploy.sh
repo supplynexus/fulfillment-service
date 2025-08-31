@@ -98,11 +98,11 @@ case "$ENVIRONMENT" in
 esac
 
 # Check if environment file exists
-ENV_FILE_PATH="$(dirname "$0")/../environments/$ENV_FILE"
+ENV_FILE_PATH="$(dirname "$0")/../environments/backend/$ENV_FILE"
 if [ ! -f "$ENV_FILE_PATH" ]; then
     print_error "Environment file $ENV_FILE_PATH not found"
     echo "Please create the environment file first:"
-    echo "  cp $(dirname "$0")/../environments/env.example $ENV_FILE_PATH"
+    echo "  cp $(dirname "$0")/../environments/backend/env.example $ENV_FILE_PATH"
     echo "  # Then edit $ENV_FILE_PATH with your actual values"
     exit 1
 fi
