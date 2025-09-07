@@ -158,14 +158,11 @@ set_environment() {
     export VERSION="${VERSION:-latest}"
     export FRONTEND_PORT="${FRONTEND_PORT:-3000}"
     
-    # 根据环境设置API URL
-    if [[ "$ENVIRONMENT" == "local" ]]; then
-        export NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL:-http://host.docker.internal:8000}"
-        export BACKEND_API_URL="${BACKEND_API_URL:-http://host.docker.internal:8000}"
-    else
-        export NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL:-http://localhost:8000}"
-        export BACKEND_API_URL="${BACKEND_API_URL:-http://localhost:8000}"
-    fi
+    # 根据环境设置API URL - 优先使用环境文件中的配置
+    # 如果环境文件中有配置，就使用环境文件的配置
+    # 如果没有，才使用默认值
+    export NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL:-http://localhost:8000}"
+    export BACKEND_API_URL="${BACKEND_API_URL:-http://localhost:8000}"
     
     export NEXT_PUBLIC_APP_NAME="${NEXT_PUBLIC_APP_NAME:-SupplyNexus Fulfillment Service}"
     export NEXT_PUBLIC_ENVIRONMENT="${NEXT_PUBLIC_ENVIRONMENT:-$ENVIRONMENT}"
