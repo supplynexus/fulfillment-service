@@ -69,8 +69,6 @@ frontendApi.interceptors.response.use(
   }
 );
 
-
-
 export const authApi = {
   login: async (credentials: LoginCredentials): Promise<TokenResponse> => {
     try {

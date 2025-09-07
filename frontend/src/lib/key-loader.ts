@@ -30,7 +30,7 @@ export class KeyLoader {
       // 默认使用项目根目录下的 keys 文件夹
       this.keysDir = path.join(process.cwd(), 'keys');
     }
-    
+
     console.log(`🔑 Keys directory configured: ${this.keysDir}`);
   }
 
