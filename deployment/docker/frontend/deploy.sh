@@ -175,6 +175,16 @@ set_environment() {
     # 根据环境设置API URL - 优先使用环境文件中的配置
     # 如果环境文件中有配置，就使用环境文件的配置
     # 如果没有，才使用默认值
+    
+    # 先加载环境文件中的配置
+    if [[ -f "$ENV_FILE" ]]; then
+        # 使用source加载环境变量
+        set -a  # 自动导出变量
+        source "$ENV_FILE"
+        set +a  # 关闭自动导出
+    fi
+    
+    # 设置默认值（如果环境文件中没有定义）
     export NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL:-http://localhost:8000}"
     export BACKEND_API_URL="${BACKEND_API_URL:-http://localhost:8000}"
     
