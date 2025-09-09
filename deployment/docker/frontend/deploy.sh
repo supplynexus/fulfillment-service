@@ -145,6 +145,20 @@ check_environment() {
         exit 1
     fi
     
+    # 显示环境文件绝对路径
+    log_info "📁 环境文件路径: $(realpath "$ENV_FILE")"
+    
+    # 显示环境文件内容（仅显示非空行）
+    if [[ -f "$ENV_FILE" ]]; then
+        log_info "📄 环境文件内容:"
+        while IFS= read -r line; do
+            # 跳过空行和注释行
+            if [[ -n "$line" && ! "$line" =~ ^[[:space:]]*# ]]; then
+                log_info "    $line"
+            fi
+        done < "$ENV_FILE"
+    fi
+    
     # 设置密钥路径
     export KEYS_PATH="${KEYS_PATH:-$PROJECT_ROOT/frontend/keys}"
     export ENV_FILE="${ENV_FILE:-$PROJECT_ROOT/deployment/environments/frontend/env.$ENVIRONMENT}"
@@ -177,6 +191,7 @@ set_environment() {
     log_info "  端口: $FRONTEND_PORT"
     log_info "  API URL: $NEXT_PUBLIC_API_URL"
     log_info "  密钥路径: $KEYS_PATH"
+    log_info "  环境文件: $(realpath "$ENV_FILE")"
 }
 
 # 构建镜像
