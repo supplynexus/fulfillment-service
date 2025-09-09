@@ -40,40 +40,77 @@ async def verify_tenant_auth(
         path = request.url.path
         signature_string = f"{method}{path}{x_timestamp}{x_nonce}{x_tenant_name}{body_str}"
         
-        logger.info(f"🔍 签名验证调试信息: tenant_name={x_tenant_name}, method={method}, path={path}, timestamp={x_timestamp}, nonce={x_nonce}, body_length={len(body_str)}, signature_string_length={len(signature_string)}, x_signature_length={len(x_signature)}")
+        logger.info(f"🔍 后端签名验证调试信息: tenant_name={x_tenant_name}, method={method}, path={path}, timestamp={x_timestamp}, nonce={x_nonce}, body_length={len(body_str)}, signature_string_length={len(signature_string)}, x_signature_length={len(x_signature)}")
+        logger.info(f"🔍 后端构建的签名字符串: {signature_string}")
+        logger.info(f"🔍 前端发送的签名: {x_signature[:50]}...")
         
         # Verify signature
-        if not await verify_tenant_signature(x_signature, signature_string, x_tenant_name, db):
-            raise HTTPException(status_code=401, detail="Invalid signature")
+        try:
+            signature_valid = await verify_tenant_signature(x_signature, signature_string, x_tenant_name, db)
+            logger.info(f"🔍 签名验证结果: {signature_valid}")
+            
+            if not signature_valid:
+                logger.error(f"❌ 签名验证失败: tenant_name={x_tenant_name}, signature_string={signature_string}")
+                raise HTTPException(status_code=401, detail="Invalid signature")
+        except Exception as e:
+            import traceback
+            logger.error(f"❌ 签名验证过程中发生异常: {str(e)}")
+            logger.error(f"   异常类型: {type(e).__name__}")
+            logger.error(f"   异常堆栈: {traceback.format_exc()}")
+            raise HTTPException(status_code=500, detail=f"Signature verification error: {str(e)}")
         
         logger.info("Signature verified successfully")
         
         # Get tenant by name
-        result = await db.execute(select(Tenant).where(Tenant.name == x_tenant_name))
-        tenant = result.scalar_one_or_none()
-        if not tenant:
-            raise HTTPException(status_code=404, detail="Tenant not found")
-        
-        if not tenant.is_active:
-            raise HTTPException(status_code=401, detail="Tenant is inactive")
+        logger.info(f"🔍 查询租户信息: {x_tenant_name}")
+        try:
+            result = await db.execute(select(Tenant).where(Tenant.name == x_tenant_name))
+            tenant = result.scalar_one_or_none()
+            if not tenant:
+                logger.error(f"❌ 租户不存在: {x_tenant_name}")
+                raise HTTPException(status_code=404, detail="Tenant not found")
+            
+            logger.info(f"✅ 租户查询成功: id={tenant.id}, name={tenant.name}, is_active={tenant.is_active}")
+            
+            if not tenant.is_active:
+                logger.error(f"❌ 租户未激活: {x_tenant_name}")
+                raise HTTPException(status_code=401, detail="Tenant is inactive")
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"❌ 查询租户时发生异常: {str(e)}")
+            import traceback
+            logger.error(f"   异常堆栈: {traceback.format_exc()}")
+            raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
         
         # For now, we'll return a system user or create a mock user
         # In a real implementation, you might want to get the actual user from the signature
         # For simplicity, we'll use a system user approach
         
         # Get or create system user for this tenant
-        system_user_result = await db.execute(
-            select(User).where(User.email == "system@supplynexus.store")
-        )
-        system_user = system_user_result.scalar_one_or_none()
+        logger.info(f"🔍 查询系统用户: system@supplynexus.store")
+        try:
+            system_user_result = await db.execute(
+                select(User).where(User.email == "system@supplynexus.store")
+            )
+            system_user = system_user_result.scalar_one_or_none()
+            
+            if not system_user:
+                logger.info(f"🔍 系统用户不存在，正在创建...")
+                # Create system user if it doesn't exist
+                from app.services.user_service import UserService
+                user_service = UserService(db)
+                system_user = await user_service.create_system_user()
+                logger.info(f"✅ 系统用户创建成功: id={system_user.id}")
+            else:
+                logger.info(f"✅ 系统用户查询成功: id={system_user.id}, email={system_user.email}")
+        except Exception as e:
+            logger.error(f"❌ 查询/创建系统用户时发生异常: {str(e)}")
+            import traceback
+            logger.error(f"   异常堆栈: {traceback.format_exc()}")
+            raise HTTPException(status_code=500, detail=f"User service error: {str(e)}")
         
-        if not system_user:
-            # Create system user if it doesn't exist
-            from app.services.user_service import UserService
-            user_service = UserService(db)
-            system_user = await user_service.create_system_user()
-        
-        logger.info(f"Tenant authenticated successfully - tenant_id: {tenant.id}, tenant_name: {tenant.name}, user_id: {system_user.id}")
+        logger.info(f"✅ 租户认证成功 - tenant_id: {tenant.id}, tenant_name: {tenant.name}, user_id: {system_user.id}")
         
         return tenant, system_user
         

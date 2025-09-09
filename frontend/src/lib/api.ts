@@ -10,7 +10,7 @@ import { tokenManager } from './token-manager';
 import { frontendLogger } from './frontend-logger';
 
 // Create axios instance for frontend API routes
-const frontendApi = axios.create({
+export const frontendApi = axios.create({
   baseURL: '', // Empty baseURL for frontend API routes
   headers: {
     'Content-Type': 'application/json',
@@ -45,7 +45,39 @@ frontendApi.interceptors.request.use(
 frontendApi.interceptors.response.use(
   response => response,
   async error => {
+    // 记录错误信息
+    frontendLogger.error('API request failed', {
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      url: error.config?.url,
+      method: error.config?.method,
+      errorMessage: error.message,
+      errorData: error.response?.data,
+    });
+
     if (error.response?.status === 401) {
+      // 检查是否是签名验证错误
+      const errorDetail = error.response?.data?.detail;
+      if (errorDetail === 'Invalid signature') {
+        // 签名验证错误，不自动logout，让用户手动处理
+        toast.error('签名验证失败，请检查网络连接或联系管理员');
+        return Promise.reject(error);
+      }
+
+      // 防止无限重试：检查是否已经重试过
+      if (error.config._retry) {
+        // 如果已经重试过，直接清除token并重定向
+        tokenManager.clearTokens();
+        if (typeof window !== 'undefined') {
+          window.location.href = '/auth/login';
+          toast.error('登录已过期，请重新登录');
+        }
+        return Promise.reject(error);
+      }
+
+      // 标记为已重试
+      error.config._retry = true;
+
       // 如果是401错误，尝试刷新token
       try {
         await tokenManager.refreshTokens();
@@ -64,7 +96,18 @@ frontendApi.interceptors.response.use(
           toast.error('登录已过期，请重新登录');
         }
       }
+    } else if (error.response?.status >= 500) {
+      // 服务器错误，显示友好错误信息
+      toast.error('服务器错误，请稍后重试或联系管理员');
+    } else if (error.response?.status >= 400) {
+      // 客户端错误，显示具体错误信息
+      const errorMessage = error.response?.data?.detail || error.response?.data?.message || '请求失败';
+      toast.error(errorMessage);
+    } else if (error.code === 'NETWORK_ERROR' || error.message === 'Network Error') {
+      // 网络错误
+      toast.error('网络连接失败，请检查网络连接');
     }
+
     return Promise.reject(error);
   }
 );

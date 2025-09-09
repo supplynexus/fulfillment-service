@@ -59,11 +59,6 @@ export function Header() {
     handleClose();
   };
 
-  const handleDashboard = () => {
-    router.push('/dashboard');
-    handleClose();
-  };
-
   const getInitials = (name: string) => {
     return name
       .split(' ')
@@ -135,19 +130,9 @@ export function Header() {
               },
             }}
           >
-            <MenuItem onClick={handleDashboard}>
-              <Dashboard sx={{ mr: 2, fontSize: 20 }} />
-              仪表板
-            </MenuItem>
-
             <MenuItem onClick={handleProfile}>
               <AccountCircle sx={{ mr: 2, fontSize: 20 }} />
               个人资料
-            </MenuItem>
-
-            <MenuItem onClick={handleSettings}>
-              <Settings sx={{ mr: 2, fontSize: 20 }} />
-              设置
             </MenuItem>
 
             <Divider />

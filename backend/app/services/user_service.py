@@ -206,3 +206,31 @@ class UserService:
         await self.db.commit()
         
         return True, "User unlocked successfully"
+
+    async def create_system_user(self) -> User:
+        """
+        Create system user for internal operations
+        
+        Returns:
+            User: The created system user
+        """
+        # Check if system user already exists
+        existing_user = await self.get_by_email("system@supplynexus.store")
+        if existing_user:
+            return existing_user
+        
+        # Create system user
+        system_user = User(
+            email="system@supplynexus.store",
+            hashed_password=hash_password("system_password_123"),  # Default password
+            full_name="System User",
+            is_active=True,
+            is_superuser=True,
+            password_changed_at=func.now(),
+        )
+        
+        self.db.add(system_user)
+        await self.db.commit()
+        await self.db.refresh(system_user)
+        
+        return system_user

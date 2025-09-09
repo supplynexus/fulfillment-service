@@ -2,7 +2,7 @@
 External system integration model
 """
 
-from sqlalchemy import Boolean, Column, Integer, String, DateTime, ForeignKey, Text, JSON, Enum
+from sqlalchemy import Boolean, Column, Integer, String, DateTime, ForeignKey, Text, JSON, Enum, UniqueConstraint
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 import enum
@@ -31,7 +31,8 @@ class ExternalSystem(Base):
     name = Column(String, nullable=False)  # Human readable name (e.g., "Main Shopify Store", "Printify Production")
     
     # External system configuration
-    external_id = Column(String, nullable=True)  # External system's ID for this connection
+    external_id = Column(String, nullable=True)  # External system's ID for this connection (deprecated)
+    external_system_id = Column(String(100), nullable=False)  # External system's real ID (e.g., shop1.myshopify.com)
     base_url = Column(String, nullable=True)  # API base URL
     webhook_url = Column(String, nullable=True)  # Webhook endpoint URL
     
@@ -67,3 +68,9 @@ class ExternalSystem(Base):
     customers = relationship("Customer", back_populates="external_system")
     suppliers = relationship("Supplier", back_populates="external_system")
     sync_configs = relationship("SyncConfig", back_populates="external_system")
+    
+    # Table constraints
+    __table_args__ = (
+        UniqueConstraint('tenant_id', 'system_type', 'external_system_id', 
+                        name='uq_tenant_system_external_id'),
+    )

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 
@@ -27,7 +27,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // 检查是否在浏览器环境
   const isBrowser = typeof window !== 'undefined';
 
-  const checkAuth = async () => {
+  const checkAuth = useCallback(async () => {
     try {
       frontendLogger.info('AuthContext: Checking authentication status');
 
@@ -69,7 +69,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   const login = async (credentials: LoginCredentials) => {
     try {
@@ -137,7 +137,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } else {
       setIsLoading(false);
     }
-  }, [isBrowser]);
+  }, [isBrowser, checkAuth]);
 
   const value = {
     user,

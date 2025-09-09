@@ -29,36 +29,80 @@ async def get_orders(
     """
     获取订单列表
     """
-    tenant, user = auth
+    from app.core.logging import RequestLogger
+    logger = RequestLogger("orders.get_orders")
     
-    order_service = ShopifyOrderService(db)
-    
-    if status:
-        orders = await order_service.get_orders_by_status(
-            tenant_id=tenant.id,
-            status=status,
+    try:
+        logger.info(f"🔍 开始处理订单列表请求: skip={skip}, limit={limit}, status={status}")
+        
+        tenant, user = auth
+        logger.info(f"✅ 认证成功: tenant_id={tenant.id}, tenant_name={tenant.name}, user_id={user.id}")
+        
+        logger.info(f"🔍 初始化 ShopifyOrderService...")
+        order_service = ShopifyOrderService(db)
+        logger.info(f"✅ ShopifyOrderService 初始化成功")
+        
+        if status:
+            logger.info(f"🔍 按状态查询订单: status={status}, limit={limit}")
+            try:
+                orders = await order_service.get_orders_by_status(
+                    tenant_id=tenant.id,
+                    status=status,
+                    limit=limit
+                )
+                total = len(orders)
+                logger.info(f"✅ 按状态查询成功: 找到 {total} 个订单")
+            except Exception as e:
+                logger.error(f"❌ 按状态查询订单失败: {str(e)}")
+                import traceback
+                logger.error(f"   异常堆栈: {traceback.format_exc()}")
+                raise HTTPException(status_code=500, detail=f"Failed to get orders by status: {str(e)}")
+        else:
+            logger.info(f"🔍 查询最近订单: hours=24, limit={limit}")
+            try:
+                orders = await order_service.get_recent_orders(
+                    tenant_id=tenant.id,
+                    hours=24,
+                    limit=limit
+                )
+                total = len(orders)
+                logger.info(f"✅ 查询最近订单成功: 找到 {total} 个订单")
+            except Exception as e:
+                logger.error(f"❌ 查询最近订单失败: {str(e)}")
+                import traceback
+                logger.error(f"   异常堆栈: {traceback.format_exc()}")
+                raise HTTPException(status_code=500, detail=f"Failed to get recent orders: {str(e)}")
+        
+        # 转换为响应格式
+        logger.info(f"🔍 转换订单响应格式...")
+        try:
+            order_responses = []
+            for order in orders:
+                order_responses.append(OrderResponse.from_orm(order))
+            logger.info(f"✅ 订单响应格式转换成功: {len(order_responses)} 个订单")
+        except Exception as e:
+            logger.error(f"❌ 转换订单响应格式失败: {str(e)}")
+            import traceback
+            logger.error(f"   异常堆栈: {traceback.format_exc()}")
+            raise HTTPException(status_code=500, detail=f"Failed to convert order responses: {str(e)}")
+        
+        result = OrderListResponse(
+            orders=order_responses,
+            total=total,
+            skip=skip,
             limit=limit
         )
-        total = len(orders)
-    else:
-        orders = await order_service.get_recent_orders(
-            tenant_id=tenant.id,
-            hours=24,
-            limit=limit
-        )
-        total = len(orders)
-    
-    # 转换为响应格式
-    order_responses = []
-    for order in orders:
-        order_responses.append(OrderResponse.from_orm(order))
-    
-    return OrderListResponse(
-        orders=order_responses,
-        total=total,
-        skip=skip,
-        limit=limit
-    )
+        
+        logger.info(f"✅ 订单列表请求处理成功: total={total}, skip={skip}, limit={limit}")
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 订单列表请求处理失败: {str(e)}")
+        import traceback
+        logger.error(f"   异常堆栈: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 @router.post("/sync", response_model=OrderSyncResponse)

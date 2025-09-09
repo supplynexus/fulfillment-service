@@ -39,11 +39,12 @@ async def verify_tenant_signature(
         
         print(f"🔍 签名验证调试信息:")
         print(f"   tenant_name: {tenant_name}")
-        print(f"   signature: {signature}")
+        print(f"   signature: {signature[:50]}...")
         print(f"   message: {message}")
         print(f"   message_length: {len(message)}")
         
         # 获取租户信息和公钥
+        print(f"🔍 查询数据库获取租户信息...")
         tenant_result = await db.execute(
             select(Tenant).where(Tenant.name == tenant_name)
         )
@@ -53,6 +54,8 @@ async def verify_tenant_signature(
             print(f"❌ 租户不存在: {tenant_name}")
             return False
         
+        print(f"✅ 租户存在: id={tenant.id}, name={tenant.name}, is_active={tenant.is_active}")
+        
         if not tenant.public_key:
             print(f"❌ 租户公钥不存在")
             return False
@@ -60,27 +63,41 @@ async def verify_tenant_signature(
         print(f"✅ 从租户表获取公钥成功")
         print(f"   key_id: {tenant.key_id}")
         print(f"   key_type: {tenant.key_type}")
+        print(f"   public_key_length: {len(tenant.public_key)}")
+        print(f"   public_key_preview: {tenant.public_key[:100]}...")
         
         # 加载公钥
-        public_key = serialization.load_pem_public_key(
-            tenant.public_key.encode('utf-8'),
-            backend=default_backend()
-        )
-        
-        print(f"✅ 公钥加载成功")
+        try:
+            public_key = serialization.load_pem_public_key(
+                tenant.public_key.encode('utf-8'),
+                backend=default_backend()
+            )
+            print(f"✅ 公钥加载成功")
+        except Exception as e:
+            print(f"❌ 公钥加载失败: {e}")
+            return False
         
         # 解码签名
-        signature_bytes = base64.b64decode(signature.encode('utf-8'))
-        print(f"   signature_bytes_length: {len(signature_bytes)}")
+        try:
+            signature_bytes = base64.b64decode(signature.encode('utf-8'))
+            print(f"   signature_bytes_length: {len(signature_bytes)}")
+        except Exception as e:
+            print(f"❌ 签名解码失败: {e}")
+            return False
         
         # 验证签名 - 使用 PKCS1v15 填充，与前端 RSA-SHA256 匹配
-        public_key.verify(
-            signature_bytes,
-            message.encode('utf-8'),
-            padding.PKCS1v15(),
-            hashes.SHA256()
-        )
-        print(f"✅ 签名验证成功")
+        try:
+            public_key.verify(
+                signature_bytes,
+                message.encode('utf-8'),
+                padding.PKCS1v15(),
+                hashes.SHA256()
+            )
+            print(f"✅ 签名验证成功")
+        except Exception as e:
+            print(f"❌ 签名验证失败: {e}")
+            print(f"   异常类型: {type(e).__name__}")
+            return False
         
         # 更新租户密钥使用统计（如果需要的话）
         # 这里可以添加租户密钥使用统计的逻辑
@@ -91,7 +108,10 @@ async def verify_tenant_signature(
     except Exception as e:
         print(f"❌ 签名验证失败: {e}")
         print(f"   Exception type: {type(e).__name__}")
-        return False
+        import traceback
+        print(f"   Traceback: {traceback.format_exc()}")
+        # 重新抛出异常，让调用者能够看到具体的错误信息
+        raise e
 
 
 @router.post("/login/tenant")

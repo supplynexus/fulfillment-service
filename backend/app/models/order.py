@@ -80,3 +80,4 @@ class Order(Base):
     # Relationships
     tenant = relationship("Tenant", back_populates="orders")
     external_system = relationship("ExternalSystem")
+    scm_orders = relationship("SCMOrder", back_populates="source_order")

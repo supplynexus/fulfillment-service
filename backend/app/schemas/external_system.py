@@ -13,6 +13,7 @@ class ExternalSystemBase(BaseModel):
     """Base external system schema"""
     system_type: str = Field(..., description="Type of external system")
     name: str = Field(..., description="Human readable name")
+    external_system_id: str = Field(..., description="External system's real ID (e.g., shop1.myshopify.com)")
     base_url: Optional[str] = Field(None, description="API base URL")
     webhook_url: Optional[str] = Field(None, description="Webhook endpoint URL")
     credentials: Dict[str, Any] = Field(default_factory=dict, description="System credentials")
@@ -31,6 +32,7 @@ class ExternalSystemUpdate(BaseModel):
     """Schema for updating external system"""
     system_type: Optional[str] = Field(None, description="Type of external system")
     name: Optional[str] = Field(None, description="Human readable name")
+    external_system_id: Optional[str] = Field(None, description="External system's real ID (e.g., shop1.myshopify.com)")
     base_url: Optional[str] = Field(None, description="API base URL")
     webhook_url: Optional[str] = Field(None, description="Webhook endpoint URL")
     credentials: Optional[Dict[str, Any]] = Field(None, description="System credentials")
@@ -45,7 +47,7 @@ class ExternalSystemResponse(ExternalSystemBase):
     """Schema for external system response"""
     id: int
     tenant_id: int
-    external_id: Optional[str] = None
+    external_id: Optional[str] = None  # Deprecated field
     is_active: bool
     last_sync_at: Optional[datetime] = None
     created_at: datetime

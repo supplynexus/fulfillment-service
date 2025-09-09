@@ -47,6 +47,7 @@ async def create_external_system(
         tenant_id=tenant.id,
         system_type=system_type,
         name=external_system_data.name,
+        external_system_id=external_system_data.external_system_id,
         credentials=external_system_data.credentials,
         base_url=external_system_data.base_url,
         webhook_url=external_system_data.webhook_url,

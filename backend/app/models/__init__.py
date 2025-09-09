@@ -11,6 +11,7 @@ from .external_system import ExternalSystem, ExternalSystemType
 from .external_data import ExternalData, ExternalDataType
 from .order import Order, OrderStatus
 from .product import Product
+from .scm_order import SCMOrder, SCMOrderStatus, RoutingRule, RoutingStatus
 
 from .jwt_blacklist import JwtBlacklist
 
@@ -31,6 +32,10 @@ __all__ = [
     "Order",
     "OrderStatus",
     "Product",
+    "SCMOrder",
+    "SCMOrderStatus",
+    "RoutingRule",
+    "RoutingStatus",
 
     "JwtBlacklist",
 
