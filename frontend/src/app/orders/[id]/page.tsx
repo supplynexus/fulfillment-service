@@ -4,23 +4,29 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { OrderDetails } from '@/components/orders/OrderDetails';
 
 interface OrderDetailPageProps {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
-export async function generateMetadata({ params }: OrderDetailPageProps): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: OrderDetailPageProps): Promise<Metadata> {
+  const { id } = await params;
   return {
-    title: `订单详情 #${params.id} - SupplyNexus Fulfillment Service`,
-    description: `查看订单 #${params.id} 的详细信息和状态`,
+    title: `订单详情 #${id} - SupplyNexus Fulfillment Service`,
+    description: `查看订单 #${id} 的详细信息和状态`,
   };
 }
 
-export default function OrderDetailPage({ params }: OrderDetailPageProps) {
+export default async function OrderDetailPage({
+  params,
+}: OrderDetailPageProps) {
+  const { id } = await params;
   return (
     <ProtectedRoute>
       <DashboardLayout>
-        <OrderDetails orderId={params.id} />
+        <OrderDetails orderId={id} />
       </DashboardLayout>
     </ProtectedRoute>
   );

@@ -1,11 +1,7 @@
 import axios, { AxiosResponse } from 'axios';
 import toast from 'react-hot-toast';
 
-import { User, LoginCredentials, TokenResponse } from '@/types/auth';
-import { Customer, CustomerCreate } from '@/types/customer';
-import { Order, OrderCreate } from '@/types/order';
-import { Product } from '@/types/product';
-import { DashboardStats } from '@/types/dashboard';
+import { LoginCredentials, TokenResponse } from '@/types/auth';
 import { tokenManager } from './token-manager';
 import { frontendLogger } from './frontend-logger';
 
@@ -101,9 +97,15 @@ frontendApi.interceptors.response.use(
       toast.error('服务器错误，请稍后重试或联系管理员');
     } else if (error.response?.status >= 400) {
       // 客户端错误，显示具体错误信息
-      const errorMessage = error.response?.data?.detail || error.response?.data?.message || '请求失败';
+      const errorMessage =
+        error.response?.data?.detail ||
+        error.response?.data?.message ||
+        '请求失败';
       toast.error(errorMessage);
-    } else if (error.code === 'NETWORK_ERROR' || error.message === 'Network Error') {
+    } else if (
+      error.code === 'NETWORK_ERROR' ||
+      error.message === 'Network Error'
+    ) {
       // 网络错误
       toast.error('网络连接失败，请检查网络连接');
     }

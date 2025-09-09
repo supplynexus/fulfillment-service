@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
     const limit = searchParams.get('limit') || '10';
     const status = searchParams.get('status');
     const targetSystemType = searchParams.get('target_system_type');
-    const search = searchParams.get('search');
+    // const search = searchParams.get('search'); // 暂时未使用
 
     // 构建后端请求参数
     const backendParams = new URLSearchParams({
@@ -63,13 +63,13 @@ export async function GET(request: NextRequest) {
     }
 
     // 对于 GET 请求，签名字符串中的 body 应该是空字符串
-    const bodyString = ""; // GET 请求的 body 为空
+    const bodyString = ''; // GET 请求的 body 为空
     const timestamp = Math.floor(Date.now() / 1000);
     const nonce = Math.random().toString(36).substring(2, 15);
 
     // 构建签名字符串 - 后端实际接收到的路径是 /api/v1/scm-orders/
     const signatureString = `GET/api/v1/scm-orders/${timestamp}${nonce}${tenantName}${bodyString}`;
-    
+
     // 🔍 调试：打印签名生成信息
     logger.info('🔍 前端签名生成调试信息', {
       method: 'GET',
@@ -82,10 +82,10 @@ export async function GET(request: NextRequest) {
       signatureString,
       signatureStringLength: signatureString.length,
     });
-    
+
     // 获取租户私钥
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
-    
+
     // 生成后端签名
     const signature = generateBackendSignature(
       privateKey,

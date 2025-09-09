@@ -58,21 +58,21 @@ export async function GET(request: NextRequest) {
       backendParams.append('status', status);
     }
 
-    // 构建后端请求体
-    const requestBody = {
-      page: parseInt(page),
-      limit: parseInt(limit),
-      search: search || undefined,
-    };
+    // 构建后端请求体（用于签名，但GET请求不发送body）
+    // const requestBody = {
+    //   page: parseInt(page),
+    //   limit: parseInt(limit),
+    //   search: search || undefined,
+    // };
 
     // 对于 GET 请求，签名字符串中的 body 应该是空字符串
-    const bodyString = ""; // GET 请求的 body 为空
+    const bodyString = ''; // GET 请求的 body 为空
     const timestamp = Math.floor(Date.now() / 1000);
     const nonce = Math.random().toString(36).substring(2, 15);
 
     // 构建签名字符串 - 后端实际接收到的路径是 /api/v1/orders/
     const signatureString = `GET/api/v1/orders/${timestamp}${nonce}${tenantName}${bodyString}`;
-    
+
     // 🔍 调试：打印签名生成信息
     logger.info('🔍 前端签名生成调试信息', {
       method: 'GET',
@@ -85,10 +85,10 @@ export async function GET(request: NextRequest) {
       signatureString,
       signatureStringLength: signatureString.length,
     });
-    
+
     // 获取租户私钥
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
-    
+
     // 生成后端签名
     const signature = generateBackendSignature(
       privateKey,

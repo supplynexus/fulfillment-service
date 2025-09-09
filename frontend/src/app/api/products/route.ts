@@ -71,10 +71,10 @@ export async function GET(request: NextRequest) {
 
     // 构建签名字符串
     const signatureString = `GET/api/v1/products${timestamp}${nonce}${tenantName}${bodyString}`;
-    
+
     // 获取租户私钥
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
-    
+
     // 生成后端签名
     const signature = generateBackendSignature(
       privateKey,

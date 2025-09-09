@@ -49,10 +49,10 @@ export async function POST(request: NextRequest) {
 
     // 构建签名字符串
     const signatureString = `POST/api/v1/products/sync${timestamp}${nonce}${tenantName}${bodyString}`;
-    
+
     // 获取租户私钥
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
-    
+
     // 生成后端签名
     const signature = generateBackendSignature(
       privateKey,
