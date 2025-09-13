@@ -57,7 +57,7 @@ export function OrdersList() {
         },
       });
 
-      setOrders(response.data.items || []);
+      setOrders(response.data.orders || []);
       setTotalPages(Math.ceil((response.data.total || 0) / ITEMS_PER_PAGE));
     } catch (err: any) {
       console.error('Failed to fetch orders:', err);
