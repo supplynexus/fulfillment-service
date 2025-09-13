@@ -23,6 +23,10 @@ import {
   LocalShipping as ScmOrdersIcon,
   Settings as SettingsIcon,
   AccountCircle as ProfileIcon,
+  Extension as ExternalSystemsIcon,
+  Storefront as ShopifyIcon,
+  Store as StoreIcon,
+  Business as PrintifyIcon,
   ExpandLess,
   ExpandMore,
   Menu as MenuIcon,
@@ -50,40 +54,80 @@ const menuItems: MenuItem[] = [
     path: '/dashboard',
   },
   {
-    id: 'orders',
-    label: '订单管理',
-    icon: <OrdersIcon />,
+    id: 'core',
+    label: '核心功能',
+    icon: <ProductsIcon />,
     children: [
       {
-        id: 'orders-list',
-        label: '订单列表',
-        icon: <OrdersIcon />,
-        path: '/orders',
+        id: 'products',
+        label: '商品管理',
+        icon: <ProductsIcon />,
+        children: [
+          {
+            id: 'products-list',
+            label: '商品列表',
+            icon: <ProductsIcon />,
+            path: '/products',
+          },
+          {
+            id: 'product-sync',
+            label: '商品同步',
+            icon: <ProductsIcon />,
+            path: '/products/sync',
+          },
+        ],
       },
       {
-        id: 'scm-orders',
-        label: 'SCM 订单',
-        icon: <ScmOrdersIcon />,
-        path: '/scm-orders',
+        id: 'orders',
+        label: '订单管理',
+        icon: <OrdersIcon />,
+        children: [
+          {
+            id: 'orders-list',
+            label: '订单列表',
+            icon: <OrdersIcon />,
+            path: '/orders',
+          },
+          {
+            id: 'scm-orders',
+            label: 'SCM 订单',
+            icon: <ScmOrdersIcon />,
+            path: '/scm-orders',
+          },
+        ],
       },
     ],
   },
   {
-    id: 'products',
-    label: '商品管理',
-    icon: <ProductsIcon />,
+    id: 'external-systems',
+    label: '外部系统',
+    icon: <ExternalSystemsIcon />,
     children: [
       {
-        id: 'products-list',
-        label: '商品列表',
-        icon: <ProductsIcon />,
-        path: '/products',
+        id: 'shopify',
+        label: 'Shopify',
+        icon: <ShopifyIcon />,
+        children: [
+          {
+            id: 'shopify-stores',
+            label: '店铺管理',
+            icon: <StoreIcon />,
+            path: '/external-systems/shopify/stores',
+          },
+        ],
       },
       {
-        id: 'product-sync',
-        label: '商品同步',
-        icon: <ProductsIcon />,
-        path: '/products/sync',
+        id: 'printify',
+        label: 'Printify',
+        icon: <PrintifyIcon />,
+        children: [
+          {
+            id: 'printify-stores',
+            label: '店铺管理',
+            icon: <StoreIcon />,
+            path: '/external-systems/printify/stores',
+          },
+        ],
       },
     ],
   },
@@ -115,8 +159,12 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const [expandedItems, setExpandedItems] = useState<string[]>([
-    'orders',
+    'core',
     'products',
+    'orders',
+    'external-systems',
+    'shopify',
+    'printify',
     'settings',
   ]);
 

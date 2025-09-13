@@ -1,0 +1,321 @@
+---
+alwaysApply: true
+---
+
+## 错误处理和日志记录规范
+
+### 后端 API 端点必须包含详细日志
+- **所有 API 端点都必须添加详细的错误处理和日志记录**
+- **出现错误时，必须先输出详细的 log，用 log 去判断问题，不要随便猜测**
+- **每个关键步骤都要记录日志，包括：请求开始和参数、认证状态、服务初始化、数据库查询、异常处理和堆栈跟踪**
+
+### 后端日志记录模板
+```python
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
+
+try:
+    logger.info("🔍 开始处理请求", params=params, tenant_id=tenant.id)
+    # 业务逻辑
+    logger.info("✅ 步骤完成", result=result, count=len(result))
+except Exception as e:
+    logger.error("❌ 操作失败", error=str(e), tenant_id=tenant.id)
+    import traceback
+    logger.error("   异常堆栈", stack=traceback.format_exc())
+    raise HTTPException(status_code=500, detail=f"详细错误信息: {str(e)}")
+```
+
+### 前端日志记录规范
+- **所有前端组件和 API 调用都必须添加详细的日志记录**
+- **优先使用项目现有的日志工具：**
+  - `createLogger(module)` - 用于 API 路由
+  - `frontendLogger` - 用于组件和业务逻辑
+  - `console.log` - 作为备选方案
+- **重要操作要记录：用户操作开始、API 请求发送和响应、状态更新、错误处理和异常**
+
+### 前端日志记录模板
+```typescript
+// API 路由使用 createLogger
+import { createLogger } from '@/lib/logger';
+const logger = createLogger('api.module-name');
+logger.requestStart(request.method, request.url);
+logger.info('处理业务逻辑', { params });
+logger.requestComplete(request.method, request.url, 200, duration);
+
+// 组件使用 frontendLogger
+import { frontendLogger } from '@/lib/frontend-logger';
+frontendLogger.info('🚀 开始处理用户操作', { action: 'submit', params });
+frontendLogger.info('📡 发送 API 请求', { url, method, data });
+frontendLogger.error('❌ 操作失败', { error: error.message });
+```
+
+### 前端到后端日志传输
+- **项目已实现 `/api/log` 端点和 `frontendLogger` 工具**
+- **`frontendLogger` 会自动将日志发送到后端，重要错误和状态变化要使用 `frontendLogger` 记录**
+
+## 前后端鉴权规范
+
+### Frontend Server API 调用 Backend API 的鉴权机制
+- **使用租户密钥对验证**：Frontend Server API 调用 Backend API 时必须使用租户的密钥对进行签名验证
+- **签名生成流程**：
+  1. 获取租户私钥：`await keyLoader.getTenantPrivateKey(tenantName)`
+  2. 构建签名字符串：`{METHOD}{PATH}{timestamp}{nonce}{tenantName}{body}`
+  3. 生成签名：`generateBackendSignature(privateKey, signatureString, timestamp, nonce, tenantName)`
+  4. 添加请求头：`X-Tenant-Name`, `X-Timestamp`, `X-Nonce`, `X-Signature`, `X-User-ID`
+
+### Frontend Server API 鉴权模板
+```typescript
+import { keyLoader } from '@/lib/key-loader';
+import { generateBackendSignature } from '@/lib/signature';
+
+export async function POST(request: NextRequest) {
+  // 1. 验证前端 JWT token
+  const decodedToken = jwtUtilsServer.verifyToken(frontendToken);
+  const { tenant_name: tenantName, sub: userId } = decodedToken;
+  
+  // 2. 生成后端签名
+  const timestamp = Math.floor(Date.now() / 1000);
+  const nonce = Math.random().toString(36).substring(2, 15);
+  const bodyString = JSON.stringify(requestBody);
+  const signatureString = `POST${backendPath}${timestamp}${nonce}${tenantName}${bodyString}`;
+  
+  const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
+  const signature = generateBackendSignature(privateKey, signatureString, timestamp, nonce, tenantName);
+  
+  // 3. 调用后端 API
+  const backendResponse = await fetch(backendUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Tenant-Name': tenantName,
+      'X-User-ID': userId,
+      'X-Timestamp': timestamp.toString(),
+      'X-Nonce': nonce,
+      'X-Signature': signature,
+    },
+    body: bodyString,
+  });
+}
+```
+
+### 鉴权注意事项
+- **签名字符串格式**：严格按照 `{METHOD}{PATH}{timestamp}{nonce}{tenantName}{body}` 顺序
+- **时间戳**：使用 Unix 时间戳（秒）
+- **Nonce**：随机字符串，防止重放攻击
+- **Body**：GET 请求为空字符串，POST/PUT 为 JSON 字符串
+- **错误处理**：签名验证失败时返回 401 状态码
+
+## 前后端 API 一致性规范
+
+### 前后端 API 开发流程
+- **必须先设计后端 API 接口，再实现前端调用**
+- **前端实现 API 调用前，必须确认后端路由已存在**
+- **新增功能时，后端路由和前端调用必须同时实现**
+
+### API 一致性检查清单
+在实现任何新功能前，必须检查：
+
+1. **后端路由检查**：确认后端有对应的路由定义、路由路径与前端调用路径完全一致、HTTP 方法（GET/POST/PUT/DELETE）匹配、请求/响应数据结构匹配
+2. **前端调用检查**：确认前端调用的 URL 路径正确、请求方法正确、请求参数格式正确、响应处理逻辑正确
+
+### 避免 404 错误的最佳实践
+1. **开发顺序**：后端路由 → 前端调用 → 测试验证
+2. **路由命名规范**：使用统一的命名约定，如 `/api/v1/{module}/{action}`
+3. **API 文档**：维护前后端 API 接口文档，确保同步更新
+4. **测试驱动**：先写测试用例，再实现功能
+
+### 常见错误预防
+- **404 Not Found**：检查路由路径是否完全匹配
+- **405 Method Not Allowed**：检查 HTTP 方法是否正确
+- **400 Bad Request**：检查请求参数格式和必填字段
+- **500 Internal Server Error**：检查后端服务实现和错误处理
+
+### 调试原则
+1. **遇到错误时，先查看详细的错误日志（前端 console + 后端日志）**
+2. **根据日志信息定位问题，而不是盲目猜测**
+3. **前后端都要有完整的错误处理和日志记录**
+4. **日志要包含足够的上下文信息用于调试**
+5. **前端重要操作要同时记录到后端便于统一监控**
+6. **鉴权失败时，检查签名生成逻辑和密钥配置**
+
+### 强制检查点
+- **提交代码前**：必须确认前后端 API 调用能正常工作
+- **部署前**：必须测试所有 API 端点的可用性
+- **功能完成后**：必须验证前后端集成测试通过
+
+## 加密数据处理规范
+
+### 数据库存储的敏感数据加密
+- **所有敏感凭据（API keys, tokens, passwords）必须加密存储**
+- **使用 `encrypt_data()` 函数加密，`decrypt_data()` 函数解密**
+- **加密数据在数据库中以加密形式存储，传输时保持加密状态**
+
+### 前后端数据传递规则
+- **前端从数据库获取的数据是加密的**：前端 API 返回的 `credentials` 字段包含加密数据
+- **后端 API 接收加密数据时必须解密**：任何使用凭据的后端 API 都必须先解密
+- **外部 API 调用使用解密后的数据**：调用第三方 API 时使用解密后的真实凭据
+
+### 加密数据处理模板
+```python
+# 后端 API 处理加密凭据
+from app.core.security import decrypt_data
+
+# 1. 接收前端传来的加密数据
+encrypted_access_token = request_data.get('access_token')
+encrypted_shop_id = request_data.get('shop_id')
+
+# 2. 解密凭据
+try:
+    access_token = decrypt_data(encrypted_access_token)
+    shop_id = decrypt_data(encrypted_shop_id)
+    logger.info(f"✅ 凭据解密成功: shop_id={shop_id}")
+except Exception as e:
+    logger.error(f"❌ 凭据解密失败: {str(e)}")
+    raise HTTPException(status_code=400, detail=f"Failed to decrypt credentials: {str(e)}")
+
+# 3. 使用解密后的数据调用外部 API
+external_service = ExternalService(api_token=access_token)
+```
+
+### 加密数据检查清单
+在实现任何涉及凭据的功能前，必须检查：
+
+1. **数据来源确认**：确认数据是加密的还是明文的
+2. **解密步骤**：如果数据是加密的，必须添加解密步骤
+3. **错误处理**：解密失败时的错误处理和日志记录
+4. **日志安全**：日志中不要记录真实的敏感数据，只记录是否存在
+
+### 常见加密数据处理错误
+- **❌ 直接使用加密数据调用外部 API**：会导致认证失败
+- **❌ 忘记解密步骤**：前端传来的加密数据直接使用
+- **❌ 解密失败没有错误处理**：导致程序崩溃
+- **❌ 日志中记录敏感数据**：安全风险
+
+### 加密数据调试原则
+1. **遇到认证失败时，首先检查数据是否已解密**
+2. **查看日志确认解密步骤是否执行**
+3. **验证解密后的数据格式是否正确**
+4. **确认外部 API 期望的数据格式**
+
+## 测试连接功能设计规范
+
+### 测试连接功能的数据格式处理
+- **测试连接功能必须支持两种数据格式**：明文凭据（用于对话框测试）和加密凭据（用于已保存店铺测试）
+- **后端 API 必须智能判断数据格式**：先尝试解密，失败则使用明文
+- **前端发送数据格式**：对话框测试发送明文，已保存店铺测试发送加密数据
+
+### 测试连接功能实现模板
+```python
+# 后端测试连接 API 处理逻辑
+try:
+    # 尝试解密（用于已保存店铺的测试）
+    access_token = decrypt_data(encrypted_access_token)
+    shop_id = decrypt_data(encrypted_shop_id)
+    logger.info(f"✅ 凭据解密成功: shop_id={shop_id}")
+except Exception as e:
+    # 解密失败，使用明文（用于对话框测试）
+    logger.info(f"ℹ️ 凭据解密失败，使用明文凭据进行测试连接: {str(e)}")
+    access_token = encrypted_access_token
+    shop_id = encrypted_shop_id
+    logger.info(f"✅ 使用明文凭据: shop_id={shop_id}")
+```
+
+### 测试连接功能检查清单
+在实现测试连接功能前，必须检查：
+
+1. **数据格式兼容性**：后端是否支持明文和加密两种格式
+2. **错误处理**：解密失败时是否有降级处理
+3. **日志记录**：是否清楚记录使用了哪种数据格式
+4. **功能完整性**：两种测试场景（对话框和已保存店铺）都能正常工作
+
+### 常见测试连接功能错误
+- **❌ 只支持一种数据格式**：导致部分测试场景失败
+- **❌ 解密失败直接报错**：没有降级处理机制
+- **❌ 日志信息不明确**：无法判断使用了哪种数据格式
+- **❌ 前后端数据格式不一致**：前端发送明文，后端期望加密
+
+## Hashids 架构设计规范
+
+### 外部系统 ID 的 Hashids 处理
+- **后端数据库主键必须使用 hashids 传输**：所有外部系统（Shopify、Printify等）的数据库主键 ID 必须通过 hashids 编码后传输给前端
+- **前端不显示 hashids**：前端界面不显示 hashids，但必须在内部保留用于 API 调用
+- **前端传回 hashids**：前端调用后端 API 时，直接传回接收到的 hashids，无需解码
+- **后端解码检索**：后端接收到 hashids 后，解码为主键 ID，然后通过主键检索数据库记录
+
+### Hashids 架构实现模板
+```python
+# 后端返回数据时编码 hashids
+from app.core.hashids_utils import encode_id
+
+@router.get("/external-systems/", response_model=dict)
+async def get_external_systems(
+    system_type: str,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
+) -> Any:
+    # 查询数据库
+    systems = await ExternalSystemService.get_external_systems_by_type(system_type, tenant.id)
+    
+    # 返回时编码 hashids
+    result = []
+    for system in systems:
+        system_dict = {
+            "id": system.id,  # 保留原始 ID 用于内部处理
+            "id_hashid": encode_id(system.id),  # 编码后的 hashids 用于前端传输
+            "name": system.name,
+            "system_type": system.system_type,
+            # ... 其他字段
+        }
+        result.append(system_dict)
+    
+    return {"systems": result}
+```
+
+```python
+# 后端接收 hashids 时解码
+from app.core.hashids_utils import decode_id
+
+@router.get("/external-systems/{external_system_hashid}/products")
+async def get_products(
+    external_system_hashid: str,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
+) -> Any:
+    # 解码 hashids 为主键 ID
+    try:
+        external_system_id = decode_id(external_system_hashid)
+        logger.info(f"✅ Hashids 解码成功: {external_system_hashid} -> {external_system_id}")
+    except Exception as e:
+        logger.error(f"❌ Hashids 解码失败: {external_system_hashid}, 错误: {str(e)}")
+        raise HTTPException(status_code=400, detail="Invalid external system ID")
+    
+    # 通过主键 ID 检索数据库记录
+    external_system = await ExternalSystemService.get_external_system(external_system_id, tenant.id)
+    if not external_system:
+        raise HTTPException(status_code=404, detail="External system not found")
+    
+    # 继续业务逻辑...
+```
+
+### Hashids 架构检查清单
+在实现任何涉及外部系统 ID 的功能前，必须检查：
+
+1. **后端返回数据**：是否包含 `id_hashid` 字段
+2. **前端接收数据**：是否正确保存 `id_hashid` 用于后续 API 调用
+3. **前端 API 调用**：是否使用 `id_hashid` 而不是原始 ID
+4. **后端接收处理**：是否正确解码 hashids 为主键 ID
+5. **数据库查询**：是否使用解码后的主键 ID 进行查询
+
+### 常见 Hashids 架构错误
+- **❌ 前端显示 hashids**：用户界面不应该显示技术性的 hashids
+- **❌ 前端尝试解码 hashids**：前端无法也不应该解码 hashids
+- **❌ 后端直接使用 hashids 查询**：后端必须解码为主键 ID 后才能查询数据库
+- **❌ 忘记编码 hashids**：后端返回数据时忘记添加 `id_hashid` 字段
+- **❌ 忘记解码 hashids**：后端接收 hashids 时忘记解码为主键 ID
+
+### Hashids 架构调试原则
+1. **遇到 404 错误时**：检查 hashids 是否正确解码为主键 ID
+2. **遇到 400 错误时**：检查 hashids 格式是否正确
+3. **数据查询失败时**：确认使用的是解码后的主键 ID 而不是 hashids
+4. **前端 API 调用失败时**：确认使用的是 `id_hashid` 而不是原始 ID
