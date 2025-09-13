@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
     }
 
     const data = await backendResponse.json();
-    
+
     // Debug: Log the first system to check if id_hashid is present
     if (data.external_systems && data.external_systems.length > 0) {
       const firstSystem = data.external_systems[0];
@@ -105,10 +105,10 @@ export async function GET(request: NextRequest) {
         id_hashid: firstSystem.id_hashid,
         name: firstSystem.name,
         system_type: firstSystem.system_type,
-        hasIdHashid: !!firstSystem.id_hashid
+        hasIdHashid: !!firstSystem.id_hashid,
       });
     }
-    
+
     logger.info('External systems fetch request completed successfully', {
       success: true,
       duration,
@@ -159,11 +159,11 @@ export async function POST(request: NextRequest) {
     });
 
     const body = await request.json();
-    logger.info('Processing external system creation request', { 
+    logger.info('Processing external system creation request', {
       tenantName,
       systemType: body.system_type,
       name: body.name,
-      externalId: body.external_system_id
+      externalId: body.external_system_id,
     });
 
     const bodyString = JSON.stringify(body);

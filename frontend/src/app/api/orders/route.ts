@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
     const page = searchParams.get('page') || '1';
     const limit = searchParams.get('limit') || '10';
     const status = searchParams.get('status');
-    const search = searchParams.get('search');
+    // const search = searchParams.get('search');
 
     // 构建后端请求参数
     const backendParams = new URLSearchParams({

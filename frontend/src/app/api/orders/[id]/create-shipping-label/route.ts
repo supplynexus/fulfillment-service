@@ -11,7 +11,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const startTime = Date.now();
-  
+
   try {
     // 验证 Authorization header
     const authHeader = request.headers.get('authorization');
@@ -40,7 +40,10 @@ export async function POST(
     });
 
     const { id } = await params;
-    logger.info('Processing create shipping label request', { orderId: id, tenantName });
+    logger.info('Processing create shipping label request', {
+      orderId: id,
+      tenantName,
+    });
 
     // 构建签名字符串
     const bodyString = ''; // POST 请求的 body 为空
@@ -82,7 +85,7 @@ export async function POST(
     });
 
     const duration = Date.now() - startTime;
-    
+
     if (!backendResponse.ok) {
       const errorData = await backendResponse.text();
       logger.error('Backend request failed', {

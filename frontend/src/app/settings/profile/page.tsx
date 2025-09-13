@@ -1,5 +1,5 @@
 import { Metadata } from 'next';
-import { Box, Container, Typography, Paper } from '@mui/material';
+import { Container, Typography, Paper } from '@mui/material';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 

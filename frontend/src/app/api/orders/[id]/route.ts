@@ -11,7 +11,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const startTime = Date.now();
-  
+
   try {
     // 验证 Authorization header
     const authHeader = request.headers.get('authorization');
@@ -82,7 +82,7 @@ export async function GET(
     });
 
     const duration = Date.now() - startTime;
-    
+
     if (!backendResponse.ok) {
       const errorData = await backendResponse.text();
       logger.error('Backend request failed', {

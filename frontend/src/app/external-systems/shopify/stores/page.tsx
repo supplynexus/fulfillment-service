@@ -6,7 +6,6 @@ import {
   Typography,
   Card,
   CardContent,
-  Grid,
   Chip,
   Button,
   IconButton,
@@ -85,7 +84,9 @@ export default function ShopifyStoresPage() {
   const [orders, setOrders] = useState<any[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [loadingOrders, setLoadingOrders] = useState(false);
-  const [syncingOrders, setSyncingOrders] = useState<Record<string, boolean>>({});
+  const [syncingOrders, setSyncingOrders] = useState<Record<string, boolean>>(
+    {}
+  );
   const [showTestResultDialog, setShowTestResultDialog] = useState(false);
   const [testResult, setTestResult] = useState<any>(null);
   const [testingConnection, setTestingConnection] = useState(false);
@@ -256,13 +257,16 @@ export default function ShopifyStoresPage() {
       setLoadingProducts(true);
       setOpenProductsDialog(true);
 
-      const response = await fetch(`/api/external-systems/shopify/${store.external_id}/products`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('access_token')}`,
-        },
-      });
+      const response = await fetch(
+        `/api/external-systems/shopify/${store.external_id}/products`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${localStorage.getItem('access_token')}`,
+          },
+        }
+      );
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -295,13 +299,16 @@ export default function ShopifyStoresPage() {
       setLoadingOrders(true);
       setOpenOrdersDialog(true);
 
-      const response = await fetch(`/api/external-systems/shopify/${store.external_id}/orders`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('access_token')}`,
-        },
-      });
+      const response = await fetch(
+        `/api/external-systems/shopify/${store.external_id}/orders`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${localStorage.getItem('access_token')}`,
+          },
+        }
+      );
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -332,13 +339,16 @@ export default function ShopifyStoresPage() {
       setError(null);
       setSyncingOrders(prev => ({ ...prev, [store.external_id!]: true }));
 
-      const response = await fetch(`/api/external-systems/shopify/${store.external_id}/sync-orders`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('access_token')}`,
-        },
-      });
+      const response = await fetch(
+        `/api/external-systems/shopify/${store.external_id}/sync-orders`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${localStorage.getItem('access_token')}`,
+          },
+        }
+      );
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -355,26 +365,26 @@ export default function ShopifyStoresPage() {
               : s
           )
         );
-        
+
         setSyncResult({
           success: true,
           message: '同步成功！',
           orders_synced: data.orders_synced || 0,
           orders_updated: data.orders_updated || 0,
-          total_processed: data.total_processed || 0
+          total_processed: data.total_processed || 0,
         });
         setShowSyncResultDialog(true);
       } else {
         setSyncResult({
           success: false,
-          message: data.message || '同步订单失败'
+          message: data.message || '同步订单失败',
         });
         setShowSyncResultDialog(true);
       }
     } catch (err: any) {
       setSyncResult({
         success: false,
-        message: err.message || '同步订单失败'
+        message: err.message || '同步订单失败',
       });
       setShowSyncResultDialog(true);
       console.error('Error syncing orders:', err);
@@ -400,17 +410,20 @@ export default function ShopifyStoresPage() {
       // Prepare request data - only send shop_id and access_token
       const requestData = {
         shop_id: formData.credentials.shop_id,
-        access_token: formData.credentials.access_token
+        access_token: formData.credentials.access_token,
       };
 
-      const response = await fetch('/api/external-systems/shopify/test-connection', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('access_token')}`,
-        },
-        body: JSON.stringify(requestData),
-      });
+      const response = await fetch(
+        '/api/external-systems/shopify/test-connection',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${localStorage.getItem('access_token')}`,
+          },
+          body: JSON.stringify(requestData),
+        }
+      );
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -423,7 +436,9 @@ export default function ShopifyStoresPage() {
         const shopInfo = data.shop_info;
         setError(null);
         // Show success message
-        alert(`连接测试成功！\n店铺名称: ${shopInfo.name}\n邮箱: ${shopInfo.email}\n域名: ${shopInfo.myshopify_domain}`);
+        alert(
+          `连接测试成功！\n店铺名称: ${shopInfo.name}\n邮箱: ${shopInfo.email}\n域名: ${shopInfo.myshopify_domain}`
+        );
       } else {
         setError(data.message || '连接测试失败');
       }
@@ -485,7 +500,9 @@ export default function ShopifyStoresPage() {
 
       // Check if external_id exists
       if (!store.external_id) {
-        setError('该店铺未配置 external_id，无法测试连接。请先配置店铺的 external_id。');
+        setError(
+          '该店铺未配置 external_id，无法测试连接。请先配置店铺的 external_id。'
+        );
         return;
       }
 
@@ -508,15 +525,15 @@ export default function ShopifyStoresPage() {
       }
 
       const data = await response.json();
-      
+
       // 发送前端日志到后端
-      frontendLogger.info('🔍 Shopify 测试连接响应数据', { 
-        page: 'shopify-stores', 
-        component: 'handleTestConnection', 
-        action: 'test-connection-response', 
+      frontendLogger.info('🔍 Shopify 测试连接响应数据', {
+        page: 'shopify-stores',
+        component: 'handleTestConnection',
+        action: 'test-connection-response',
         responseData: data,
         hasShopInfo: !!data.shop_info,
-        shopInfoKeys: data.shop_info ? Object.keys(data.shop_info) : []
+        shopInfoKeys: data.shop_info ? Object.keys(data.shop_info) : [],
       });
 
       if (data.success) {
@@ -524,12 +541,12 @@ export default function ShopifyStoresPage() {
         if (!shopInfo) {
           throw new Error('响应数据中缺少店铺信息');
         }
-        
+
         // 设置测试结果并显示对话框
         setTestResult({
           success: true,
           message: '连接测试成功！',
-          shop_info: shopInfo
+          shop_info: shopInfo,
         });
         setShowTestResultDialog(true);
       } else {
@@ -538,23 +555,23 @@ export default function ShopifyStoresPage() {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '连接测试失败';
       setError(`连接测试失败：${errorMessage}`);
-      
+
       // 设置失败结果并显示对话框
       setTestResult({
         success: false,
-        message: errorMessage
+        message: errorMessage,
       });
       setShowTestResultDialog(true);
-      
+
       // 发送错误日志到后端
-      frontendLogger.error('❌ Shopify 测试连接失败', { 
-        page: 'shopify-stores', 
-        component: 'handleTestConnection', 
-        action: 'test-connection-error', 
+      frontendLogger.error('❌ Shopify 测试连接失败', {
+        page: 'shopify-stores',
+        component: 'handleTestConnection',
+        action: 'test-connection-error',
         error: errorMessage,
-        errorDetails: err instanceof Error ? err.stack : String(err)
+        errorDetails: err instanceof Error ? err.stack : String(err),
       });
-      
+
       console.error('Error testing connection:', err);
     } finally {
       setTestingConnection(false);
@@ -715,7 +732,11 @@ export default function ShopifyStoresPage() {
                         onClick={() => handleTestConnection(store)}
                         color='info'
                         disabled={!store.external_id}
-                        title={store.external_id ? '测试连接' : '该店铺未配置 external_id，无法测试连接'}
+                        title={
+                          store.external_id
+                            ? '测试连接'
+                            : '该店铺未配置 external_id，无法测试连接'
+                        }
                       >
                         <TestConnectionIcon />
                       </IconButton>
@@ -724,7 +745,11 @@ export default function ShopifyStoresPage() {
                         onClick={() => handleViewProducts(store)}
                         color='secondary'
                         disabled={!store.external_id}
-                        title={store.external_id ? '查看商品' : '该店铺未配置 external_id，无法查看商品'}
+                        title={
+                          store.external_id
+                            ? '查看商品'
+                            : '该店铺未配置 external_id，无法查看商品'
+                        }
                       >
                         <InventoryIcon />
                       </IconButton>
@@ -733,7 +758,11 @@ export default function ShopifyStoresPage() {
                         onClick={() => handleViewOrders(store)}
                         color='warning'
                         disabled={!store.external_id}
-                        title={store.external_id ? '查看订单' : '该店铺未配置 external_id，无法查看订单'}
+                        title={
+                          store.external_id
+                            ? '查看订单'
+                            : '该店铺未配置 external_id，无法查看订单'
+                        }
                       >
                         <ShoppingCartIcon />
                       </IconButton>
@@ -741,10 +770,20 @@ export default function ShopifyStoresPage() {
                         size='small'
                         onClick={() => handleSyncOrders(store)}
                         color='success'
-                        disabled={!store.external_id || (store.external_id ? syncingOrders[store.external_id] : false)}
-                        title={store.external_id ? '同步订单到数据库' : '该店铺未配置 external_id，无法同步订单'}
+                        disabled={
+                          !store.external_id ||
+                          (store.external_id
+                            ? syncingOrders[store.external_id]
+                            : false)
+                        }
+                        title={
+                          store.external_id
+                            ? '同步订单到数据库'
+                            : '该店铺未配置 external_id，无法同步订单'
+                        }
                       >
-                        {store.external_id && syncingOrders[store.external_id] ? (
+                        {store.external_id &&
+                        syncingOrders[store.external_id] ? (
                           <CircularProgress size={16} />
                         ) : (
                           <SyncIcon />
@@ -813,8 +852,10 @@ export default function ShopifyStoresPage() {
                     <Typography variant='h6'>基本信息</Typography>
                   </AccordionSummary>
                   <AccordionDetails>
-                    <Grid container spacing={2}>
-                      <Grid item xs={12}>
+                    <Box
+                      sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}
+                    >
+                      <Box>
                         <TextField
                           fullWidth
                           label='店铺名称'
@@ -824,8 +865,8 @@ export default function ShopifyStoresPage() {
                           }
                           required
                         />
-                      </Grid>
-                      <Grid item xs={12} sm={6}>
+                      </Box>
+                      <Box sx={{ flex: 1, minWidth: '200px' }}>
                         <TextField
                           fullWidth
                           label='外部ID'
@@ -838,8 +879,8 @@ export default function ShopifyStoresPage() {
                           }
                           placeholder='例如: x0ri77-4v'
                         />
-                      </Grid>
-                      <Grid item xs={12} sm={6}>
+                      </Box>
+                      <Box sx={{ flex: 1, minWidth: '200px' }}>
                         <TextField
                           fullWidth
                           label='店铺URL'
@@ -852,8 +893,8 @@ export default function ShopifyStoresPage() {
                           }
                           placeholder='例如: https://x0ri77-4v.myshopify.com'
                         />
-                      </Grid>
-                    </Grid>
+                      </Box>
+                    </Box>
                   </AccordionDetails>
                 </Accordion>
 
@@ -866,8 +907,10 @@ export default function ShopifyStoresPage() {
                     </Box>
                   </AccordionSummary>
                   <AccordionDetails>
-                    <Grid container spacing={2}>
-                      <Grid item xs={12}>
+                    <Box
+                      sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}
+                    >
+                      <Box>
                         <TextField
                           fullWidth
                           label='Access Token'
@@ -884,8 +927,8 @@ export default function ShopifyStoresPage() {
                           }
                           placeholder='shpat_...'
                         />
-                      </Grid>
-                      <Grid item xs={12} sm={6}>
+                      </Box>
+                      <Box sx={{ flex: 1, minWidth: '200px' }}>
                         <TextField
                           fullWidth
                           label='Shop ID'
@@ -901,8 +944,8 @@ export default function ShopifyStoresPage() {
                           }
                           placeholder='例如: x0ri77-4v'
                         />
-                      </Grid>
-                      <Grid item xs={12} sm={6}>
+                      </Box>
+                      <Box sx={{ flex: 1, minWidth: '200px' }}>
                         <TextField
                           fullWidth
                           label='Store URL'
@@ -918,8 +961,8 @@ export default function ShopifyStoresPage() {
                           }
                           placeholder='例如: https://x0ri77-4v.myshopify.com'
                         />
-                      </Grid>
-                      <Grid item xs={12} sm={6}>
+                      </Box>
+                      <Box sx={{ flex: 1, minWidth: '200px' }}>
                         <TextField
                           fullWidth
                           label='API Key'
@@ -935,8 +978,8 @@ export default function ShopifyStoresPage() {
                             })
                           }
                         />
-                      </Grid>
-                      <Grid item xs={12} sm={6}>
+                      </Box>
+                      <Box sx={{ flex: 1, minWidth: '200px' }}>
                         <TextField
                           fullWidth
                           label='API Secret'
@@ -952,8 +995,8 @@ export default function ShopifyStoresPage() {
                             })
                           }
                         />
-                      </Grid>
-                    </Grid>
+                      </Box>
+                    </Box>
                   </AccordionDetails>
                 </Accordion>
 
@@ -966,8 +1009,10 @@ export default function ShopifyStoresPage() {
                     </Box>
                   </AccordionSummary>
                   <AccordionDetails>
-                    <Grid container spacing={2}>
-                      <Grid item xs={12} sm={6}>
+                    <Box
+                      sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}
+                    >
+                      <Box sx={{ flex: 1, minWidth: '200px' }}>
                         <FormControl fullWidth>
                           <InputLabel>API 版本</InputLabel>
                           <Select
@@ -988,8 +1033,8 @@ export default function ShopifyStoresPage() {
                             <MenuItem value='unstable'>unstable</MenuItem>
                           </Select>
                         </FormControl>
-                      </Grid>
-                      <Grid item xs={12} sm={6}>
+                      </Box>
+                      <Box sx={{ flex: 1, minWidth: '200px' }}>
                         <FormControlLabel
                           control={
                             <Switch
@@ -1004,8 +1049,8 @@ export default function ShopifyStoresPage() {
                           }
                           label='激活状态'
                         />
-                      </Grid>
-                      <Grid item xs={12} sm={6}>
+                      </Box>
+                      <Box sx={{ flex: 1, minWidth: '200px' }}>
                         <FormControlLabel
                           control={
                             <Switch
@@ -1020,8 +1065,8 @@ export default function ShopifyStoresPage() {
                           }
                           label='启用同步'
                         />
-                      </Grid>
-                      <Grid item xs={12} sm={6}>
+                      </Box>
+                      <Box sx={{ flex: 1, minWidth: '200px' }}>
                         <FormControlLabel
                           control={
                             <Switch
@@ -1036,19 +1081,22 @@ export default function ShopifyStoresPage() {
                           }
                           label='启用 Webhook'
                         />
-                      </Grid>
-                    </Grid>
+                      </Box>
+                    </Box>
                   </AccordionDetails>
                 </Accordion>
               </Box>
             </DialogContent>
             <DialogActions>
               <Button onClick={() => setOpenDialog(false)}>取消</Button>
-              <Button 
-                onClick={handleTestConnectionFromForm} 
+              <Button
+                onClick={handleTestConnectionFromForm}
                 variant='outlined'
                 color='info'
-                disabled={!formData.credentials.shop_id || !formData.credentials.access_token}
+                disabled={
+                  !formData.credentials.shop_id ||
+                  !formData.credentials.access_token
+                }
                 startIcon={<TestConnectionIcon />}
               >
                 测试连接
@@ -1060,54 +1108,57 @@ export default function ShopifyStoresPage() {
           </Dialog>
 
           {/* Products Dialog */}
-          <Dialog 
-            open={openProductsDialog} 
+          <Dialog
+            open={openProductsDialog}
             onClose={() => setOpenProductsDialog(false)}
-            maxWidth="lg"
+            maxWidth='lg'
             fullWidth
           >
-            <DialogTitle>
-              商品列表 - {selectedStore?.name}
-            </DialogTitle>
+            <DialogTitle>商品列表 - {selectedStore?.name}</DialogTitle>
             <DialogContent>
               {loadingProducts ? (
-                <Box display="flex" justifyContent="center" p={3}>
+                <Box display='flex' justifyContent='center' p={3}>
                   <CircularProgress />
                 </Box>
               ) : (
                 <Box>
-                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                  <Typography
+                    variant='body2'
+                    color='text.secondary'
+                    gutterBottom
+                  >
                     共 {products.length} 个商品
                   </Typography>
                   {products.length > 0 ? (
                     <Box sx={{ maxHeight: 400, overflow: 'auto' }}>
                       {products.map((product, index) => (
                         <Card key={product.id || index} sx={{ mb: 2, p: 2 }}>
-                          <Typography variant="h6" gutterBottom>
+                          <Typography variant='h6' gutterBottom>
                             {product.title}
                           </Typography>
-                          <Typography variant="body2" color="text.secondary">
+                          <Typography variant='body2' color='text.secondary'>
                             ID: {product.id}
                           </Typography>
-                          <Typography variant="body2" color="text.secondary">
+                          <Typography variant='body2' color='text.secondary'>
                             状态: {product.status}
                           </Typography>
-                          <Typography variant="body2" color="text.secondary">
+                          <Typography variant='body2' color='text.secondary'>
                             库存: {product.total_inventory}
                           </Typography>
                           {product.price && (
-                            <Typography variant="body2" color="text.secondary">
+                            <Typography variant='body2' color='text.secondary'>
                               价格: {product.price} {product.currency}
                             </Typography>
                           )}
-                          <Typography variant="body2" color="text.secondary">
-                            创建时间: {new Date(product.created_at).toLocaleString()}
+                          <Typography variant='body2' color='text.secondary'>
+                            创建时间:{' '}
+                            {new Date(product.created_at).toLocaleString()}
                           </Typography>
                         </Card>
                       ))}
                     </Box>
                   ) : (
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant='body2' color='text.secondary'>
                       暂无商品数据
                     </Typography>
                   )}
@@ -1120,127 +1171,201 @@ export default function ShopifyStoresPage() {
           </Dialog>
 
           {/* Orders Dialog */}
-          <Dialog 
-            open={openOrdersDialog} 
+          <Dialog
+            open={openOrdersDialog}
             onClose={() => setOpenOrdersDialog(false)}
-            maxWidth="lg"
+            maxWidth='lg'
             fullWidth
           >
-            <DialogTitle>
-              订单列表 - {selectedStore?.name}
-            </DialogTitle>
+            <DialogTitle>订单列表 - {selectedStore?.name}</DialogTitle>
             <DialogContent>
               {loadingOrders ? (
-                <Box display="flex" justifyContent="center" p={3}>
+                <Box display='flex' justifyContent='center' p={3}>
                   <CircularProgress />
                 </Box>
               ) : (
                 <Box>
-                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                  <Typography
+                    variant='body2'
+                    color='text.secondary'
+                    gutterBottom
+                  >
                     共 {orders.length} 个订单
                   </Typography>
                   {orders.length > 0 ? (
                     <Box sx={{ maxHeight: 400, overflow: 'auto' }}>
                       {orders.map((order, index) => (
                         <Card key={order.id || index} sx={{ mb: 2, p: 2 }}>
-                          <Typography variant="h6" gutterBottom>
+                          <Typography variant='h6' gutterBottom>
                             {order.name}
                           </Typography>
-                          <Typography variant="body2" color="text.secondary">
+                          <Typography variant='body2' color='text.secondary'>
                             ID: {order.id}
                           </Typography>
-                          <Typography variant="body2" color="text.secondary">
+                          <Typography variant='body2' color='text.secondary'>
                             邮箱: {order.email || 'N/A'}
                           </Typography>
                           {order.total_price && (
-                            <Typography variant="body2" color="text.secondary">
+                            <Typography variant='body2' color='text.secondary'>
                               总金额: {order.total_price} {order.currency}
                             </Typography>
                           )}
-                          <Typography variant="body2" color="text.secondary">
+                          <Typography variant='body2' color='text.secondary'>
                             履行状态: {order.fulfillment_status || 'N/A'}
                           </Typography>
-                          <Typography variant="body2" color="text.secondary">
+                          <Typography variant='body2' color='text.secondary'>
                             财务状态: {order.financial_status || 'N/A'}
                           </Typography>
                           {order.customer && (
-                            <Typography variant="body2" color="text.secondary">
-                              客户: {order.customer.name || order.customer.email}
+                            <Typography variant='body2' color='text.secondary'>
+                              客户:{' '}
+                              {order.customer.name || order.customer.email}
                             </Typography>
                           )}
-                          <Typography variant="body2" color="text.secondary">
+                          <Typography variant='body2' color='text.secondary'>
                             商品数量: {order.line_items_count}
                           </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            创建时间: {new Date(order.created_at).toLocaleString()}
+                          <Typography variant='body2' color='text.secondary'>
+                            创建时间:{' '}
+                            {new Date(order.created_at).toLocaleString()}
                           </Typography>
-                          
+
                           {/* 发货地址信息 */}
                           {order.shipping_address && (
-                            <Box sx={{ mt: 2, p: 1, bgcolor: 'grey.50', borderRadius: 1 }}>
-                              <Typography variant="subtitle2" color="primary" gutterBottom>
+                            <Box
+                              sx={{
+                                mt: 2,
+                                p: 1,
+                                bgcolor: 'grey.50',
+                                borderRadius: 1,
+                              }}
+                            >
+                              <Typography
+                                variant='subtitle2'
+                                color='primary'
+                                gutterBottom
+                              >
                                 发货地址:
                               </Typography>
-                              <Typography variant="body2" color="text.secondary">
-                                {order.shipping_address.firstName} {order.shipping_address.lastName}
+                              <Typography
+                                variant='body2'
+                                color='text.secondary'
+                              >
+                                {order.shipping_address.firstName}{' '}
+                                {order.shipping_address.lastName}
                               </Typography>
                               {order.shipping_address.company && (
-                                <Typography variant="body2" color="text.secondary">
+                                <Typography
+                                  variant='body2'
+                                  color='text.secondary'
+                                >
                                   {order.shipping_address.company}
                                 </Typography>
                               )}
-                              <Typography variant="body2" color="text.secondary">
+                              <Typography
+                                variant='body2'
+                                color='text.secondary'
+                              >
                                 {order.shipping_address.address1}
                               </Typography>
                               {order.shipping_address.address2 && (
-                                <Typography variant="body2" color="text.secondary">
+                                <Typography
+                                  variant='body2'
+                                  color='text.secondary'
+                                >
                                   {order.shipping_address.address2}
                                 </Typography>
                               )}
-                              <Typography variant="body2" color="text.secondary">
-                                {order.shipping_address.city}, {order.shipping_address.province} {order.shipping_address.zip}
+                              <Typography
+                                variant='body2'
+                                color='text.secondary'
+                              >
+                                {order.shipping_address.city},{' '}
+                                {order.shipping_address.province}{' '}
+                                {order.shipping_address.zip}
                               </Typography>
-                              <Typography variant="body2" color="text.secondary">
+                              <Typography
+                                variant='body2'
+                                color='text.secondary'
+                              >
                                 {order.shipping_address.country}
                               </Typography>
                               {order.shipping_address.phone && (
-                                <Typography variant="body2" color="text.secondary">
+                                <Typography
+                                  variant='body2'
+                                  color='text.secondary'
+                                >
                                   电话: {order.shipping_address.phone}
                                 </Typography>
                               )}
                             </Box>
                           )}
-                          
+
                           {/* 账单地址信息 */}
                           {order.billing_address && (
-                            <Box sx={{ mt: 1, p: 1, bgcolor: 'grey.50', borderRadius: 1 }}>
-                              <Typography variant="subtitle2" color="primary" gutterBottom>
+                            <Box
+                              sx={{
+                                mt: 1,
+                                p: 1,
+                                bgcolor: 'grey.50',
+                                borderRadius: 1,
+                              }}
+                            >
+                              <Typography
+                                variant='subtitle2'
+                                color='primary'
+                                gutterBottom
+                              >
                                 账单地址:
                               </Typography>
-                              <Typography variant="body2" color="text.secondary">
-                                {order.billing_address.firstName} {order.billing_address.lastName}
+                              <Typography
+                                variant='body2'
+                                color='text.secondary'
+                              >
+                                {order.billing_address.firstName}{' '}
+                                {order.billing_address.lastName}
                               </Typography>
                               {order.billing_address.company && (
-                                <Typography variant="body2" color="text.secondary">
+                                <Typography
+                                  variant='body2'
+                                  color='text.secondary'
+                                >
                                   {order.billing_address.company}
                                 </Typography>
                               )}
-                              <Typography variant="body2" color="text.secondary">
+                              <Typography
+                                variant='body2'
+                                color='text.secondary'
+                              >
                                 {order.billing_address.address1}
                               </Typography>
                               {order.billing_address.address2 && (
-                                <Typography variant="body2" color="text.secondary">
+                                <Typography
+                                  variant='body2'
+                                  color='text.secondary'
+                                >
                                   {order.billing_address.address2}
                                 </Typography>
                               )}
-                              <Typography variant="body2" color="text.secondary">
-                                {order.billing_address.city}, {order.billing_address.province} {order.billing_address.zip}
+                              <Typography
+                                variant='body2'
+                                color='text.secondary'
+                              >
+                                {order.billing_address.city},{' '}
+                                {order.billing_address.province}{' '}
+                                {order.billing_address.zip}
                               </Typography>
-                              <Typography variant="body2" color="text.secondary">
+                              <Typography
+                                variant='body2'
+                                color='text.secondary'
+                              >
                                 {order.billing_address.country}
                               </Typography>
                               {order.billing_address.phone && (
-                                <Typography variant="body2" color="text.secondary">
+                                <Typography
+                                  variant='body2'
+                                  color='text.secondary'
+                                >
                                   电话: {order.billing_address.phone}
                                 </Typography>
                               )}
@@ -1250,7 +1375,7 @@ export default function ShopifyStoresPage() {
                       ))}
                     </Box>
                   ) : (
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant='body2' color='text.secondary'>
                       暂无订单数据
                     </Typography>
                   )}
@@ -1266,7 +1391,7 @@ export default function ShopifyStoresPage() {
           <Dialog
             open={showTestResultDialog}
             onClose={() => setShowTestResultDialog(false)}
-            maxWidth="md"
+            maxWidth='md'
             fullWidth
           >
             <DialogTitle>
@@ -1275,38 +1400,43 @@ export default function ShopifyStoresPage() {
             <DialogContent>
               {testResult && (
                 <Box>
-                  <Alert 
-                    severity={testResult.success ? 'success' : 'error'} 
+                  <Alert
+                    severity={testResult.success ? 'success' : 'error'}
                     sx={{ mb: 2 }}
                   >
-                    <Typography variant="h6" sx={{ mb: 1 }}>
+                    <Typography variant='h6' sx={{ mb: 1 }}>
                       {testResult.success ? '连接测试成功！' : '连接测试失败'}
                     </Typography>
-                    <Typography variant="body2">
+                    <Typography variant='body2'>
                       {testResult.message}
                     </Typography>
                   </Alert>
-                  
+
                   {testResult.shop_info && (
                     <Box>
-                      <Typography variant="h6" sx={{ mb: 1 }}>
+                      <Typography variant='h6' sx={{ mb: 1 }}>
                         店铺信息：
                       </Typography>
                       <Box sx={{ pl: 2 }}>
-                        <Typography variant="body2" sx={{ mb: 1 }}>
-                          <strong>名称：</strong>{testResult.shop_info.name || 'N/A'}
+                        <Typography variant='body2' sx={{ mb: 1 }}>
+                          <strong>名称：</strong>
+                          {testResult.shop_info.name || 'N/A'}
                         </Typography>
-                        <Typography variant="body2" sx={{ mb: 1 }}>
-                          <strong>域名：</strong>{testResult.shop_info.myshopify_domain || 'N/A'}
+                        <Typography variant='body2' sx={{ mb: 1 }}>
+                          <strong>域名：</strong>
+                          {testResult.shop_info.myshopify_domain || 'N/A'}
                         </Typography>
-                        <Typography variant="body2" sx={{ mb: 1 }}>
-                          <strong>邮箱：</strong>{testResult.shop_info.email || 'N/A'}
+                        <Typography variant='body2' sx={{ mb: 1 }}>
+                          <strong>邮箱：</strong>
+                          {testResult.shop_info.email || 'N/A'}
                         </Typography>
-                        <Typography variant="body2" sx={{ mb: 1 }}>
-                          <strong>货币：</strong>{testResult.shop_info.currency_code || 'N/A'}
+                        <Typography variant='body2' sx={{ mb: 1 }}>
+                          <strong>货币：</strong>
+                          {testResult.shop_info.currency_code || 'N/A'}
                         </Typography>
-                        <Typography variant="body2" sx={{ mb: 1 }}>
-                          <strong>计划：</strong>{testResult.shop_info.plan || 'N/A'}
+                        <Typography variant='body2' sx={{ mb: 1 }}>
+                          <strong>计划：</strong>
+                          {testResult.shop_info.plan || 'N/A'}
                         </Typography>
                       </Box>
                     </Box>
@@ -1315,10 +1445,10 @@ export default function ShopifyStoresPage() {
               )}
             </DialogContent>
             <DialogActions>
-              <Button 
+              <Button
                 onClick={() => setShowTestResultDialog(false)}
-                variant="contained"
-                color="primary"
+                variant='contained'
+                color='primary'
               >
                 确定
               </Button>
@@ -1329,7 +1459,7 @@ export default function ShopifyStoresPage() {
           <Dialog
             open={showSyncResultDialog}
             onClose={() => setShowSyncResultDialog(false)}
-            maxWidth="md"
+            maxWidth='md'
             fullWidth
           >
             <DialogTitle>
@@ -1338,32 +1468,35 @@ export default function ShopifyStoresPage() {
             <DialogContent>
               {syncResult && (
                 <Box>
-                  <Alert 
-                    severity={syncResult.success ? 'success' : 'error'} 
+                  <Alert
+                    severity={syncResult.success ? 'success' : 'error'}
                     sx={{ mb: 2 }}
                   >
-                    <Typography variant="h6" sx={{ mb: 1 }}>
+                    <Typography variant='h6' sx={{ mb: 1 }}>
                       {syncResult.success ? '同步成功！' : '同步失败'}
                     </Typography>
-                    <Typography variant="body2">
+                    <Typography variant='body2'>
                       {syncResult.message}
                     </Typography>
                   </Alert>
-                  
+
                   {syncResult.success && (
                     <Box>
-                      <Typography variant="h6" sx={{ mb: 1 }}>
+                      <Typography variant='h6' sx={{ mb: 1 }}>
                         同步统计：
                       </Typography>
                       <Box sx={{ pl: 2 }}>
-                        <Typography variant="body2" sx={{ mb: 1 }}>
-                          <strong>新增订单：</strong>{syncResult.orders_synced || 0}
+                        <Typography variant='body2' sx={{ mb: 1 }}>
+                          <strong>新增订单：</strong>
+                          {syncResult.orders_synced || 0}
                         </Typography>
-                        <Typography variant="body2" sx={{ mb: 1 }}>
-                          <strong>更新订单：</strong>{syncResult.orders_updated || 0}
+                        <Typography variant='body2' sx={{ mb: 1 }}>
+                          <strong>更新订单：</strong>
+                          {syncResult.orders_updated || 0}
                         </Typography>
-                        <Typography variant="body2" sx={{ mb: 1 }}>
-                          <strong>总处理：</strong>{syncResult.total_processed || 0}
+                        <Typography variant='body2' sx={{ mb: 1 }}>
+                          <strong>总处理：</strong>
+                          {syncResult.total_processed || 0}
                         </Typography>
                       </Box>
                     </Box>
@@ -1372,10 +1505,10 @@ export default function ShopifyStoresPage() {
               )}
             </DialogContent>
             <DialogActions>
-              <Button 
+              <Button
                 onClick={() => setShowSyncResultDialog(false)}
-                variant="contained"
-                color="primary"
+                variant='contained'
+                color='primary'
               >
                 确定
               </Button>

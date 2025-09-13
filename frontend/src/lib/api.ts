@@ -84,7 +84,7 @@ frontendApi.interceptors.response.use(
           originalRequest.headers.Authorization = `Bearer ${accessToken}`;
           return frontendApi(originalRequest);
         }
-      } catch (refreshError) {
+      } catch {
         // 如果刷新失败，清除token并重定向到登录页
         tokenManager.clearTokens();
         if (typeof window !== 'undefined') {

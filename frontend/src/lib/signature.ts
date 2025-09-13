@@ -12,9 +12,9 @@ import crypto from 'crypto';
 export function generateBackendSignature(
   privateKey: string,
   signatureString: string,
-  timestamp: number,
-  nonce: string,
-  tenantName: string
+  _timestamp: number,
+  _nonce: string,
+  _tenantName: string
 ): string {
   try {
     // 生成 RSA 签名

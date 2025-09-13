@@ -186,7 +186,7 @@ class TokenManager {
 
     try {
       // 验证refresh token（客户端解码，不验证签名）
-      const refreshPayload = jwtUtils.decodeToken(refreshToken) as JWTPayload;
+      // const refreshPayload = jwtUtils.decodeToken(refreshToken) as JWTPayload;
 
       // 检查refresh token是否过期
       if (jwtUtils.isTokenExpired(refreshToken)) {
@@ -214,7 +214,7 @@ class TokenManager {
       this.storeTokens(newTokens);
 
       return newTokens;
-    } catch (error) {
+    } catch {
       // 如果刷新失败，清除所有token
       this.clearTokens();
       throw new Error('Refresh token expired');

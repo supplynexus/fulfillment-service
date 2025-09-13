@@ -41,10 +41,10 @@ export async function POST(request: NextRequest) {
 
     // Parse request body
     const requestData = await request.json();
-    logger.info('Request data received', { 
+    logger.info('Request data received', {
       shop_id: requestData.shop_id,
       has_access_token: !!requestData.access_token,
-      api_version: requestData.api_version || '2024-10'
+      api_version: requestData.api_version || '2024-10',
     });
 
     // Generate signature for backend request

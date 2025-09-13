@@ -6,7 +6,6 @@ import {
   AppBar,
   Toolbar,
   Typography,
-  Button,
   IconButton,
   Menu,
   MenuItem,
@@ -14,14 +13,8 @@ import {
   Box,
   Divider,
 } from '@mui/material';
-import {
-  AccountCircle,
-  Logout,
-  Settings,
-  Dashboard,
-} from '@mui/icons-material';
+import { AccountCircle, Logout } from '@mui/icons-material';
 import { useAuth } from '@/lib/auth-context';
-import { tokenManager } from '@/lib/auth';
 import toast from 'react-hot-toast';
 
 export function Header() {
@@ -51,11 +44,6 @@ export function Header() {
 
   const handleProfile = () => {
     router.push('/settings/profile');
-    handleClose();
-  };
-
-  const handleSettings = () => {
-    router.push('/settings');
     handleClose();
   };
 

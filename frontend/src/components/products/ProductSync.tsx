@@ -8,7 +8,6 @@ import {
   Typography,
   Button,
   Alert,
-  CircularProgress,
   LinearProgress,
   List,
   ListItem,
@@ -22,7 +21,6 @@ import {
   Sync as SyncIcon,
   CheckCircle as CheckIcon,
   Error as ErrorIcon,
-  Warning as WarningIcon,
   Refresh as RefreshIcon,
 } from '@mui/icons-material';
 import { frontendApi } from '@/lib/api';
@@ -98,7 +96,7 @@ export function ProductSync() {
 
   const handleRefreshStatus = async () => {
     try {
-      const response = await frontendApi.get('/api/products/sync/status');
+      await frontendApi.get('/api/products/sync/status');
       // 处理状态更新
       toast.success('状态已更新');
     } catch (err: any) {

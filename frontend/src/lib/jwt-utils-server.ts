@@ -135,7 +135,7 @@ export class JWTUtilsServer {
         this.base64UrlDecode(signature),
         'base64'
       );
-    } catch (error) {
+    } catch {
       return false;
     }
   }

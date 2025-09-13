@@ -36,11 +36,11 @@ export async function POST(request: NextRequest) {
     });
 
     const body = await request.json();
-    logger.info('Processing Printify test connection request', { 
+    logger.info('Processing Printify test connection request', {
       tenantName,
       hasAccessToken: !!body.access_token,
       hasShopId: !!body.shop_id,
-      hasBaseUrl: !!body.base_url
+      hasBaseUrl: !!body.base_url,
     });
 
     const bodyString = JSON.stringify(body);

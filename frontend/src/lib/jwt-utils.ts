@@ -1,4 +1,4 @@
-import crypto from 'crypto';
+// import crypto from 'crypto';
 
 export interface JWTPayload {
   sub: string; // User ID
@@ -48,7 +48,7 @@ export class JWTUtils {
       const payload = this.decodeToken(token);
       const now = Math.floor(Date.now() / 1000);
       return payload.exp < now;
-    } catch (error) {
+    } catch {
       return true;
     }
   }
@@ -65,7 +65,7 @@ export class JWTUtils {
       const now = Math.floor(Date.now() / 1000);
       const bufferSeconds = bufferMinutes * 60;
       return payload.exp - now <= bufferSeconds;
-    } catch (error) {
+    } catch {
       return true;
     }
   }
