@@ -68,6 +68,21 @@ class ExternalSystemService:
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
     
+    async def get_external_system_by_external_id(
+        self,
+        external_id: str,
+        tenant_id: int
+    ) -> Optional[ExternalSystem]:
+        """Get external system by external_id (shop_name) with tenant isolation"""
+        
+        query = select(ExternalSystem).where(
+            ExternalSystem.external_id == external_id,
+            ExternalSystem.tenant_id == tenant_id
+        )
+        
+        result = await self.db.execute(query)
+        return result.scalar_one_or_none()
+    
     async def get_external_systems_by_tenant(
         self,
         tenant_id: int,
@@ -190,14 +205,15 @@ class ExternalSystemService:
         if not external_system:
             return None
         
-        # Decrypt credentials
+        # Decrypt credentials - handle both encrypted and plain text
         decrypted_credentials = {}
-        for key, encrypted_value in external_system.credentials.items():
+        for key, value in external_system.credentials.items():
             try:
-                decrypted_credentials[key] = decrypt_data(encrypted_value)
+                # Try to decrypt first (for encrypted credentials)
+                decrypted_credentials[key] = decrypt_data(value)
             except Exception:
-                # If decryption fails, skip this credential
-                continue
+                # If decryption fails, use the value as-is (for plain text credentials)
+                decrypted_credentials[key] = value
         
         return decrypted_credentials
     

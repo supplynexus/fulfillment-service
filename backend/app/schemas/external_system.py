@@ -57,9 +57,31 @@ class ExternalSystemResponse(ExternalSystemBase):
         from_attributes = True
 
 
+class ExternalSystemSecureResponse(ExternalSystemBase):
+    """Secure schema for external system response - no sensitive IDs"""
+    id_hashid: str = Field(..., description="Hashed system ID for frontend use")
+    external_id: Optional[str] = None  # Deprecated field
+    is_active: bool
+    last_sync_at: Optional[datetime] = None
+    last_product_sync_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
+
+
 class ExternalSystemListResponse(BaseModel):
     """Schema for external system list response"""
     external_systems: list[ExternalSystemResponse]
+    total: int
+    skip: int
+    limit: int
+
+
+class ExternalSystemSecureListResponse(BaseModel):
+    """Secure schema for external system list response - no sensitive IDs"""
+    external_systems: list[ExternalSystemSecureResponse]
     total: int
     skip: int
     limit: int

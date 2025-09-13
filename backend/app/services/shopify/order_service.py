@@ -374,6 +374,26 @@ class ShopifyOrderService:
             logger.error(f"获取最近订单失败: {e}")
             return []
     
+    async def get_all_orders(
+        self,
+        tenant_id: int,
+        limit: int = 100
+    ) -> List[Order]:
+        """获取所有订单"""
+        try:
+            result = await self.db.execute(
+                select(Order)
+                .where(Order.tenant_id == tenant_id)
+                .order_by(Order.order_date.desc())
+                .limit(limit)
+            )
+            
+            return result.scalars().all()
+            
+        except Exception as e:
+            logger.error(f"获取所有订单失败: {e}")
+            return []
+
     async def get_orders_by_status(
         self,
         tenant_id: int,
@@ -397,3 +417,24 @@ class ShopifyOrderService:
         except Exception as e:
             logger.error(f"根据状态获取订单失败: {e}")
             return []
+    
+    async def get_order_by_id(
+        self,
+        order_id: int,
+        tenant_id: int
+    ) -> Optional[Order]:
+        """根据ID获取单个订单"""
+        try:
+            result = await self.db.execute(
+                select(Order)
+                .where(
+                    Order.id == order_id,
+                    Order.tenant_id == tenant_id
+                )
+            )
+            
+            return result.scalar_one_or_none()
+            
+        except Exception as e:
+            logger.error(f"根据ID获取订单失败: {e}")
+            return None
