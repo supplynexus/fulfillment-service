@@ -16,6 +16,7 @@ from app.models.external_system import ExternalSystemType
 from app.schemas.order import OrderResponse, OrderListResponse, OrderSyncResponse
 from app.services.shopify.order_service import ShopifyOrderService
 from app.services.printify_service import PrintifyService
+from app.services.external_system_service import ExternalSystemService
 from app.tasks.shopify_tasks import sync_shopify_orders_task
 
 router = APIRouter()
