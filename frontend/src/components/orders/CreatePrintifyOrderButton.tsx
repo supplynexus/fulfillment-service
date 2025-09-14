@@ -14,20 +14,21 @@ import {
   DialogTitle,
   TextField,
   Typography,
-  Alert,
   CircularProgress,
   IconButton,
   Tooltip,
   Stack,
-  Divider,
 } from '@mui/material';
 import {
   LocalShipping as Package,
-  Close,
   CheckCircle,
   Error as ErrorIcon,
 } from '@mui/icons-material';
-import { printifyApi, PrintifyOrderRequest, PrintifyOrderResponse } from '@/lib/printify-api';
+import {
+  printifyApi,
+  PrintifyOrderRequest,
+  PrintifyOrderResponse,
+} from '@/lib/printify-api';
 import { frontendLogger } from '@/lib/frontend-logger';
 
 interface CreatePrintifyOrderButtonProps {
@@ -46,7 +47,10 @@ interface CreatePrintifyOrderButtonProps {
   };
 }
 
-export function CreatePrintifyOrderButton({ orderId, orderData }: CreatePrintifyOrderButtonProps) {
+export function CreatePrintifyOrderButton({
+  orderId,
+  orderData,
+}: CreatePrintifyOrderButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<PrintifyOrderResponse | null>(null);
@@ -67,7 +71,7 @@ export function CreatePrintifyOrderButton({ orderId, orderData }: CreatePrintify
   const handleInputChange = (field: string, value: string | number) => {
     setFormData(prev => ({
       ...prev,
-      [field]: value
+      [field]: value,
     }));
   };
 
@@ -95,7 +99,9 @@ export function CreatePrintifyOrderButton({ orderId, orderData }: CreatePrintify
         alert(response.message || '订单创建失败');
       }
     } catch (error: any) {
-      frontendLogger.error('❌ 创建Printify订单时发生错误', { error: error.message });
+      frontendLogger.error('❌ 创建Printify订单时发生错误', {
+        error: error.message,
+      });
       alert('创建订单时发生错误，请稍后重试');
     } finally {
       setIsLoading(false);
@@ -109,40 +115,39 @@ export function CreatePrintifyOrderButton({ orderId, orderData }: CreatePrintify
 
   return (
     <>
-      <Tooltip title="创建Printify发货单">
-        <IconButton onClick={() => setIsOpen(true)} color="primary">
+      <Tooltip title='创建Printify发货单'>
+        <IconButton onClick={() => setIsOpen(true)} color='primary'>
           <Package />
         </IconButton>
       </Tooltip>
-      
-      <Dialog 
-        open={isOpen} 
+
+      <Dialog
+        open={isOpen}
         onClose={handleClose}
-        maxWidth="md"
+        maxWidth='md'
         fullWidth
       >
         <DialogTitle>
-          <Box display="flex" alignItems="center" gap={1}>
+          <Box display='flex' alignItems='center' gap={1}>
             <Package />
             创建Printify发货单
           </Box>
         </DialogTitle>
-        
+
         <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+          <Typography variant='body2' color='text.secondary' sx={{ mb: 3 }}>
             为订单 {orderId} 创建Printify发货单。
           </Typography>
 
           <Stack spacing={3}>
-
             {/* 客户信息 */}
-            <Card variant="outlined">
+            <Card variant='outlined'>
               <CardHeader>
-                <CardTitle variant="h6">客户信息</CardTitle>
+                <CardTitle variant='h6'>客户信息</CardTitle>
               </CardHeader>
               <CardContent>
                 <Stack spacing={2}>
-                  <Box display="flex" gap={2}>
+                  <Box display='flex' gap={2}>
                     <TextField
                       fullWidth
                       label="客户姓名 *"
@@ -171,9 +176,9 @@ export function CreatePrintifyOrderButton({ orderId, orderData }: CreatePrintify
             </Card>
 
             {/* 收货地址 */}
-            <Card variant="outlined">
+            <Card variant='outlined'>
               <CardHeader>
-                <CardTitle variant="h6">收货地址</CardTitle>
+                <CardTitle variant='h6'>收货地址</CardTitle>
               </CardHeader>
               <CardContent>
                 <Stack spacing={2}>
@@ -184,7 +189,7 @@ export function CreatePrintifyOrderButton({ orderId, orderData }: CreatePrintify
                     onChange={(e) => handleInputChange('address_line1', e.target.value)}
                     placeholder="请输入详细地址"
                   />
-                  <Box display="flex" gap={2}>
+                  <Box display='flex' gap={2}>
                     <TextField
                       fullWidth
                       label="城市 *"
@@ -200,7 +205,7 @@ export function CreatePrintifyOrderButton({ orderId, orderData }: CreatePrintify
                       placeholder="请输入州/省"
                     />
                   </Box>
-                  <Box display="flex" gap={2}>
+                  <Box display='flex' gap={2}>
                     <TextField
                       label="国家代码 *"
                       value={formData.country}
@@ -228,9 +233,9 @@ export function CreatePrintifyOrderButton({ orderId, orderData }: CreatePrintify
 
             {/* 结果显示 */}
             {result && (
-              <Card variant="outlined">
+              <Card variant='outlined'>
                 <CardHeader>
-                  <CardTitle variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <CardTitle variant='h6' sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     {result.success ? (
                       <CheckCircle color="success" />
                     ) : (
@@ -241,29 +246,29 @@ export function CreatePrintifyOrderButton({ orderId, orderData }: CreatePrintify
                 </CardHeader>
                 <CardContent>
                   <Stack spacing={1}>
-                    <Typography variant="body2">
+                    <Typography variant='body2'>
                       <strong>状态:</strong> {result.success ? '成功' : '失败'}
                     </Typography>
-                    <Typography variant="body2">
+                    <Typography variant='body2'>
                       <strong>消息:</strong> {result.message}
                     </Typography>
                     {result.printify_order_id && (
-                      <Typography variant="body2">
+                      <Typography variant='body2'>
                         <strong>Printify订单ID:</strong> {result.printify_order_id}
                       </Typography>
                     )}
                     {result.external_id && (
-                      <Typography variant="body2">
+                      <Typography variant='body2'>
                         <strong>外部ID:</strong> {result.external_id}
                       </Typography>
                     )}
                     {result.status && (
-                      <Typography variant="body2">
+                      <Typography variant='body2'>
                         <strong>订单状态:</strong> {result.status}
                       </Typography>
                     )}
                     {result.total_price && (
-                      <Typography variant="body2">
+                      <Typography variant='body2'>
                         <strong>总价:</strong> ${result.total_price.toFixed(2)}
                       </Typography>
                     )}
