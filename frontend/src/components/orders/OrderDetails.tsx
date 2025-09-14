@@ -201,12 +201,12 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
               <RefreshIcon />
             </IconButton>
           </Tooltip>
-          <CreatePrintifyOrderButton 
+          <CreatePrintifyOrderButton
             orderId={order.id}
             orderData={{
               customer_name: order.customer_name,
               customer_email: order.customer_email,
-              shipping_address: order.shipping_address
+              shipping_address: order.shipping_address,
             }}
           />
           <Tooltip title='编辑'>
