@@ -267,6 +267,7 @@ export function CreatePrintifyOrderButton({
                     {result.printify_order_id && (
                       <Typography variant='body2'>
                         <strong>Printify订单ID:</strong> {result.printify_order_id}
+                        {' '}
                       </Typography>
                     )}
                     {result.external_id && (
