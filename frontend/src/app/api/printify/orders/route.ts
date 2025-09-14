@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(responseData, { status: backendResponse.status });
     } else {
       logger.error('Backend request failed', {
-        status: backendResponse.status,,
+        status: backendResponse.status,
         error: responseData,
         duration,
       });
@@ -235,7 +235,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(responseData, { status: backendResponse.status });
     } else {
       logger.error('Backend request failed', {
-        status: backendResponse.status,,
+        status: backendResponse.status,
         error: responseData,
         duration,
       });
