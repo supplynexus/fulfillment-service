@@ -146,24 +146,28 @@ export function CreatePrintifyOrderButton({
                       fullWidth
                       label='客户姓名 *'
                       value={formData.customer_name}
-                      onChange={(e) => handleInputChange('customer_name', e.target.value)}
-                      placeholder="请输入客户姓名"
+                      onChange={e =>
+                        handleInputChange('customer_name', e.target.value)
+                      }
+                      placeholder='请输入客户姓名'
                     />
                     <TextField
                       fullWidth
-                      label="客户邮箱 *"
-                      type="email"
+                      label='客户邮箱 *'
+                      type='email'
                       value={formData.customer_email}
-                      onChange={(e) => handleInputChange('customer_email', e.target.value)}
-                      placeholder="请输入客户邮箱"
+                      onChange={e =>
+                        handleInputChange('customer_email', e.target.value)
+                      }
+                      placeholder='请输入客户邮箱'
                     />
                   </Box>
                   <TextField
                     fullWidth
-                    label="电话号码"
+                    label='电话号码'
                     value={formData.phone}
-                    onChange={(e) => handleInputChange('phone', e.target.value)}
-                    placeholder="请输入电话号码"
+                    onChange={e => handleInputChange('phone', e.target.value)}
+                    placeholder='请输入电话号码'
                   />
                 </Stack>
               </CardContent>
@@ -178,47 +182,58 @@ export function CreatePrintifyOrderButton({
                 <Stack spacing={2}>
                   <TextField
                     fullWidth
-                    label="地址第一行 *"
+                    label='地址第一行 *'
                     value={formData.address_line1}
-                    onChange={(e) => handleInputChange('address_line1', e.target.value)}
-                    placeholder="请输入详细地址"
+                    onChange={e =>
+                      handleInputChange('address_line1', e.target.value)
+                    }
+                    placeholder='请输入详细地址'
                   />
                   <Box display='flex' gap={2}>
                     <TextField
                       fullWidth
-                      label="城市 *"
+                      label='城市 *'
                       value={formData.city}
-                      onChange={(e) => handleInputChange('city', e.target.value)}
-                      placeholder="请输入城市"
+                    onChange={e => handleInputChange('city', e.target.value)}
+                    placeholder='请输入城市'
                     />
                     <TextField
                       fullWidth
-                      label="州/省 *"
+                      label='州/省 *'
                       value={formData.state}
-                      onChange={(e) => handleInputChange('state', e.target.value)}
-                      placeholder="请输入州/省"
+                    onChange={e => handleInputChange('state', e.target.value)}
+                    placeholder='请输入州/省'
                     />
                   </Box>
                   <Box display='flex' gap={2}>
                     <TextField
-                      label="国家代码 *"
+                      label='国家代码 *'
                       value={formData.country}
-                      onChange={(e) => handleInputChange('country', e.target.value)}
-                      placeholder="如: JP, US"
+                    onChange={e =>
+                      handleInputChange('country', e.target.value)
+                    }
+                    placeholder='如: JP, US'
                     />
                     <TextField
-                      label="邮政编码 *"
+                      label='邮政编码 *'
                       value={formData.zip_code}
-                      onChange={(e) => handleInputChange('zip_code', e.target.value)}
-                      placeholder="请输入邮政编码"
+                    onChange={e =>
+                      handleInputChange('zip_code', e.target.value)
+                    }
+                    placeholder='请输入邮政编码'
                     />
                     <TextField
-                      label="数量"
-                      type="number"
+                    label='数量'
+                    type='number'
                       inputProps={{ min: 1 }}
                       value={formData.quantity}
-                      onChange={(e) => handleInputChange('quantity', parseInt(e.target.value) || 1)}
-                      placeholder="1"
+                    onChange={e =>
+                      handleInputChange(
+                        'quantity',
+                        parseInt(e.target.value) || 1
+                      )
+                    }
+                    placeholder='1'
                     />
                   </Box>
                 </Stack>
@@ -229,11 +244,14 @@ export function CreatePrintifyOrderButton({
             {result && (
               <Card variant='outlined'>
                 <CardHeader>
-                  <CardTitle variant='h6' sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <CardTitle
+                    variant='h6'
+                    sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
+                  >
                     {result.success ? (
-                      <CheckCircle color="success" />
+                      <CheckCircle color='success' />
                     ) : (
-                      <ErrorIcon color="error" />
+                      <ErrorIcon color='error' />
                     )}
                     创建结果
                   </CardTitle>
@@ -245,6 +263,7 @@ export function CreatePrintifyOrderButton({
                     </Typography>
                     <Typography variant='body2'>
                       <strong>消息:</strong> {result.message}
+                      {' '}
                     </Typography>
                     {result.printify_order_id && (
                       <Typography variant='body2'>
@@ -274,13 +293,11 @@ export function CreatePrintifyOrderButton({
         </DialogContent>
 
         <DialogActions>
-          <Button onClick={handleClose}>
-            关闭
-          </Button>
-          <Button 
-            onClick={handleCreateOrder} 
+          <Button onClick={handleClose}>关闭</Button>
+          <Button
+            onClick={handleCreateOrder}
             disabled={isLoading}
-            variant="contained"
+            variant='contained'
             startIcon={isLoading ? <CircularProgress size={20} /> : <Package />}
           >
             创建Printify订单
