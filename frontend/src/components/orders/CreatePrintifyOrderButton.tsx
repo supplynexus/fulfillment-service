@@ -7,7 +7,6 @@ import {
   Card,
   CardContent,
   CardHeader,
-  CardTitle,
   Dialog,
   DialogActions,
   DialogContent,
@@ -137,7 +136,9 @@ export function CreatePrintifyOrderButton({
             {/* 客户信息 */}
             <Card variant='outlined'>
               <CardHeader>
-                <CardTitle variant='h6'>客户信息</CardTitle>
+                <Typography variant='h6' component='div' sx={{ p: 2, pb: 0 }}>
+                  客户信息
+                </Typography>
               </CardHeader>
               <CardContent>
                 <Stack spacing={2}>
@@ -176,7 +177,9 @@ export function CreatePrintifyOrderButton({
             {/* 收货地址 */}
             <Card variant='outlined'>
               <CardHeader>
-                <CardTitle variant='h6'>收货地址</CardTitle>
+                <Typography variant='h6' component='div' sx={{ p: 2, pb: 0 }}>
+                  收货地址
+                </Typography>
               </CardHeader>
               <CardContent>
                 <Stack spacing={2}>
@@ -244,9 +247,16 @@ export function CreatePrintifyOrderButton({
             {result && (
               <Card variant='outlined'>
                 <CardHeader>
-                  <CardTitle
+                  <Typography
                     variant='h6'
-                    sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
+                    component='div'
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1,
+                      p: 2,
+                      pb: 0,
+                    }}
                   >
                     {result.success ? (
                       <CheckCircle color='success' />
@@ -254,7 +264,7 @@ export function CreatePrintifyOrderButton({
                       <ErrorIcon color='error' />
                     )}
                     创建结果
-                  </CardTitle>
+                  </Typography>
                 </CardHeader>
                 <CardContent>
                   <Stack spacing={1}>
@@ -266,8 +276,8 @@ export function CreatePrintifyOrderButton({
                     </Typography>
                     {result.printify_order_id && (
                       <Typography variant='body2'>
-                        <strong>Printify订单ID:</strong> {result.printify_order_id}
-                        {' '}
+                        <strong>Printify订单ID:</strong>{' '}
+                        {result.printify_order_id}
                       </Typography>
                     )}
                     {result.external_id && (

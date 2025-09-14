@@ -89,7 +89,6 @@ export default function ShopifyStoresPage() {
   );
   const [showTestResultDialog, setShowTestResultDialog] = useState(false);
   const [testResult, setTestResult] = useState<any>(null);
-  const [testingConnection, setTestingConnection] = useState(false);
   const [showSyncResultDialog, setShowSyncResultDialog] = useState(false);
   const [syncResult, setSyncResult] = useState<any>(null);
   const [formData, setFormData] = useState({
@@ -496,7 +495,6 @@ export default function ShopifyStoresPage() {
   const handleTestConnection = async (store: ShopifyStore) => {
     try {
       setError(null);
-      setTestingConnection(true);
 
       // Check if external_id exists
       if (!store.external_id) {
@@ -573,8 +571,6 @@ export default function ShopifyStoresPage() {
       });
 
       console.error('Error testing connection:', err);
-    } finally {
-      setTestingConnection(false);
     }
   };
 

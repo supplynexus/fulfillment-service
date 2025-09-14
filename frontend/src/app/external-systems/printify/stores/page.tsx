@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -112,38 +112,34 @@ function PrintifyStoresPage() {
   const [forceRender, setForceRender] = useState(0);
   const [showTestResultDialog, setShowTestResultDialog] = useState(false);
 
-  // Mock data for demonstration - using real Printify data
-  const mockStores: PrintifyStore[] = [
-    {
-      id_hashid: 'mock-hashid-1',
-      name: 'Impeach Printify Store',
-      system_type: 'PRINTIFY',
-      external_id: '21704929',
-      base_url: 'https://api.printify.com',
-      credentials: {
-        access_token:
-          'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiIzN2Q0YmQzMDM1ZmUxMWU5YTgwM2FiN2VlYjNjY2M5NyIsImp0aSI6ImRmOTFhMmExMWQ4MjMwMDliMmIwNTIyOTI1OGRlOTJlYzdiN2I2MTM4YzgwZmU4MThkZDY3Mzg1OTFiZjkwOGJmZjhhYmEwMjFiY2E5NTdjIiwiaWF0IjoxNzU3MjQxMTAyLjMzNjYzNCwibmJmIjoxNzU3MjQxMTAyLjMzNjYzNiwiZXhwIjoxNzg4Nzc3MTAyLjMyODEyOCwic3ViIjoiMjI3MDE2NDQiLCJzY29wZXMiOlsic2hvcHMubWFuYWdlIiwic2hvcHMucmVhZCIsImNhdGFsb2cucmVhZCIsIm9yZGVycy5yZWFkIiwib3JkZXJzLndyaXRlIiwicHJvZHVjdHMucmVhZCIsInByb2R1Y3RzLndyaXRlIiwid2ViaG9va3MucmVhZCIsIndlYmhvb2tzLndyaXRlIiwidXBsb2Fkcy5yZWFkIiwidXBsb2Fkcy53cml0ZSIsInByaW50X3Byb3ZpZGVycy5yZWFkIiwidXNlci5pbmZvIl19.hyw5rw-PS0qh8EgPAIV9O_2aSAiScYfuXjdLDAJnNfpwbzdfDBq3gkmYPM8kMnUp_X_KZ5flG7qF5iNqdYmlvOvZsUcCtZk7FoTZ7DBVz4Z_gSweY7IwDudPn1NyujWSPoIdu4XE_-5UGsmzYNJaCItJnwG5Uaz0XJeV4tMcKAN_yuYXaDeQHKZtByCru-uGk6JfIy1vooLalFMUXhf6cFCOeeX3YgSX0c9IfC8-vazrdBpgxs119mmIISV1ch1C4KrqE3maIB-GXh26rkDNCSCqoPurOZVsHqGm-ZH7sXTnmx-Lmz0q7GoulqTxpUFYfleS-xBhgPL2vgFnI8Sh2LUBkCmlcWqEnIerLwROp9tRqTr5qJyGkaHjG7fYD2COwlba-hCaS43LlqY571MEia_r7M97KZ8eeZVqY42SYiJP7FXihduU_HyEj5G3GKKUZmsX7xOlsIBqc81V2VYRR6pr0C782TD21QdigMuDlwEKyVXjMhDPVmIf4jXIZB64JDBA-SM4Z7Kqrc5oZoBIueCqbGhzKTYv3aP8bC8pdOWa_U1wm0JX4UsWo7sRtjlhRPR98SvyGMEYVEH0rVeLFwx2bfBrDShgjYqdlYfDaXY8gvbaiOFS_0BlVsY9mCzbchkldIOfry8N2igUycM_-HdH3mt95UCGzUD-RETTaGU',
-        shop_id: '21704929',
+  const fetchStores = useCallback(async () => {
+    // Mock data for demonstration - using real Printify data
+    const mockStores: PrintifyStore[] = [
+      {
+        id_hashid: 'mock-hashid-1',
+        name: 'Impeach Printify Store',
+        system_type: 'PRINTIFY',
+        external_id: '21704929',
+        base_url: 'https://api.printify.com',
+        credentials: {
+          access_token:
+            'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiIzN2Q0YmQzMDM1ZmUxMWU5YTgwM2FiN2VlYjNjY2M5NyIsImp0aSI6ImRmOTFhMmExMWQ4MjMwMDliMmIwNTIyOTI1OGRlOTJlYzdiN2I2MTM4YzgwZmU4MThkZDY3Mzg1OTFiZjkwOGJmZjhhYmEwMjFiY2E5NTdjIiwiaWF0IjoxNzU3MjQxMTAyLjMzNjYzNCwibmJmIjoxNzU3MjQxMTAyLjMzNjYzNiwiZXhwIjoxNzg4Nzc3MTAyLjMyODEyOCwic3ViIjoiMjI3MDE2NDQiLCJzY29wZXMiOlsic2hvcHMubWFuYWdlIiwic2hvcHMucmVhZCIsImNhdGFsb2cucmVhZCIsIm9yZGVycy5yZWFkIiwib3JkZXJzLndyaXRlIiwicHJvZHVjdHMucmVhZCIsInByb2R1Y3RzLndyaXRlIiwid2ViaG9va3MucmVhZCIsIndlYmhvb2tzLndyaXRlIiwidXBsb2Fkcy5yZWFkIiwidXBsb2Fkcy53cml0ZSIsInByaW50X3Byb3ZpZGVycy5yZWFkIiwidXNlci5pbmZvIl19.hyw5rw-PS0qh8EgPAIV9O_2aSAiScYfuXjdLDAJnNfpwbzdfDBq3gkmYPM8kMnUp_X_KZ5flG7qF5iNqdYmlvOvZsUcCtZk7FoTZ7DBVz4Z_gSweY7IwDudPn1NyujWSPoIdu4XE_-5UGsmzYNJaCItJnwG5Uaz0XJeV4tMcKAN_yuYXaDeQHKZtByCru-uGk6JfIy1vooLalFMUXhf6cFCOeeX3YgSX0c9IfC8-vazrdBpgxs119mmIISV1ch1C4KrqE3maIB-GXh26rkDNCSCqoPurOZVsHqGm-ZH7sXTnmx-Lmz0q7GoulqTxpUFYfleS-xBhgPL2vgFnI8Sh2LUBkCmlcWqEnIerLwROp9tRqTr5qJyGkaHjG7fYD2COwlba-hCaS43LlqY571MEia_r7M97KZ8eeZVqY42SYiJP7FXihduU_HyEj5G3GKKUZmsX7xOlsIBqc81V2VYRR6pr0C782TD21QdigMuDlwEKyVXjMhDPVmIf4jXIZB64JDBA-SM4Z7Kqrc5oZoBIueCqbGhzKTYv3aP8bC8pdOWa_U1wm0JX4UsWo7sRtjlhRPR98SvyGMEYVEH0rVeLFwx2bfBrDShgjYqdlYfDaXY8gvbaiOFS_0BlVsY9mCzbchkldIOfry8N2igUycM_-HdH3mt95UCGzUD-RETTaGU',
+          shop_id: '21704929',
+        },
+        settings: {
+          api_version: 'v1',
+          default_shipping_method: 1,
+          send_shipping_notification: true,
+          default_status: 'onhold',
+        },
+        is_active: true,
+        sync_enabled: false,
+        webhook_enabled: false,
+        last_sync_at: undefined,
+        created_at: '2025-01-11T00:00:00Z',
       },
-      settings: {
-        api_version: 'v1',
-        default_shipping_method: 1,
-        send_shipping_notification: true,
-        default_status: 'onhold',
-      },
-      is_active: true,
-      sync_enabled: false,
-      webhook_enabled: false,
-      last_sync_at: undefined,
-      created_at: '2025-01-11T00:00:00Z',
-    },
-  ];
+    ];
 
-  useEffect(() => {
-    fetchStores();
-  }, []);
-
-  const fetchStores = async () => {
     try {
       setLoading(true);
       setError(null);
@@ -207,7 +203,11 @@ function PrintifyStoresPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchStores();
+  }, [fetchStores]);
 
   const handleAddStore = () => {
     setEditingStore(null);
