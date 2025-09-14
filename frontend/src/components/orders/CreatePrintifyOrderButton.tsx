@@ -194,46 +194,46 @@ export function CreatePrintifyOrderButton({
                       fullWidth
                       label='城市 *'
                       value={formData.city}
-                    onChange={e => handleInputChange('city', e.target.value)}
-                    placeholder='请输入城市'
+                      onChange={e => handleInputChange('city', e.target.value)}
+                      placeholder='请输入城市'
                     />
                     <TextField
                       fullWidth
                       label='州/省 *'
                       value={formData.state}
-                    onChange={e => handleInputChange('state', e.target.value)}
-                    placeholder='请输入州/省'
+                      onChange={e => handleInputChange('state', e.target.value)}
+                      placeholder='请输入州/省'
                     />
                   </Box>
                   <Box display='flex' gap={2}>
                     <TextField
                       label='国家代码 *'
                       value={formData.country}
-                    onChange={e =>
-                      handleInputChange('country', e.target.value)
-                    }
-                    placeholder='如: JP, US'
+                      onChange={e =>
+                        handleInputChange('country', e.target.value)
+                      }
+                      placeholder='如: JP, US'
                     />
                     <TextField
                       label='邮政编码 *'
                       value={formData.zip_code}
-                    onChange={e =>
-                      handleInputChange('zip_code', e.target.value)
-                    }
-                    placeholder='请输入邮政编码'
+                      onChange={e =>
+                        handleInputChange('zip_code', e.target.value)
+                      }
+                      placeholder='请输入邮政编码'
                     />
                     <TextField
-                    label='数量'
-                    type='number'
+                      label='数量'
+                      type='number'
                       inputProps={{ min: 1 }}
                       value={formData.quantity}
-                    onChange={e =>
-                      handleInputChange(
-                        'quantity',
-                        parseInt(e.target.value) || 1
-                      )
-                    }
-                    placeholder='1'
+                      onChange={e =>
+                        handleInputChange(
+                          'quantity',
+                          parseInt(e.target.value) || 1
+                        )
+                      }
+                      placeholder='1'
                     />
                   </Box>
                 </Stack>
@@ -263,7 +263,6 @@ export function CreatePrintifyOrderButton({
                     </Typography>
                     <Typography variant='body2'>
                       <strong>消息:</strong> {result.message}
-                      {' '}
                     </Typography>
                     {result.printify_order_id && (
                       <Typography variant='body2'>
