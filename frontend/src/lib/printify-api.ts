@@ -29,33 +29,34 @@ export const printifyApi = {
   /**
    * Create a Printify order
    */
-  createOrder: async (request: PrintifyOrderRequest): Promise<PrintifyOrderResponse> => {
+  createOrder: async (
+    request: PrintifyOrderRequest
+  ): Promise<PrintifyOrderResponse> => {
     try {
-      frontendLogger.info('🚀 开始创建Printify订单', { 
+      frontendLogger.info('🚀 开始创建Printify订单', {
         orderId: request.order_id,
-        testMode: request.test_mode 
       });
 
       const response = await frontendApi.post('/api/printify/orders', request);
-      
-      frontendLogger.info('✅ Printify订单创建成功', { 
+
+      frontendLogger.info('✅ Printify订单创建成功', {
         success: response.data.success,
-        printifyOrderId: response.data.printify_order_id 
+        printifyOrderId: response.data.printify_order_id,
       });
 
       return response.data;
     } catch (error: any) {
-      frontendLogger.error('❌ Printify订单创建失败', { 
+      frontendLogger.error('❌ Printify订单创建失败', {
         error: error.message,
         status: error.response?.status,
-        data: error.response?.data 
+        data: error.response?.data,
       });
-      
+
       // 如果是API错误，返回错误响应
       if (error.response?.data) {
         return error.response.data;
       }
-      
+
       // 如果是网络错误或其他错误，返回通用错误响应
       throw error;
     }
@@ -69,19 +70,19 @@ export const printifyApi = {
       frontendLogger.info('🔍 获取Printify商品列表');
 
       const response = await frontendApi.get('/api/printify/products');
-      
-      frontendLogger.info('✅ Printify商品列表获取成功', { 
-        count: response.data.products?.length || 0 
+
+      frontendLogger.info('✅ Printify商品列表获取成功', {
+        count: response.data.products?.length || 0,
       });
 
       return response.data;
     } catch (error: any) {
-      frontendLogger.error('❌ 获取Printify商品列表失败', { 
+      frontendLogger.error('❌ 获取Printify商品列表失败', {
         error: error.message,
-        status: error.response?.status 
+        status: error.response?.status,
       });
-      
+
       throw error;
     }
-  }
+  },
 };

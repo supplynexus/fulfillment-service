@@ -30,11 +30,10 @@ export async function POST(request: NextRequest) {
     try {
       decodedToken = jwtUtilsServer.verifyToken(frontendToken);
     } catch (error) {
-      logger.error('Frontend JWT verification failed', { error: error.message });
-      return NextResponse.json(
-        { detail: 'Invalid token' },
-        { status: 401 }
-      );
+      logger.error('Frontend JWT verification failed', {
+        error: error.message,
+      });
+      return NextResponse.json({ detail: 'Invalid token' }, { status: 401 });
     }
 
     const { tenant_name: tenantName, sub: userId } = decodedToken;
@@ -105,11 +104,16 @@ export async function POST(request: NextRequest) {
     const duration = Date.now() - startTime;
 
     if (backendResponse.ok) {
-      logger.requestComplete(request.method, request.url, backendResponse.status, duration);
+      logger.requestComplete(
+        request.method,
+        request.url,
+        backendResponse.status,
+        duration
+      );
       return NextResponse.json(responseData, { status: backendResponse.status });
     } else {
       logger.error('Backend request failed', {
-        status: backendResponse.status,
+        status: backendResponse.status,,
         error: responseData,
         duration,
       });
@@ -153,11 +157,10 @@ export async function GET(request: NextRequest) {
     try {
       decodedToken = jwtUtilsServer.verifyToken(frontendToken);
     } catch (error) {
-      logger.error('Frontend JWT verification failed', { error: error.message });
-      return NextResponse.json(
-        { detail: 'Invalid token' },
-        { status: 401 }
-      );
+      logger.error('Frontend JWT verification failed', {
+        error: error.message,
+      });
+      return NextResponse.json({ detail: 'Invalid token' }, { status: 401 });
     }
 
     const { tenant_name: tenantName, sub: userId } = decodedToken;
@@ -223,11 +226,16 @@ export async function GET(request: NextRequest) {
     const duration = Date.now() - startTime;
 
     if (backendResponse.ok) {
-      logger.requestComplete(request.method, request.url, backendResponse.status, duration);
+      logger.requestComplete(
+        request.method,
+        request.url,
+        backendResponse.status,
+        duration
+      );
       return NextResponse.json(responseData, { status: backendResponse.status });
     } else {
       logger.error('Backend request failed', {
-        status: backendResponse.status,
+        status: backendResponse.status,,
         error: responseData,
         duration,
       });
