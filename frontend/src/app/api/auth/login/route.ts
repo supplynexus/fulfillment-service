@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
     const backendUrl =
       process.env.BACKEND_API_URL ||
       process.env.NEXT_PUBLIC_API_URL ||
-      'http://localhost:8000';
+      'http://backend_dev:8000';
     const backendEndpoint = `${backendUrl}${backendPath}`;
     logger.info('Forwarding request to backend', { backendEndpoint });
 

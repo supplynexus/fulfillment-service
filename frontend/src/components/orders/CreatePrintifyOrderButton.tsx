@@ -54,7 +54,7 @@ export function CreatePrintifyOrderButton({
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<PrintifyOrderResponse | null>(null);
-  
+
   // 表单数据
   const [formData, setFormData] = useState({
     customer_name: orderData?.customer_name || 'Test Customer',
@@ -84,13 +84,12 @@ export function CreatePrintifyOrderButton({
 
       const request: PrintifyOrderRequest = {
         order_id: parseInt(orderId),
-        ...formData
+        ...formData,
       };
 
       const response = await printifyApi.createOrder(request);
-      
+
       setResult(response);
-      
       if (response.success) {
         frontendLogger.info('✅ Printify订单创建成功', { response });
         alert('Printify订单创建成功！');
@@ -121,12 +120,7 @@ export function CreatePrintifyOrderButton({
         </IconButton>
       </Tooltip>
 
-      <Dialog
-        open={isOpen}
-        onClose={handleClose}
-        maxWidth='md'
-        fullWidth
-      >
+      <Dialog open={isOpen} onClose={handleClose} maxWidth='md' fullWidth>
         <DialogTitle>
           <Box display='flex' alignItems='center' gap={1}>
             <Package />
@@ -150,7 +144,7 @@ export function CreatePrintifyOrderButton({
                   <Box display='flex' gap={2}>
                     <TextField
                       fullWidth
-                      label="客户姓名 *"
+                      label='客户姓名 *'
                       value={formData.customer_name}
                       onChange={(e) => handleInputChange('customer_name', e.target.value)}
                       placeholder="请输入客户姓名"

@@ -61,7 +61,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    command: celery -A app.tasks.celery_app worker --loglevel=debug --reload
+    command: celery -A app.tasks.celery_app worker --loglevel=debug
     environment:
       DATABASE_URL: postgresql+asyncpg://supplynexus_admin:aabbccdd@postgres:5432/supplynexus
       REDIS_URL: redis://redis:6379/0
@@ -106,7 +106,8 @@ services:
       target: deps
     command: npm run dev
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NEXT_PUBLIC_API_URL: http://backend_dev:8000
+      BACKEND_API_URL: http://backend_dev:8000
       NODE_ENV: dev
     volumes:
       - ./frontend:/app
