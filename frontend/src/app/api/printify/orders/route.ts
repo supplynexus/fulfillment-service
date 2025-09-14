@@ -110,14 +110,18 @@ export async function POST(request: NextRequest) {
         backendResponse.status,
         duration
       );
-      return NextResponse.json(responseData, { status: backendResponse.status });
+      return NextResponse.json(responseData, {
+        status: backendResponse.status,
+      });
     } else {
       logger.error('Backend request failed', {
         status: backendResponse.status,
         error: responseData,
         duration,
       });
-      return NextResponse.json(responseData, { status: backendResponse.status });
+      return NextResponse.json(responseData, {
+        status: backendResponse.status,
+      });
     }
   } catch (error) {
     const duration = Date.now() - startTime;
@@ -232,14 +236,18 @@ export async function GET(request: NextRequest) {
         backendResponse.status,
         duration
       );
-      return NextResponse.json(responseData, { status: backendResponse.status });
+      return NextResponse.json(responseData, {
+        status: backendResponse.status,
+      });
     } else {
       logger.error('Backend request failed', {
         status: backendResponse.status,
         error: responseData,
         duration,
       });
-      return NextResponse.json(responseData, { status: backendResponse.status });
+      return NextResponse.json(responseData, {
+        status: backendResponse.status,
+      });
     }
   } catch (error) {
     const duration = Date.now() - startTime;
