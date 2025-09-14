@@ -12,8 +12,11 @@ import crypto from 'crypto';
 export function generateBackendSignature(
   privateKey: string,
   signatureString: string,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _timestamp: number,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _nonce: string,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _tenantName: string
 ): string {
   try {

@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
       decodedToken = jwtUtilsServer.verifyToken(frontendToken);
     } catch (error) {
       logger.error('Frontend JWT verification failed', {
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
       });
       return NextResponse.json({ detail: 'Invalid token' }, { status: 401 });
     }
@@ -126,8 +126,8 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const duration = Date.now() - startTime;
     logger.error('Request failed', {
-      error: error.message,
-      errorMessage: error.message,
+      error: error instanceof Error ? error.message : String(error),
+      errorMessage: error instanceof Error ? error.message : String(error),
       duration,
     });
     return NextResponse.json(
@@ -162,7 +162,7 @@ export async function GET(request: NextRequest) {
       decodedToken = jwtUtilsServer.verifyToken(frontendToken);
     } catch (error) {
       logger.error('Frontend JWT verification failed', {
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
       });
       return NextResponse.json({ detail: 'Invalid token' }, { status: 401 });
     }
@@ -252,8 +252,8 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     const duration = Date.now() - startTime;
     logger.error('Request failed', {
-      error: error.message,
-      errorMessage: error.message,
+      error: error instanceof Error ? error.message : String(error),
+      errorMessage: error instanceof Error ? error.message : String(error),
       duration,
     });
     return NextResponse.json(

@@ -26,7 +26,6 @@ import {
   Refresh as RefreshIcon,
   Edit as EditIcon,
   Print as PrintIcon,
-  LocalShipping as LocalShippingIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
 import { Order, OrderStatus } from '@/types/order';
@@ -68,33 +67,6 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
 
   const handleRefresh = () => {
     fetchOrderDetails();
-  };
-
-  const handleCreateShippingLabel = async () => {
-    try {
-      console.log('开始创建发货单', orderId);
-
-      // 调用 backend API 创建发货单
-      const response = await frontendApi.post(
-        `/api/orders/${orderId}/create-shipping-label`
-      );
-
-      if (response.data.success) {
-        console.log('✅ 发货单创建成功:', response.data);
-        // 这里可以显示成功消息或者更新UI
-        alert(
-          `发货单创建成功！\nPrintify 订单ID: ${response.data.printify_order_id}\n状态: ${response.data.status}`
-        );
-      } else {
-        console.error('❌ 发货单创建失败:', response.data);
-        alert('发货单创建失败: ' + (response.data.message || '未知错误'));
-      }
-    } catch (error: any) {
-      console.error('❌ 创建发货单时发生错误:', error);
-      const errorMessage =
-        error.response?.data?.detail || error.message || '创建发货单失败';
-      alert('创建发货单失败: ' + errorMessage);
-    }
   };
 
   const getStatusColor = (status: OrderStatus) => {
@@ -202,7 +174,7 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
             </IconButton>
           </Tooltip>
           <CreatePrintifyOrderButton
-            orderId={order.id}
+            orderId={order.id.toString()}
             orderData={{
               customer_name: order.customer_name,
               customer_email: order.customer_email,
