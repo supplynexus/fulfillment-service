@@ -4,7 +4,7 @@ API version 1 router
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, customers, orders, products, webhooks, dashboard, health, external_systems, shopify_orders, shopify_products, sync_configs, sync_status, system, scm_orders, order_routing, routing_rules
+from app.api.v1.endpoints import auth, customers, orders, products, webhooks, dashboard, health, external_systems, shopify_orders, shopify_products, sync_configs, sync_status, system, scm_orders, order_routing, routing_rules, printify_orders
 
 api_router = APIRouter()
 
@@ -28,4 +28,7 @@ api_router.include_router(order_routing.router, prefix="/routing", tags=["order-
 api_router.include_router(routing_rules.router, prefix="/routing-rules", tags=["routing-rules"])
 
 api_router.include_router(system.router, prefix="/system", tags=["system"])
+
+# Printify Integration
+api_router.include_router(printify_orders.router, prefix="/printify", tags=["printify"])
 

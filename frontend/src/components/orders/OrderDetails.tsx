@@ -31,6 +31,7 @@ import {
 import { useRouter } from 'next/navigation';
 import { Order, OrderStatus } from '@/types/order';
 import { frontendApi } from '@/lib/api';
+import { CreatePrintifyOrderButton } from './CreatePrintifyOrderButton';
 
 interface OrderDetailsProps {
   orderId: string;
@@ -200,11 +201,14 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
               <RefreshIcon />
             </IconButton>
           </Tooltip>
-          <Tooltip title='创建发货单'>
-            <IconButton onClick={handleCreateShippingLabel} color='primary'>
-              <LocalShippingIcon />
-            </IconButton>
-          </Tooltip>
+          <CreatePrintifyOrderButton 
+            orderId={order.id}
+            orderData={{
+              customer_name: order.customer_name,
+              customer_email: order.customer_email,
+              shipping_address: order.shipping_address
+            }}
+          />
           <Tooltip title='编辑'>
             <IconButton disabled>
               <EditIcon />
