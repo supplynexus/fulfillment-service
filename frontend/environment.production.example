@@ -6,6 +6,11 @@
 NEXT_PUBLIC_API_URL=https://api.supplynexus.store
 NEXT_PUBLIC_APP_NAME=SupplyNexus Fulfillment Service
 
+# Hashids Configuration (必需 - 与后端保持一致)
+# 注意：生产环境必须使用强随机 salt，与后端 HASHIDS_SALT 完全一致
+NEXT_PUBLIC_HASHIDS_SALT=UJmEzTj5n9Ng2dLD3w43jwvBAD8hFuP3
+NEXT_PUBLIC_HASHIDS_MIN_LENGTH=8
+
 # Frontend JWT Configuration
 FRONTEND_JWT_PRIVATE_KEY_PATH=./keys/frontend_jwt_private_key.pem
 FRONTEND_JWT_PUBLIC_KEY_PATH=./keys/frontend_jwt_public_key.pem
