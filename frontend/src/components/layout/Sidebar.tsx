@@ -127,6 +127,18 @@ const menuItems: MenuItem[] = [
             icon: <StoreIcon />,
             path: '/external-systems/printify/stores',
           },
+          {
+            id: 'printify-products',
+            label: '商品列表',
+            icon: <ProductsIcon />,
+            path: '/external-systems/printify/products',
+          },
+          {
+            id: 'printify-orders',
+            label: '订单列表',
+            icon: <OrdersIcon />,
+            path: '/external-systems/printify/orders',
+          },
         ],
       },
     ],

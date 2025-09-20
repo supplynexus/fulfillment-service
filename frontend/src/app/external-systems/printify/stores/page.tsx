@@ -37,6 +37,7 @@ import {
 } from '@mui/icons-material';
 import { frontendApi } from '@/lib/api';
 import { frontendLogger } from '@/lib/frontend-logger';
+import { hashids } from '@/lib/hashids';
 
 interface PrintifyStore {
   // 安全原则：前端不接收数据库主键 ID
@@ -153,7 +154,8 @@ function PrintifyStoresPage() {
 
       console.log('📦 Printify 店铺列表响应:', response.data);
 
-      if (response.data.external_systems) {
+      if (response.data && response.data.external_systems) {
+        console.log('🔍 进入 if 分支，开始处理数据');
         // Debug: Log the first system to check if id_hashid is present
         if (response.data.external_systems.length > 0) {
           const firstSystem = response.data.external_systems[0];
@@ -167,32 +169,55 @@ function PrintifyStoresPage() {
         }
 
         // Convert backend format to frontend format
-        const printifyStores = response.data.external_systems.map(
-          (system: any) => ({
-            // 安全原则：前端不接收数据库主键 ID，只使用 hashids
-            id_hashid: system.id_hashid, // 使用 hashids 作为唯一标识
-            name: system.name,
-            system_type: system.system_type,
-            external_id: system.external_system_id,
-            base_url: system.base_url,
-            credentials: system.credentials || {},
-            settings: system.settings || {},
-            is_active: system.is_active,
-            sync_enabled: system.settings?.sync_enabled || false,
-            webhook_enabled: system.settings?.webhook_enabled || false,
-            last_sync_at: system.last_sync_at,
-            created_at: system.created_at,
-          })
-        );
+        console.log('🔄 开始转换数据格式...');
+        try {
+          const printifyStores = response.data.external_systems.map(
+            (system: any, index: number) => {
+              console.log(`🔍 处理第 ${index + 1} 个系统:`, {
+                id: system.id,
+                id_hashid: system.id_hashid,
+                name: system.name,
+                system_type: system.system_type,
+                external_system_id: system.external_system_id,
+                base_url: system.base_url,
+                credentials: system.credentials,
+                settings: system.settings,
+                is_active: system.is_active,
+              });
 
-        setStores(printifyStores);
-        console.log(
-          '✅ 成功获取 Printify 店铺列表，数量:',
-          printifyStores.length
-        );
+              return {
+                // 安全原则：前端不接收数据库主键 ID，只使用 hashids
+                id_hashid: system.id_hashid, // 使用 hashids 作为唯一标识
+                name: system.name,
+                system_type: system.system_type,
+                external_id: system.external_system_id,
+                base_url: system.base_url,
+                credentials: system.credentials || {},
+                settings: system.settings || {},
+                is_active: system.is_active,
+                sync_enabled: system.settings?.sync_enabled || false,
+                webhook_enabled: system.settings?.webhook_enabled || false,
+                last_sync_at: system.last_sync_at,
+                created_at: system.created_at,
+              };
+            }
+          );
+
+          console.log('🔄 数据转换完成，设置状态');
+          setStores(printifyStores);
+          setError(null); // 清除错误状态
+          console.log(
+            '✅ 成功获取 Printify 店铺列表，数量:',
+            printifyStores.length
+          );
+        } catch (mapError) {
+          console.error('❌ 数据转换过程中出错:', mapError);
+          throw mapError; // 重新抛出错误，让 catch 块处理
+        }
       } else {
         console.log('⚠️ 没有找到 Printify 店铺，使用模拟数据');
         setStores(mockStores);
+        setError(null); // 清除错误状态
       }
     } catch (err: any) {
       console.error('❌ 获取 Printify 店铺列表失败:', err);
@@ -746,7 +771,7 @@ function PrintifyStoresPage() {
     try {
       setSubmitting(true);
 
-      console.log('🚀 开始保存 Printify 店铺', { formData });
+      console.log('🚀 开始保存 Printify 店铺', { formData, editingStore });
 
       // Prepare data for API
       const apiData = {
@@ -761,8 +786,45 @@ function PrintifyStoresPage() {
 
       console.log('📦 API 请求数据:', apiData);
 
-      // Call real API
-      const response = await frontendApi.post('/api/external-systems', apiData);
+      let response;
+      if (editingStore) {
+        // 编辑模式：解码 hashids 获取数据库主键 ID，调用 PUT API
+        console.log('🔍 编辑模式调试信息:', {
+          editingStore: editingStore,
+          id_hashid: editingStore.id_hashid,
+          id_hashid_type: typeof editingStore.id_hashid,
+          id_hashid_length: editingStore.id_hashid?.length,
+        });
+
+        const decodedIds = hashids.decode(editingStore.id_hashid);
+        console.log('🔍 Hashids 解码结果:', {
+          decodedIds: decodedIds,
+          decodedIds_length: decodedIds?.length,
+        });
+
+        if (!decodedIds || decodedIds.length === 0) {
+          console.error('❌ Hashids 解码失败:', {
+            id_hashid: editingStore.id_hashid,
+            decodedIds: decodedIds,
+          });
+          throw new Error('Invalid store ID');
+        }
+        const storeId = decodedIds[0];
+
+        console.log('🔄 编辑模式：调用 PUT API', {
+          id_hashid: editingStore.id_hashid,
+          decodedId: storeId,
+        });
+
+        response = await frontendApi.put(
+          `/api/external-systems/${storeId}`,
+          apiData
+        );
+      } else {
+        // 创建模式：调用 POST API
+        console.log('🆕 创建模式：调用 POST API');
+        response = await frontendApi.post('/api/external-systems', apiData);
+      }
 
       console.log('✅ Printify 店铺保存成功:', response.data);
 
@@ -807,7 +869,20 @@ function PrintifyStoresPage() {
       handleCloseDialog();
     } catch (err: any) {
       console.error('❌ 保存 Printify 店铺失败:', err);
-      setError(err.response?.data?.detail || 'Failed to save Printify store');
+
+      // 处理重复记录错误
+      if (err.response?.status === 400) {
+        const errorDetail = err.response?.data?.detail || '';
+        if (errorDetail.includes('already exists')) {
+          setError(
+            `店铺 "${formData.name}" 已存在，请使用不同的店铺名称或外部ID`
+          );
+        } else {
+          setError(errorDetail || '保存失败，请检查输入数据');
+        }
+      } else {
+        setError(err.response?.data?.detail || '保存失败，请稍后重试');
+      }
     } finally {
       setSubmitting(false);
     }

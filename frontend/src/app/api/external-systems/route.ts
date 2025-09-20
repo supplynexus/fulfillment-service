@@ -83,16 +83,21 @@ export async function GET(request: NextRequest) {
     const duration = Date.now() - startTime;
 
     if (!backendResponse.ok) {
-      const errorData = await backendResponse.text();
+      let errorData;
+      try {
+        errorData = await backendResponse.json();
+      } catch {
+        errorData = await backendResponse.text();
+      }
+
       logger.error('Backend request failed', {
         status: backendResponse.status,
         error: errorData,
         duration,
       });
-      return NextResponse.json(
-        { detail: 'Backend request failed' },
-        { status: backendResponse.status }
-      );
+
+      // Pass through the backend error message
+      return NextResponse.json(errorData, { status: backendResponse.status });
     }
 
     const data = await backendResponse.json();
@@ -204,16 +209,21 @@ export async function POST(request: NextRequest) {
     const duration = Date.now() - startTime;
 
     if (!backendResponse.ok) {
-      const errorData = await backendResponse.text();
+      let errorData;
+      try {
+        errorData = await backendResponse.json();
+      } catch {
+        errorData = await backendResponse.text();
+      }
+
       logger.error('Backend request failed', {
         status: backendResponse.status,
         error: errorData,
         duration,
       });
-      return NextResponse.json(
-        { detail: 'Backend request failed' },
-        { status: backendResponse.status }
-      );
+
+      // Pass through the backend error message
+      return NextResponse.json(errorData, { status: backendResponse.status });
     }
 
     const data = await backendResponse.json();
