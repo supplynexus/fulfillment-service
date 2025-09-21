@@ -437,6 +437,107 @@ async def test_printify_connection(
         )
 
 
+@router.post("/shopify/test-connection", response_model=dict)
+async def test_shopify_connection(
+    request_data: dict,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
+) -> Any:
+    """
+    Test Shopify connection using provided credentials
+    """
+    logger = get_logger(__name__)
+
+    try:
+        logger.info(f"🔍 开始处理 Shopify 测试连接请求")
+
+        tenant, user = auth
+        logger.info(
+            f"✅ 认证成功: tenant_id={tenant.id}, tenant_name={tenant.name}, user_id={user.id}"
+        )
+
+        # Extract credentials from request
+        encrypted_access_token = request_data.get("access_token")
+        encrypted_shop_id = request_data.get("shop_id")
+        api_version = request_data.get("api_version", "2024-10")
+
+        logger.info(
+            f"🔍 提取的加密凭据: shop_id={encrypted_shop_id}, api_version={api_version}, has_access_token={bool(encrypted_access_token)}"
+        )
+
+        if not encrypted_access_token or not encrypted_shop_id:
+            logger.error(
+                f"❌ 缺少必要参数: access_token={bool(encrypted_access_token)}, shop_id={bool(encrypted_shop_id)}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Missing required parameters: access_token and shop_id",
+            )
+
+        # Handle credentials - try to decrypt first, if fails use as plain text (for test connection)
+        from app.core.security import decrypt_data
+
+        try:
+            # Try to decrypt first (for saved stores)
+            access_token = decrypt_data(encrypted_access_token)
+            shop_id = decrypt_data(encrypted_shop_id)
+            logger.info(
+                f"✅ 凭据解密成功: shop_id={shop_id}, has_access_token={bool(access_token)}"
+            )
+        except Exception as e:
+            # If decryption fails, use as plain text (for test connection from dialog)
+            logger.info(f"ℹ️ 凭据解密失败，使用明文凭据进行测试连接: {str(e)}")
+            access_token = encrypted_access_token
+            shop_id = encrypted_shop_id
+            logger.info(
+                f"✅ 使用明文凭据: shop_id={shop_id}, has_access_token={bool(access_token)}"
+            )
+
+        # Import ShopifyService
+        from app.services.shopify_service import ShopifyService
+
+        logger.info(f"🔍 初始化 ShopifyService...")
+        shopify_service = ShopifyService(db)
+        logger.info(f"✅ ShopifyService 初始化成功")
+
+        logger.info(f"🔍 开始测试 Shopify 连接...")
+        try:
+            result = await shopify_service.test_connection_with_params(
+                shop_id=shop_id,
+                access_token=access_token,
+                base_url=f"https://{shop_id}.myshopify.com",
+                api_version=api_version,
+            )
+            logger.info(f"✅ Shopify 连接测试成功: {result}")
+
+            # Add shop_id to the result for frontend compatibility
+            result["shop_id"] = shop_id
+            logger.info(f"✅ 添加 shop_id 到响应: {shop_id}")
+
+            return result
+        except Exception as e:
+            logger.error(f"❌ Shopify 连接测试失败: {str(e)}")
+            import traceback
+
+            logger.error(f"   异常堆栈: {traceback.format_exc()}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Shopify connection test failed: {str(e)}",
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Shopify 测试连接请求处理失败: {str(e)}")
+        import traceback
+
+        logger.error(f"   异常堆栈: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal server error: {str(e)}",
+        )
+
+
 @router.get("/printify/{external_system_hashid}/products", response_model=dict)
 async def get_printify_products(
     external_system_hashid: str,
@@ -708,9 +809,9 @@ async def sync_shopify_orders_by_shop_id(
             f"✅ 认证成功: tenant_id={tenant.id}, tenant_name={tenant.name}, user_id={user.id}"
         )
 
-        # Get external system by shop_id (external_id)
+        # Get external system by shop_id (external_system_id)
         service = ExternalSystemService(db)
-        external_system = await service.get_external_system_by_external_id(
+        external_system = await service.get_external_system_by_external_system_id(
             shop_id, tenant.id
         )
         if not external_system:
@@ -812,7 +913,7 @@ async def test_connection_by_external_id(
 
         # Get external system by external_id
         service = ExternalSystemService(db)
-        external_system = await service.get_external_system_by_external_id(
+        external_system = await service.get_external_system_by_external_system_id(
             external_id, tenant.id
         )
         if not external_system:
@@ -973,7 +1074,7 @@ async def get_shopify_products_by_shop_id(
 
         # Get external system by shop_id (external_id)
         service = ExternalSystemService(db)
-        external_system = await service.get_external_system_by_external_id(
+        external_system = await service.get_external_system_by_external_system_id(
             shop_id, tenant.id
         )
         if not external_system:
@@ -1080,7 +1181,7 @@ async def get_shopify_orders_by_shop_id(
 
         # Get external system by shop_id (external_id)
         service = ExternalSystemService(db)
-        external_system = await service.get_external_system_by_external_id(
+        external_system = await service.get_external_system_by_external_system_id(
             shop_id, tenant.id
         )
         if not external_system:

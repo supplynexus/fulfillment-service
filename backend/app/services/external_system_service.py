@@ -101,6 +101,19 @@ class ExternalSystemService:
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
+    async def get_external_system_by_external_system_id(
+        self, external_system_id: str, tenant_id: int
+    ) -> Optional[ExternalSystem]:
+        """Get external system by external_system_id (real external ID) with tenant isolation"""
+
+        query = select(ExternalSystem).where(
+            ExternalSystem.external_system_id == external_system_id,
+            ExternalSystem.tenant_id == tenant_id,
+        )
+
+        result = await self.db.execute(query)
+        return result.scalar_one_or_none()
+
     async def get_external_systems_by_tenant(
         self,
         tenant_id: int,

@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
     const body = `username=${username}&password=${password}&tenant_name=${tenantName}`;
 
     // 使用后端期望的路径格式
-    const backendPath = '/api/v1/auth/login/tenant';
+    const backendPath = '/api/v1/auth/login';
     const signatureString = `POST${backendPath}${timestamp}${nonce}${tenantName}${body}`;
 
     logger.info('🔍 Frontend 签名生成调试信息:', {

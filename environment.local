@@ -21,6 +21,7 @@ HEALTH_CHECK_RATE_WINDOW=60
 SYSTEM_API_KEY=system-api-key-change-in-prod
 
 # 安全配置
+SECRET_KEY=dev-secret-key-change-in-prod
 WEBHOOK_SECRET=dev-webhook-secret
 
 # 开发环境设置
