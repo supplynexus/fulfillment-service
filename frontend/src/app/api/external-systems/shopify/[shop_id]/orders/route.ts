@@ -8,60 +8,64 @@ const logger = createLogger('api.external-systems.shopify.orders');
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ shop_id: string }> }
+  { params }: { params: { shop_id: string } }
 ) {
   const startTime = Date.now();
-
+  
   try {
-    logger.requestStart(request.method, request.url, {
-      userAgent: request.headers.get('user-agent'),
-      contentType: request.headers.get('content-type'),
+    logger.info('Request started', { 
+      method: request.method, 
+      url: request.url,
+      shop_id: params.shop_id
     });
 
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      logger.error('Missing or invalid authorization header');
+    const authorization = request.headers.get('authorization');
+    if (!authorization) {
+      logger.error('Missing authorization header');
       return NextResponse.json(
-        { detail: 'Missing or invalid authorization header' },
+        { error: 'Authorization header required' },
         { status: 401 }
       );
     }
 
-    const frontendToken = authHeader.substring(7);
-    let decodedToken;
-    try {
-      decodedToken = jwtUtilsServer.verifyToken(frontendToken);
-    } catch (error: any) {
-      logger.error('Invalid JWT token', { error: error.message });
-      return NextResponse.json(
-        { detail: 'Invalid JWT token' },
-        { status: 401 }
-      );
-    }
-
+    // Verify JWT token and get user info
+    const token = authorization.replace('Bearer ', '');
+    const decodedToken = jwtUtilsServer.verifyToken(token);
     const { tenant_name: tenantName, sub: userId } = decodedToken;
+
     logger.info('Authenticated user', { tenantName, userId });
 
-    const { shop_id } = await params;
-    logger.info('Request data received', { shop_id });
+    // Get query parameters
+    const { searchParams } = new URL(request.url);
+    const page = searchParams.get('page') || '1';
+    const limit = searchParams.get('limit') || '20';
+    const search = searchParams.get('search') || '';
+    const sortBy = searchParams.get('sort_by') || 'created_at';
+    const sortOrder = searchParams.get('sort_order') || 'desc';
+    const status = searchParams.get('status') || '';
+    const financialStatus = searchParams.get('financial_status') || '';
+    const fulfillmentStatus = searchParams.get('fulfillment_status') || '';
 
     // Generate signature for backend request
     const timestamp = Math.floor(Date.now() / 1000);
     const nonce = Math.random().toString(36).substring(2, 15);
-    const signatureString = `GET/api/v1/external-systems/shopify/${shop_id}/orders${timestamp}${nonce}${tenantName}`;
-
-    const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
+    const bodyString = '';
+    const backendPath = `/api/v1/external-systems/shopify/${params.shop_id}/orders`;
+    const signatureString = `GET${backendPath}${timestamp}${nonce}${tenantName}${bodyString}`;
 
     logger.info('🔍 前端签名生成调试信息', {
       method: 'GET',
-      path: `/api/v1/external-systems/shopify/${shop_id}/orders`,
+      path: backendPath,
       timestamp,
       nonce,
       tenantName,
+      bodyString,
+      bodyStringLength: bodyString.length,
       signatureString,
       signatureStringLength: signatureString.length,
     });
 
+    const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
     const signature = generateBackendSignature(
       privateKey,
       signatureString,
@@ -76,64 +80,55 @@ export async function GET(
       tenantName,
     });
 
-    const backendUrl =
-      process.env.BACKEND_API_URL ||
-      process.env.NEXT_PUBLIC_API_URL ||
-      'http://localhost:8000';
-    const backendEndpoint = `${backendUrl}/api/v1/external-systems/shopify/${shop_id}/orders`;
+    const backendUrl = `${process.env.BACKEND_API_URL}${backendPath}?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}&sort_by=${sortBy}&sort_order=${sortOrder}&status=${status}&financial_status=${financialStatus}&fulfillment_status=${fulfillmentStatus}`;
+    
+    logger.info('Forwarding request to backend', { backendUrl });
 
-    logger.info('Forwarding request to backend', {
-      backendEndpoint,
-      shop_id,
-    });
-
-    const backendResponse = await fetch(backendEndpoint, {
+    const backendResponse = await fetch(backendUrl, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
         'X-Tenant-Name': tenantName,
+        'X-User-ID': userId,
         'X-Timestamp': timestamp.toString(),
         'X-Nonce': nonce,
         'X-Signature': signature,
-        'X-User-ID': userId.toString(),
       },
     });
 
-    const responseTime = Date.now() - startTime;
-    logger.info('Backend response received', {
-      status: backendResponse.status,
-      responseTime,
-    });
+    const responseData = await backendResponse.json();
 
     if (!backendResponse.ok) {
-      const errorText = await backendResponse.text();
       logger.error('Backend request failed', {
         status: backendResponse.status,
         statusText: backendResponse.statusText,
-        error: errorText,
+        error: responseData
       });
+      
       return NextResponse.json(
-        { detail: 'Backend request failed' },
+        { error: responseData.detail || 'Backend request failed' },
         { status: backendResponse.status }
       );
     }
 
-    const data = await backendResponse.json();
-    logger.info('Request completed successfully', {
-      responseTime,
-      success: data.success,
-      total_count: data.total_count,
+    const duration = Date.now() - startTime;
+    logger.info('Request completed', { 
+      method: request.method, 
+      url: request.url,
+      status: 200,
+      duration: `${duration}ms`
     });
+    
+    return NextResponse.json(responseData);
 
-    return NextResponse.json(data);
   } catch (error: any) {
-    const responseTime = Date.now() - startTime;
-    logger.error('Unexpected error in get orders', {
+    const duration = Date.now() - startTime;
+    logger.error('API request failed', { 
       error: error.message,
-      responseTime,
+      duration: `${duration}ms`
     });
     return NextResponse.json(
-      { detail: 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }

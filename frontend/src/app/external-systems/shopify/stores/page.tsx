@@ -117,57 +117,27 @@ export default function ShopifyStoresPage() {
       setLoading(true);
       setError(null);
 
-      // This would be replaced with actual API call
-      // For now, using mock data based on database query results
-      const mockStores: ShopifyStore[] = [
-        {
-          id: 1, // Real ID for backend, but we'll use hashid for API calls
-          name: 'Impeach Shopify Store',
-          system_type: 'SHOPIFY',
-          external_id: 'x0ri77-4v',
-          base_url: 'https://x0ri77-4v.myshopify.com',
-          credentials: {
-            access_token: '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',
-            shop_id: 'x0ri77-4v',
-            store_url: 'https://x0ri77-4v.myshopify.com',
-          },
-          settings: {
-            api_version: 'unstable',
-            webhook_topics: [
-              'orders/create',
-              'orders/updated',
-              'orders/cancelled',
-            ],
-          },
-          is_active: true,
-          sync_enabled: true,
-          webhook_enabled: true,
-          last_sync_at: '2025-08-14T09:32:32.017Z',
-          created_at: '2025-08-13T08:53:49.702Z',
+      // Call the actual API to get stores
+      const response = await fetch('/api/external-systems/shopify/stores', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('access_token')}`,
         },
-        {
-          id: 2, // Real ID for backend, but we'll use hashid for API calls
-          name: 'Test Shopify Store',
-          system_type: 'SHOPIFY',
-          external_id: undefined, // This store has no external_id in database
-          base_url: 'https://test-shop.myshopify.com',
-          credentials: {
-            api_key:
-              'gAAAAABovwPxlPonr0DXaA78dXJfj3whVh8oNuaKJ7uqK2bAWRt-288isrz31TeSLhuIPW6gdeE_wdGPuQ5FcxxYUxb6ehtGig==',
-            api_secret:
-              'gAAAAABovwPxg9Ef3ik9RSBe40L3Bmcx61DiAaFvx4cW7AxXJEJfdrJrr7ThS-CoANCVs_2-J7vA3EDdHe2r_az7DxjTrtVPvw==',
-          },
-          settings: {
-            test_setting: 'test_value',
-          },
-          is_active: true,
-          sync_enabled: true,
-          webhook_enabled: true,
-          created_at: '2025-09-08T16:27:29.563Z',
-        },
-      ];
+      });
 
-      setStores(mockStores);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      if (data.success && data.stores) {
+        setStores(data.stores);
+        console.log('[FRONTEND] ✅ Shopify 店铺列表获取成功', { count: data.count });
+      } else {
+        throw new Error(data.error || '获取店铺列表失败');
+      }
     } catch (err) {
       setError('获取店铺信息失败');
       console.error('Error fetching stores:', err);

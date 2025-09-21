@@ -4,7 +4,26 @@ API version 1 router
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, customers, orders, products, webhooks, dashboard, health, external_systems, shopify_orders, shopify_products, sync_configs, sync_status, system, scm_orders, order_routing, routing_rules, printify_orders
+from app.api.v1.endpoints import (
+    auth,
+    customers,
+    orders,
+    products,
+    webhooks,
+    dashboard,
+    health,
+    external_systems,
+    shopify_orders,
+    shopify_products,
+    shopify_stores,
+    sync_configs,
+    sync_status,
+    system,
+    scm_orders,
+    order_routing,
+    routing_rules,
+    printify_orders,
+)
 
 api_router = APIRouter()
 
@@ -16,19 +35,31 @@ api_router.include_router(products.router, prefix="/products", tags=["products"]
 api_router.include_router(webhooks.router, prefix="/webhooks", tags=["webhooks"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
 api_router.include_router(health.router, tags=["health"])
-api_router.include_router(external_systems.router, prefix="/external-systems", tags=["external-systems"])
+api_router.include_router(
+    external_systems.router, prefix="/external-systems", tags=["external-systems"]
+)
 api_router.include_router(sync_status.router, prefix="/sync", tags=["sync"])
 api_router.include_router(shopify_orders.router, prefix="/shopify", tags=["shopify"])
-api_router.include_router(shopify_products.router, prefix="/shopify", tags=["shopify-products"])
-api_router.include_router(sync_configs.router, prefix="/sync-configs", tags=["sync-configs"])
+api_router.include_router(
+    shopify_products.router, prefix="/external-systems", tags=["shopify-products"]
+)
+api_router.include_router(
+    shopify_stores.router, prefix="/shopify", tags=["shopify-stores"]
+)
+api_router.include_router(
+    sync_configs.router, prefix="/sync-configs", tags=["sync-configs"]
+)
 
 # SCM Order Management
 api_router.include_router(scm_orders.router, prefix="/scm-orders", tags=["scm-orders"])
-api_router.include_router(order_routing.router, prefix="/routing", tags=["order-routing"])
-api_router.include_router(routing_rules.router, prefix="/routing-rules", tags=["routing-rules"])
+api_router.include_router(
+    order_routing.router, prefix="/routing", tags=["order-routing"]
+)
+api_router.include_router(
+    routing_rules.router, prefix="/routing-rules", tags=["routing-rules"]
+)
 
 api_router.include_router(system.router, prefix="/system", tags=["system"])
 
 # Printify Integration
 api_router.include_router(printify_orders.router, prefix="/printify", tags=["printify"])
-

@@ -31,6 +31,9 @@ import {
   Badge,
   Stack,
   Divider,
+  MenuItem,
+  FormControl,
+  Select,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -57,24 +60,33 @@ import { frontendApi } from '@/lib/api';
 import { frontendLogger } from '@/lib/frontend-logger';
 
 interface ShopifyProduct {
-  id: number;
-  shopify_id: string;
+  id: string;
   title: string;
-  body_html: string;
-  vendor: string;
-  product_type: string;
+  handle: string;
+  status: string;
   created_at: string;
   updated_at: string;
-  published_at: string;
-  template_suffix: string;
-  status: string;
-  published_scope: string;
-  tags: string;
-  admin_graphql_api_id: string;
-  variants: ShopifyVariant[];
-  options: ShopifyOption[];
-  images: ShopifyImage[];
-  image: ShopifyImage;
+  total_inventory: number;
+  price: string;
+  currency: string;
+  image?: {
+    id: string;
+    url: string;
+    alt_text?: string;
+    width?: number;
+    height?: number;
+  };
+  variant?: {
+    id: string;
+    title: string;
+    price: string;
+    inventory_quantity: number;
+    image?: {
+      id: string;
+      url: string;
+      alt_text?: string;
+    };
+  };
 }
 
 interface ShopifyVariant {
@@ -133,6 +145,7 @@ interface ShopifyImage {
 interface ShopifyStore {
   id: number;
   name: string;
+  external_system_id: string;
   shop_domain: string;
   access_token: string;
   is_active: boolean;
@@ -143,7 +156,7 @@ interface ShopifyStore {
 const ShopifyProductsPage: React.FC = () => {
   const [products, setProducts] = useState<ShopifyProduct[]>([]);
   const [stores, setStores] = useState<ShopifyStore[]>([]);
-  const [selectedStore, setSelectedStore] = useState<number | null>(null);
+  const [selectedStore, setSelectedStore] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -169,7 +182,7 @@ const ShopifyProductsPage: React.FC = () => {
   }, []);
 
   // 获取 Shopify 商品列表
-  const fetchProducts = useCallback(async (storeId: number, pageNum: number = 1) => {
+  const fetchProducts = useCallback(async (storeId: string, pageNum: number = 1) => {
     if (!storeId) return;
     
     setLoading(true);
@@ -311,11 +324,11 @@ const ShopifyProductsPage: React.FC = () => {
                     <Card
                       sx={{
                         cursor: 'pointer',
-                        border: selectedStore === store.id ? 2 : 1,
-                        borderColor: selectedStore === store.id ? 'primary.main' : 'divider',
+                        border: selectedStore === store.external_system_id ? 2 : 1,
+                        borderColor: selectedStore === store.external_system_id ? 'primary.main' : 'divider',
                         '&:hover': { borderColor: 'primary.main' },
                       }}
-                      onClick={() => setSelectedStore(store.id)}
+                      onClick={() => setSelectedStore(store.external_system_id)}
                     >
                       <CardContent>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
@@ -438,8 +451,8 @@ const ShopifyProductsPage: React.FC = () => {
                           <CardMedia
                             component="img"
                             height="200"
-                            image={product.image?.src || '/placeholder-product.png'}
-                            alt={product.title}
+                            image={product.image?.url || product.variant?.image?.url || '/placeholder-product.png'}
+                            alt={product.image?.alt_text || product.variant?.image?.alt_text || product.title}
                             sx={{ objectFit: 'cover' }}
                           />
                           <CardContent sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
@@ -540,8 +553,8 @@ const ShopifyProductsPage: React.FC = () => {
                   <Grid container spacing={3}>
                     <Grid item xs={12} md={6}>
                       <img
-                        src={selectedProduct.image?.src || '/placeholder-product.png'}
-                        alt={selectedProduct.title}
+                        src={selectedProduct.image?.url || selectedProduct.variant?.image?.url || '/placeholder-product.png'}
+                        alt={selectedProduct.image?.alt_text || selectedProduct.variant?.image?.alt_text || selectedProduct.title}
                         style={{ width: '100%', height: 'auto', borderRadius: 8 }}
                       />
                     </Grid>
