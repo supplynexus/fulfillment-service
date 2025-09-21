@@ -114,6 +114,18 @@ const menuItems: MenuItem[] = [
             icon: <StoreIcon />,
             path: '/external-systems/shopify/stores',
           },
+          {
+            id: 'shopify-products',
+            label: '商品列表',
+            icon: <ProductsIcon />,
+            path: '/external-systems/shopify/products',
+          },
+          {
+            id: 'shopify-orders',
+            label: '订单列表',
+            icon: <OrdersIcon />,
+            path: '/external-systems/shopify/orders',
+          },
         ],
       },
       {
