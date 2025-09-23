@@ -941,7 +941,7 @@ async def test_connection_by_external_id(
         logger.info(f"✅ 凭据解密成功: external_system_id={external_system.id}")
 
         # Test connection based on system type
-        if external_system.system_type.value == "shopify":
+        if external_system.system_type == ExternalSystemType.SHOPIFY:
             from app.services.shopify_service import ShopifyService
 
             shopify_service = ShopifyService(db)
@@ -982,7 +982,7 @@ async def test_connection_by_external_id(
                     "error_code": result.get("error_code", 500),
                 }
 
-        elif external_system.system_type.value == "printify":
+        elif external_system.system_type == ExternalSystemType.PRINTIFY:
             from app.services.printify_service import PrintifyService
 
             access_token = decrypted_credentials.get("access_token")
@@ -1264,4 +1264,109 @@ async def get_shopify_orders_by_shop_id(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get orders: {str(e)}",
+        )
+
+
+@router.get("/shopify/{shop_id}/orders/{order_id}", response_model=dict)
+async def get_shopify_order_details(
+    shop_id: str,
+    order_id: str,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
+) -> Any:
+    """Get detailed information for a specific Shopify order"""
+    logger = get_logger(__name__)
+    try:
+        logger.info(
+            f"🔍 开始处理 Shopify 订单详情请求: shop_id={shop_id}, order_id={order_id}"
+        )
+        tenant, user = auth
+        logger.info(
+            f"✅ 认证成功: tenant_id={tenant.id}, tenant_name={tenant.name}, user_id={user.id}"
+        )
+
+        # Get external system by shop_id (external_id)
+        service = ExternalSystemService(db)
+        external_system = await service.get_external_system_by_external_system_id(
+            shop_id, tenant.id
+        )
+        if not external_system:
+            logger.error(
+                f"❌ 未找到 Shopify 店铺: shop_id={shop_id}, tenant_id={tenant.id}"
+            )
+            raise HTTPException(status_code=404, detail="Shopify store not found")
+
+        logger.info(
+            f"✅ 找到 Shopify 店铺: id={external_system.id}, name={external_system.name}"
+        )
+
+        # Get decrypted credentials
+        decrypted_credentials = await service.get_decrypted_credentials(
+            external_system.id, tenant.id
+        )
+        if not decrypted_credentials:
+            logger.error(
+                f"❌ 无法获取解密后的凭据: external_system_id={external_system.id}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Failed to get decrypted credentials",
+            )
+        logger.info(f"✅ 凭据解密成功: external_system_id={external_system.id}")
+
+        access_token = decrypted_credentials.get("access_token")
+        if not access_token:
+            logger.error(
+                f"❌ 缺少 access_token: external_system_id={external_system.id}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Access Token not configured for this store",
+            )
+
+        # Initialize Shopify service and get order details
+        from app.services.shopify_service import ShopifyService
+
+        shopify_service = ShopifyService(db)
+
+        logger.info(f"🔍 开始获取 Shopify 订单详情: shop_id={shop_id}, order_id={order_id}")
+        order_response = await shopify_service.get_order_details(
+            shop_id=shop_id,
+            order_id=order_id,
+            access_token=access_token,
+            api_version=external_system.settings.get("api_version", "2024-10"),
+        )
+
+        if not order_response.get("success", False):
+            logger.error(
+                f"❌ Shopify 订单详情获取失败: {order_response.get('error', 'Unknown error')}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=order_response.get("error", "Failed to get order details"),
+            )
+
+        logger.info(f"✅ Shopify 订单详情获取成功: order_id={order_id}")
+
+        return {
+            "success": True,
+            "order": order_response.get("order", {}),
+            "details": {
+                "shop_id": shop_id,
+                "order_id": order_id,
+                "base_url": external_system.base_url,
+                "system_type": "SHOPIFY",
+            },
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Shopify 订单详情请求处理失败: {str(e)}")
+        import traceback
+
+        logger.error(f"   异常堆栈: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get order details: {str(e)}",
         )
