@@ -69,6 +69,11 @@ interface ShopifyProduct {
   total_inventory: number;
   price: string;
   currency: string;
+  vendor?: string;
+  product_type?: string;
+  published_at?: string;
+  tags?: string;
+  variants?: ShopifyVariant[];
   image?: {
     id: string;
     url: string;
@@ -90,33 +95,30 @@ interface ShopifyProduct {
 }
 
 interface ShopifyVariant {
-  id: number;
-  shopify_id: string;
-  product_id: number;
+  id: string;  // GraphQL ID like "gid://shopify/ProductVariant/45663476547684"
   title: string;
-  price: string;
   sku: string;
-  position: number;
-  inventory_policy: string;
-  compare_at_price: string;
-  fulfillment_service: string;
-  inventory_management: string;
-  option1: string;
-  option2: string;
-  option3: string;
-  created_at: string;
-  updated_at: string;
+  barcode?: string;
+  price: string;
+  compareAtPrice?: string;
+  inventoryQuantity: number;
+  inventoryPolicy: string;
+  selectedOptions: Array<{
+    name: string;
+    value: string;
+  }>;
   taxable: boolean;
-  barcode: string;
-  grams: number;
-  image_id: number;
-  weight: number;
-  weight_unit: string;
-  inventory_item_id: number;
-  inventory_quantity: number;
-  old_inventory_quantity: number;
-  requires_shipping: boolean;
-  admin_graphql_api_id: string;
+  taxCode: string;
+  position: number;
+  createdAt: string;
+  updatedAt: string;
+  image?: {
+    id: string;
+    url: string;
+    altText?: string;
+    width?: number;
+    height?: number;
+  };
 }
 
 interface ShopifyOption {
@@ -144,6 +146,7 @@ interface ShopifyImage {
 
 interface ShopifyStore {
   id: number;
+  id_hashid: string;
   name: string;
   external_system_id: string;
   shop_domain: string;
@@ -156,7 +159,7 @@ interface ShopifyStore {
 const ShopifyProductsPage: React.FC = () => {
   const [products, setProducts] = useState<ShopifyProduct[]>([]);
   const [stores, setStores] = useState<ShopifyStore[]>([]);
-  const [selectedStore, setSelectedStore] = useState<string | null>(null);
+  const [selectedStore, setSelectedStore] = useState<ShopifyStore | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -164,6 +167,9 @@ const ShopifyProductsPage: React.FC = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [selectedProduct, setSelectedProduct] = useState<ShopifyProduct | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [jsonModalOpen, setJsonModalOpen] = useState(false);
+  const [productJson, setProductJson] = useState<any>(null);
+  const [loadingJson, setLoadingJson] = useState(false);
   const [sortBy, setSortBy] = useState<'title' | 'created_at' | 'updated_at' | 'price'>('title');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -181,16 +187,75 @@ const ShopifyProductsPage: React.FC = () => {
     }
   }, []);
 
+  // 获取 Shopify 商品完整 JSON 数据
+  const fetchProductJson = useCallback(async (productId: string, showJsonModal: boolean = true) => {
+    if (!selectedStore) return;
+    
+    try {
+      setLoadingJson(true);
+      
+      // 从 GraphQL ID 中提取纯数字 ID (例如: gid://shopify/Product/8040175042660 -> 8040175042660)
+      const numericProductId = productId.replace('gid://shopify/Product/', '');
+      
+      frontendLogger.info('🔄 获取 Shopify 商品完整 JSON 数据', { 
+        originalId: productId,
+        numericId: numericProductId,
+        storeId: selectedStore,
+        storeIdType: typeof selectedStore,
+        storeIdLength: selectedStore?.length
+      });
+      
+      const response = await frontendApi.get(
+        `/api/external-systems/shopify/products/${numericProductId}/json?external_system_hashid=${selectedStore.id_hashid}`
+      );
+      
+      frontendLogger.info('✅ Shopify 商品 JSON 数据获取成功', { 
+        productId, 
+        hasData: !!response.data 
+      });
+      
+      // 设置完整的商品JSON数据
+      setProductJson(response.data);
+      
+      // 更新selectedProduct的变体数据
+      if (response.data?.product?.variants?.edges) {
+        const variants = response.data.product.variants.edges.map((edge: any) => edge.node);
+        setSelectedProduct(prev => prev ? {
+          ...prev,
+          variants: variants
+        } : null);
+        
+        frontendLogger.info('✅ 商品变体数据已更新', { 
+          variantCount: variants.length,
+          variants: variants.map((v: any) => ({ id: v.id, title: v.title }))
+        });
+      }
+      
+      if (showJsonModal) {
+        setJsonModalOpen(true);
+      }
+      
+    } catch (error: any) {
+      frontendLogger.error('❌ 获取 Shopify 商品 JSON 数据失败', { 
+        error: error.message,
+        productId 
+      });
+      setError(`获取商品 JSON 数据失败: ${error.message}`);
+    } finally {
+      setLoadingJson(false);
+    }
+  }, [selectedStore]);
+
   // 获取 Shopify 商品列表
-  const fetchProducts = useCallback(async (storeId: string, pageNum: number = 1) => {
-    if (!storeId) return;
+  const fetchProducts = useCallback(async (store: ShopifyStore, pageNum: number = 1) => {
+    if (!store) return;
     
     setLoading(true);
     setError(null);
     
     try {
-      frontendLogger.info('🔄 获取 Shopify 商品列表', { storeId, page: pageNum });
-      const response = await frontendApi.get(`/api/external-systems/shopify/${storeId}/products`, {
+      frontendLogger.info('🔄 获取 Shopify 商品列表', { storeId: store.id_hashid, page: pageNum });
+      const response = await frontendApi.get(`/api/external-systems/shopify/${store.id_hashid}/products`, {
         params: {
           page: pageNum,
           limit: 20,
@@ -244,9 +309,26 @@ const ShopifyProductsPage: React.FC = () => {
   }, [selectedStore, fetchProducts, page]);
 
   // 查看商品详情
-  const handleViewDetails = (product: ShopifyProduct) => {
+  const handleViewDetails = async (product: ShopifyProduct) => {
     setSelectedProduct(product);
     setDetailsOpen(true);
+    
+    // 自动获取完整的商品数据（包括变体）
+    if (selectedStore) {
+      try {
+        frontendLogger.info('🔄 自动获取商品完整数据', { 
+          productId: product.id,
+          storeId: selectedStore.id_hashid 
+        });
+        
+        await fetchProductJson(product.id, false);
+      } catch (error) {
+        frontendLogger.error('❌ 自动获取商品数据失败', { 
+          error: error instanceof Error ? error.message : 'Unknown error',
+          productId: product.id 
+        });
+      }
+    }
   };
 
   // 格式化价格
@@ -324,11 +406,11 @@ const ShopifyProductsPage: React.FC = () => {
                     <Card
                       sx={{
                         cursor: 'pointer',
-                        border: selectedStore === store.external_system_id ? 2 : 1,
-                        borderColor: selectedStore === store.external_system_id ? 'primary.main' : 'divider',
+                        border: selectedStore?.id === store.id ? 2 : 1,
+                        borderColor: selectedStore?.id === store.id ? 'primary.main' : 'divider',
                         '&:hover': { borderColor: 'primary.main' },
                       }}
-                      onClick={() => setSelectedStore(store.external_system_id)}
+                      onClick={() => setSelectedStore(store)}
                     >
                       <CardContent>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
@@ -524,7 +606,7 @@ const ShopifyProductsPage: React.FC = () => {
                       <Pagination
                         count={totalPages}
                         page={page}
-                        onChange={(_, newPage) => fetchProducts(selectedStore, newPage)}
+                        onChange={(_, newPage) => selectedStore && fetchProducts(selectedStore, newPage)}
                         color="primary"
                       />
                     </Box>
@@ -577,6 +659,20 @@ const ShopifyProductsPage: React.FC = () => {
                       <Typography variant="body1" paragraph>
                         <strong>类型:</strong> {selectedProduct.product_type}
                       </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                        <Typography variant="body1" component="span">
+                          <strong>Shopify商品ID:</strong>
+                        </Typography>
+                        <Chip 
+                          label={selectedProduct.id} 
+                          color="primary" 
+                          size="small" 
+                          sx={{ ml: 1, cursor: 'pointer' }}
+                          onClick={() => fetchProductJson(selectedProduct.id)}
+                          disabled={loadingJson}
+                        />
+                        {loadingJson && <CircularProgress size={16} sx={{ ml: 1 }} />}
+                      </Box>
                       <Typography variant="body1" paragraph>
                         <strong>创建时间:</strong> {formatDate(selectedProduct.created_at)}
                       </Typography>
@@ -608,6 +704,7 @@ const ShopifyProductsPage: React.FC = () => {
                         <TableRow>
                           <TableCell>标题</TableCell>
                           <TableCell>SKU</TableCell>
+                          <TableCell>Shopify变体ID</TableCell>
                           <TableCell>价格</TableCell>
                           <TableCell>库存</TableCell>
                           <TableCell>重量</TableCell>
@@ -618,15 +715,23 @@ const ShopifyProductsPage: React.FC = () => {
                           <TableRow key={variant.id}>
                             <TableCell>{variant.title}</TableCell>
                             <TableCell>{variant.sku || '-'}</TableCell>
+                            <TableCell>
+                              <Chip 
+                                label={variant.id} 
+                                color="secondary" 
+                                size="small"
+                                variant="outlined"
+                              />
+                            </TableCell>
                             <TableCell>{formatPrice(variant.price)}</TableCell>
                             <TableCell>
                               <Chip
-                                label={variant.inventory_quantity || 0}
-                                color={variant.inventory_quantity > 0 ? 'success' : 'error'}
+                                label={variant.inventoryQuantity || 0}
+                                color={variant.inventoryQuantity > 0 ? 'success' : 'error'}
                                 size="small"
                               />
                             </TableCell>
-                            <TableCell>{variant.weight} {variant.weight_unit}</TableCell>
+                            <TableCell>-</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -637,6 +742,64 @@ const ShopifyProductsPage: React.FC = () => {
             </DialogContent>
             <DialogActions>
               <Button onClick={() => setDetailsOpen(false)}>关闭</Button>
+            </DialogActions>
+          </Dialog>
+
+          {/* JSON 数据展示模态框 */}
+          <Dialog
+            open={jsonModalOpen}
+            onClose={() => setJsonModalOpen(false)}
+            maxWidth="lg"
+            fullWidth
+          >
+            <DialogTitle>
+              Shopify 商品完整 JSON 数据
+              {selectedProduct && (
+                <Typography variant="body2" color="text.secondary">
+                  {selectedProduct.title}
+                </Typography>
+              )}
+            </DialogTitle>
+            <DialogContent>
+              {productJson ? (
+                <Box sx={{ mt: 2 }}>
+                  <Typography variant="h6" gutterBottom>
+                    商品 JSON 数据
+                  </Typography>
+                  <Paper 
+                    sx={{ 
+                      p: 2, 
+                      backgroundColor: '#f5f5f5', 
+                      maxHeight: '60vh', 
+                      overflow: 'auto',
+                      fontFamily: 'monospace',
+                      fontSize: '0.875rem'
+                    }}
+                  >
+                    <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
+                      {JSON.stringify(productJson, null, 2)}
+                    </pre>
+                  </Paper>
+                </Box>
+              ) : (
+                <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '200px' }}>
+                  <CircularProgress />
+                </Box>
+              )}
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setJsonModalOpen(false)}>关闭</Button>
+              {productJson && (
+                <Button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(JSON.stringify(productJson, null, 2));
+                    // 这里可以添加一个提示，表示已复制到剪贴板
+                  }}
+                  variant="outlined"
+                >
+                  复制 JSON
+                </Button>
+              )}
             </DialogActions>
           </Dialog>
         </Box>

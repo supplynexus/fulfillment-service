@@ -8,7 +8,7 @@ const logger = createLogger('api.external-systems.shopify.products');
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ shop_id: string }> }
+  { params }: { params: Promise<{ external_system_hashid: string }> }
 ) {
   const startTime = Date.now();
 
@@ -28,33 +28,23 @@ export async function GET(
     }
 
     const frontendToken = authHeader.substring(7);
-    let decodedToken;
-    try {
-      decodedToken = jwtUtilsServer.verifyToken(frontendToken);
-    } catch (error: any) {
-      logger.error('Invalid JWT token', { error: error.message });
-      return NextResponse.json(
-        { detail: 'Invalid JWT token' },
-        { status: 401 }
-      );
-    }
-
+    const decodedToken = jwtUtilsServer.verifyToken(frontendToken);
     const { tenant_name: tenantName, sub: userId } = decodedToken;
+
     logger.info('Authenticated user', { tenantName, userId });
 
-    const { shop_id } = await params;
-    logger.info('Request data received', { shop_id });
+    const { external_system_hashid } = await params;
+    logger.info('Request data received', { external_system_hashid });
 
-    // Generate signature for backend request
     const timestamp = Math.floor(Date.now() / 1000);
     const nonce = Math.random().toString(36).substring(2, 15);
-    const signatureString = `GET/api/v1/external-systems/shopify/${shop_id}/products${timestamp}${nonce}${tenantName}`;
+    const signatureString = `GET/api/v1/external-systems/shopify/${external_system_hashid}/products${timestamp}${nonce}${tenantName}`;
 
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
 
     logger.info('🔍 前端签名生成调试信息', {
       method: 'GET',
-      path: `/api/v1/external-systems/shopify/${shop_id}/products`,
+      path: `/api/v1/external-systems/shopify/${external_system_hashid}/products`,
       timestamp,
       nonce,
       tenantName,
@@ -77,61 +67,56 @@ export async function GET(
     });
 
     const backendUrl =
-      process.env.BACKEND_API_URL ||
-      process.env.NEXT_PUBLIC_API_URL ||
-      'http://localhost:8000';
-    const backendEndpoint = `${backendUrl}/api/v1/external-systems/shopify/${shop_id}/products`;
+      `${process.env.NEXT_PUBLIC_API_URL}/api/v1/external-systems/shopify/${external_system_hashid}/products`;
 
     logger.info('Forwarding request to backend', {
-      backendEndpoint,
-      shop_id,
+      backendEndpoint: backendUrl,
+      external_system_hashid,
     });
 
-    const backendResponse = await fetch(backendEndpoint, {
+    const response = await fetch(backendUrl, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
         'X-Tenant-Name': tenantName,
+        'X-User-ID': userId,
         'X-Timestamp': timestamp.toString(),
         'X-Nonce': nonce,
         'X-Signature': signature,
-        'X-User-ID': userId.toString(),
       },
     });
 
     const responseTime = Date.now() - startTime;
     logger.info('Backend response received', {
-      status: backendResponse.status,
+      status: response.status,
       responseTime,
     });
 
-    if (!backendResponse.ok) {
-      const errorText = await backendResponse.text();
+    if (!response.ok) {
+      const errorData = await response.json();
       logger.error('Backend request failed', {
-        status: backendResponse.status,
-        statusText: backendResponse.statusText,
-        error: errorText,
+        status: response.status,
+        statusText: response.statusText,
+        error: errorData,
       });
       return NextResponse.json(
         { detail: 'Backend request failed' },
-        { status: backendResponse.status }
+        { status: response.status }
       );
     }
 
-    const data = await backendResponse.json();
-    logger.info('Request completed successfully', {
-      responseTime,
-      success: data.success,
-      total_count: data.total_count,
-    });
+    const data = await response.json();
+
+    logger.requestComplete(request.method, request.url, response.status, responseTime);
 
     return NextResponse.json(data);
-  } catch (error: any) {
+  } catch (error) {
     const responseTime = Date.now() - startTime;
-    logger.error('Unexpected error in get products', {
-      error: error.message,
+    logger.error('Error in Shopify products API', {
+      error: error instanceof Error ? error.message : 'Unknown error',
       responseTime,
     });
+
     return NextResponse.json(
       { detail: 'Internal server error' },
       { status: 500 }

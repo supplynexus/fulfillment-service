@@ -6,7 +6,7 @@ from typing import Dict, Any, List, Optional
 from decimal import Decimal
 from datetime import datetime, timezone
 
-from app.models.product import Product
+from app.models.product_new import Product
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)

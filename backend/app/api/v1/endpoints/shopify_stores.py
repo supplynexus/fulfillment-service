@@ -30,12 +30,16 @@ async def get_shopify_stores(
         external_system_service = ExternalSystemService(db)
         stores = await external_system_service.get_shopify_stores(tenant_id=tenant_id)
 
+        # Import hashids utility
+        from app.core.hashids_utils import encode_id
+
         # Format the response
         stores_data = []
         for store in stores:
             stores_data.append(
                 {
                     "id": store.id,
+                    "id_hashid": encode_id(store.id),  # Add hashids for frontend
                     "name": store.name,
                     "display_name": store.name,  # Use name as display_name
                     "description": f"Shopify store: {store.external_system_id}",  # Generate description

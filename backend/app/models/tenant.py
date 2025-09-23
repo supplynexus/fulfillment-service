@@ -42,3 +42,17 @@ class Tenant(Base):
     routing_rules = relationship("RoutingRule", back_populates="tenant")
     sync_configs = relationship("SyncConfig", back_populates="tenant")
     sync_jobs = relationship("SyncJob", back_populates="tenant")
+    
+    # New Product System Relationships
+    products_new = relationship("Product", back_populates="tenant", foreign_keys="Product.tenant_id")
+    product_dimensions = relationship("ProductDimension", back_populates="tenant")
+    product_variants = relationship("ProductVariant", back_populates="tenant")
+    variant_attributes = relationship("VariantAttribute", back_populates="tenant")
+    barcode_types = relationship("BarcodeType", back_populates="tenant")
+    variant_barcodes = relationship("VariantBarcode", back_populates="tenant")
+    tags = relationship("Tag", back_populates="tenant")
+    product_tags = relationship("ProductTag", back_populates="tenant")
+    product_combinations = relationship("ProductCombination", back_populates="tenant")
+    product_combination_items = relationship("ProductCombinationItem", back_populates="tenant")
+    product_mappings = relationship("ProductMapping", back_populates="tenant")
+    external_products = relationship("ExternalProduct", back_populates="tenant")

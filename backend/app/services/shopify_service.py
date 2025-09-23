@@ -12,7 +12,7 @@ from sqlalchemy import select, func
 from app.models.external_system import ExternalSystem, ExternalSystemType
 from app.models.order import Order, OrderStatus
 from app.models.customer import Customer
-from app.models.product import Product
+from app.models.product_new import Product
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -1380,6 +1380,151 @@ class ShopifyService:
             return {
                 "success": False,
                 "error": f"Failed to get order details: {str(e)}",
+            }
+
+    async def get_product_json(
+        self, shop_id: str, product_id: str, access_token: str, api_version: str = "2024-10"
+    ) -> Dict[str, Any]:
+        """Get complete Shopify product JSON data"""
+        try:
+            logger.info(f"🔍 开始获取 Shopify 商品完整 JSON: shop_id={shop_id}, product_id={product_id}")
+            
+            # Prepare GraphQL query for complete product data
+            query = """
+            query($id: ID!) {
+                product(id: $id) {
+                    id
+                    title
+                    handle
+                    description
+                    descriptionHtml
+                    vendor
+                    productType
+                    createdAt
+                    updatedAt
+                    publishedAt
+                    tags
+                    status
+                    onlineStoreUrl
+                    onlineStorePreviewUrl
+                    options {
+                        id
+                        name
+                        values
+                        position
+                    }
+                    images(first: 50) {
+                        edges {
+                            node {
+                                id
+                                url
+                                altText
+                                width
+                                height
+                            }
+                        }
+                    }
+                    variants(first: 50) {
+                        edges {
+                            node {
+                                id
+                                title
+                                sku
+                                barcode
+                                price
+                                compareAtPrice
+                                inventoryQuantity
+                                inventoryPolicy
+                                selectedOptions {
+                                    name
+                                    value
+                                }
+                                taxable
+                                taxCode
+                                position
+                                createdAt
+                                updatedAt
+                                image {
+                                    id
+                                    url
+                                    altText
+                                    width
+                                    height
+                                }
+                            }
+                        }
+                    }
+                    seo {
+                        title
+                        description
+                    }
+                    metafields(first: 50) {
+                        edges {
+                            node {
+                                id
+                                namespace
+                                key
+                                value
+                                type
+                                description
+                            }
+                        }
+                    }
+                }
+            }
+            """
+
+            # Prepare variables
+            variables = {
+                "id": f"gid://shopify/Product/{product_id}"
+            }
+
+            # Make GraphQL request
+            response = await self.client.post(
+                f"https://{shop_id}.myshopify.com/admin/api/{api_version}/graphql.json",
+                headers={
+                    "X-Shopify-Access-Token": access_token,
+                    "Content-Type": "application/json",
+                },
+                json={"query": query, "variables": variables},
+            )
+
+            if response.status_code != 200:
+                logger.error(f"❌ Shopify API 请求失败: status={response.status_code}")
+                return {
+                    "success": False,
+                    "error": f"Shopify API request failed with status {response.status_code}",
+                }
+
+            data = response.json()
+            
+            if "errors" in data:
+                logger.error(f"❌ Shopify GraphQL 错误: {data['errors']}")
+                return {
+                    "success": False,
+                    "error": f"GraphQL errors: {data['errors']}",
+                }
+
+            product_data = data.get("data", {}).get("product")
+            if not product_data:
+                logger.error(f"❌ 未找到商品: product_id={product_id}")
+                return {
+                    "success": False,
+                    "error": f"Product not found: {product_id}",
+                }
+
+            logger.info(f"✅ Shopify 商品 JSON 获取成功: product_id={product_id}")
+            
+            return {
+                "success": True,
+                "product": product_data,
+            }
+
+        except Exception as e:
+            logger.error(f"❌ 获取 Shopify 商品 JSON 失败: {str(e)}")
+            return {
+                "success": False,
+                "error": f"Failed to get product JSON: {str(e)}",
             }
 
     async def close(self):

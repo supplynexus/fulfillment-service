@@ -4,13 +4,19 @@ import { jwtUtilsServer } from '@/lib/jwt-utils-server';
 import { keyLoader } from '@/lib/key-loader';
 import { generateBackendSignature } from '@/lib/signature';
 
-const logger = createLogger('api.products');
+const logger = createLogger('api.product-detail');
 
-export async function GET(request: NextRequest) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ product_hashid: string }> }
+) {
   const startTime = Date.now();
 
   try {
+    const { product_hashid } = await params;
+    
     logger.requestStart(request.method, request.url, {
+      product_hashid,
       userAgent: request.headers.get('user-agent'),
       contentType: request.headers.get('content-type'),
     });
@@ -43,12 +49,6 @@ export async function GET(request: NextRequest) {
 
     // 获取查询参数
     const { searchParams } = new URL(request.url);
-    const page = searchParams.get('page') || '1';
-    const limit = searchParams.get('limit') || '10';
-    const status = searchParams.get('status');
-    const product_type = searchParams.get('product_type');
-    const vendor = searchParams.get('vendor');
-    const search = searchParams.get('search');
     const include_variants = searchParams.get('include_variants') || 'true';
     const include_dimensions = searchParams.get('include_dimensions') || 'true';
     const include_tags = searchParams.get('include_tags') || 'true';
@@ -56,39 +56,23 @@ export async function GET(request: NextRequest) {
 
     // 构建后端请求参数
     const backendParams = new URLSearchParams({
-      skip: String((parseInt(page) - 1) * parseInt(limit)),
-      limit,
       include_variants,
       include_dimensions,
       include_tags,
       include_mappings,
     });
 
-    if (status) {
-      backendParams.append('status', status);
-    }
-    if (product_type) {
-      backendParams.append('product_type', product_type);
-    }
-    if (vendor) {
-      backendParams.append('vendor', vendor);
-    }
-    if (search) {
-      backendParams.append('search', search);
-    }
-
     // 对于 GET 请求，签名字符串中的 body 应该是空字符串
-    const bodyString = ''; // GET 请求的 body 为空
+    const bodyString = '';
     const timestamp = Math.floor(Date.now() / 1000);
     const nonce = Math.random().toString(36).substring(2, 15);
 
-    // 构建签名字符串 - 后端实际接收到的路径是 /api/v1/products/
-    const signatureString = `GET/api/v1/products/${timestamp}${nonce}${tenantName}${bodyString}`;
+    // 构建签名字符串
+    const signatureString = `GET/api/v1/products/${product_hashid}${timestamp}${nonce}${tenantName}${bodyString}`;
 
-    // 🔍 调试：打印签名生成信息
     logger.info('🔍 前端签名生成调试信息', {
       method: 'GET',
-      path: '/api/v1/products/',
+      path: `/api/v1/products/${product_hashid}`,
       timestamp,
       nonce,
       tenantName,
@@ -117,7 +101,7 @@ export async function GET(request: NextRequest) {
     });
 
     // 构建后端请求 URL
-    const backendUrl = `${process.env.BACKEND_API_URL}/api/v1/products?${backendParams.toString()}`;
+    const backendUrl = `${process.env.BACKEND_API_URL}/api/v1/products/${product_hashid}?${backendParams.toString()}`;
 
     logger.info('Forwarding request to backend', {
       backendEndpoint: backendUrl,

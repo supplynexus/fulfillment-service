@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
 
-from app.models.product import Product
+from app.models.product_new import Product
 from app.models.external_system import ExternalSystem, ExternalSystemType
 from app.schemas.product import ProductCreate
 from app.core.security import decrypt_data

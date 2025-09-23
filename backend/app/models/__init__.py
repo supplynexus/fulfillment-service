@@ -10,7 +10,22 @@ from .supplier import Supplier
 from .external_system import ExternalSystem, ExternalSystemType
 from .external_data import ExternalData, ExternalDataType
 from .order import Order, OrderStatus
-from .product import Product
+# from .product import Product  # 已替换为新的商品系统
+from .product_new import (
+    Product,
+    ProductDimension,
+    ProductVariant,
+    VariantAttribute,
+    BarcodeType,
+    VariantBarcode,
+    Tag,
+    ProductTag,
+    ProductCombination,
+    ProductCombinationItem,
+    ProductMapping,
+    ExternalProduct,
+    ProductStatus
+)
 from .scm_order import SCMOrder, SCMOrderStatus, RoutingRule, RoutingStatus
 
 from .jwt_blacklist import JwtBlacklist
@@ -32,6 +47,18 @@ __all__ = [
     "Order",
     "OrderStatus",
     "Product",
+    "ProductDimension",
+    "ProductVariant", 
+    "VariantAttribute",
+    "BarcodeType",
+    "VariantBarcode",
+    "Tag",
+    "ProductTag",
+    "ProductCombination",
+    "ProductCombinationItem",
+    "ProductMapping",
+    "ExternalProduct",
+    "ProductStatus",
     "SCMOrder",
     "SCMOrderStatus",
     "RoutingRule",

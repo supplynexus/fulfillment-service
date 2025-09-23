@@ -1053,9 +1053,9 @@ async def test_connection_by_external_id(
         )
 
 
-@router.get("/shopify/{shop_id}/products", response_model=dict)
+@router.get("/shopify/{external_system_hashid}/products", response_model=dict)
 async def get_shopify_products_by_shop_id(
-    shop_id: str,
+    external_system_hashid: str,
     limit: int = 50,
     page: int = 1,
     db: AsyncSession = Depends(get_async_db),
@@ -1065,21 +1065,36 @@ async def get_shopify_products_by_shop_id(
     logger = get_logger(__name__)
     try:
         logger.info(
-            f"🔍 开始处理 Shopify 商品列表请求: shop_id={shop_id}, limit={limit}, page={page}"
+            f"🔍 开始处理 Shopify 商品列表请求: external_system_hashid={external_system_hashid}, limit={limit}, page={page}"
         )
         tenant, user = auth
         logger.info(
             f"✅ 认证成功: tenant_id={tenant.id}, tenant_name={tenant.name}, user_id={user.id}"
         )
 
-        # Get external system by shop_id (external_id)
+        # Decode hashids to get external system ID
+        from app.core.hashids_utils import decode_id
+
+        try:
+            external_system_id = decode_id(external_system_hashid)
+            logger.info(
+                f"✅ Hashids 解码成功: {external_system_hashid} -> {external_system_id}"
+            )
+        except Exception as e:
+            logger.error(f"❌ Hashids 解码失败: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid external system ID",
+            )
+
+        # Get external system by internal ID
         service = ExternalSystemService(db)
-        external_system = await service.get_external_system_by_external_system_id(
-            shop_id, tenant.id
+        external_system = await service.get_external_system(
+            external_system_id, tenant.id
         )
         if not external_system:
             logger.error(
-                f"❌ 未找到 Shopify 店铺: shop_id={shop_id}, tenant_id={tenant.id}"
+                f"❌ 未找到 Shopify 店铺: external_system_id={external_system_id}, tenant_id={tenant.id}"
             )
             raise HTTPException(status_code=404, detail="Shopify store not found")
 
@@ -1116,9 +1131,9 @@ async def get_shopify_products_by_shop_id(
 
         shopify_service = ShopifyService(db)
 
-        logger.info(f"🔍 开始获取 Shopify 商品: shop_id={shop_id}")
+        logger.info(f"🔍 开始获取 Shopify 商品: external_system_id={external_system_id}")
         products_response = await shopify_service.get_products(
-            shop_id=shop_id,
+            shop_id=external_system.external_system_id,  # Use the external system's shop_id
             access_token=access_token,
             api_version=external_system.settings.get("api_version", "2024-10"),
         )
@@ -1369,4 +1384,124 @@ async def get_shopify_order_details(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get order details: {str(e)}",
+        )
+
+
+@router.get("/shopify/{external_system_hashid}/products/{product_id}/json", response_model=dict)
+async def get_shopify_product_json(
+    external_system_hashid: str,
+    product_id: str,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
+) -> Any:
+    """Get complete Shopify product JSON data"""
+    logger = get_logger(__name__)
+    try:
+        logger.info(
+            f"🔍 开始获取 Shopify 商品完整 JSON 数据: external_system_hashid={external_system_hashid}, product_id={product_id}"
+        )
+        tenant, user = auth
+        logger.info(
+            f"✅ 认证成功: tenant_id={tenant.id}, tenant_name={tenant.name}, user_id={user.id}"
+        )
+
+        # Decode hashids to get external system ID
+        from app.core.hashids_utils import decode_id
+
+        try:
+            external_system_id = decode_id(external_system_hashid)
+            logger.info(
+                f"✅ Hashids 解码成功: {external_system_hashid} -> {external_system_id}"
+            )
+        except Exception as e:
+            logger.error(f"❌ Hashids 解码失败: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid external system ID",
+            )
+
+        # Get external system by internal ID
+        service = ExternalSystemService(db)
+        external_system = await service.get_external_system(
+            external_system_id, tenant.id
+        )
+        if not external_system:
+            logger.error(
+                f"❌ 未找到 Shopify 店铺: external_system_id={external_system_id}, tenant_id={tenant.id}"
+            )
+            raise HTTPException(status_code=404, detail="Shopify store not found")
+
+        logger.info(
+            f"✅ 找到 Shopify 店铺: id={external_system.id}, name={external_system.name}"
+        )
+
+        # Get decrypted credentials
+        decrypted_credentials = await service.get_decrypted_credentials(
+            external_system.id, tenant.id
+        )
+        if not decrypted_credentials:
+            logger.error(
+                f"❌ 无法获取解密后的凭据: external_system_id={external_system.id}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Failed to get decrypted credentials",
+            )
+        logger.info(f"✅ 凭据解密成功: external_system_id={external_system.id}")
+
+        access_token = decrypted_credentials.get("access_token")
+        if not access_token:
+            logger.error(
+                f"❌ 缺少 access_token: external_system_id={external_system.id}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Access Token not configured for this store",
+            )
+
+        # Initialize Shopify service and get product JSON
+        from app.services.shopify_service import ShopifyService
+
+        shopify_service = ShopifyService(db)
+
+        logger.info(f"🔍 开始获取 Shopify 商品完整 JSON: external_system_id={external_system_id}, product_id={product_id}")
+        product_response = await shopify_service.get_product_json(
+            shop_id=external_system.external_system_id,  # Use the external system's shop_id
+            product_id=product_id,
+            access_token=access_token,
+            api_version=external_system.settings.get("api_version", "2024-10"),
+        )
+
+        if not product_response.get("success", False):
+            logger.error(
+                f"❌ Shopify 商品 JSON 获取失败: {product_response.get('error', 'Unknown error')}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=product_response.get("error", "Failed to get product JSON"),
+            )
+
+        logger.info(f"✅ Shopify 商品 JSON 获取成功: product_id={product_id}")
+
+        return {
+            "success": True,
+            "product": product_response.get("product", {}),
+            "details": {
+                "shop_id": external_system.external_system_id,  # Use the external system's shop_id
+                "product_id": product_id,
+                "base_url": external_system.base_url,
+                "system_type": "SHOPIFY",
+            },
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Shopify 商品 JSON 请求处理失败: {str(e)}")
+        import traceback
+
+        logger.error(f"   异常堆栈: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get product JSON: {str(e)}",
         )

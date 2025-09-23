@@ -103,7 +103,7 @@ interface ShopifyStore {
 const ShopifyOrdersPage: React.FC = () => {
   const [orders, setOrders] = useState<ShopifyOrder[]>([]);
   const [stores, setStores] = useState<ShopifyStore[]>([]);
-  const [selectedStore, setSelectedStore] = useState<string | null>(null);
+  const [selectedStore, setSelectedStore] = useState<ShopifyStore | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -132,15 +132,15 @@ const ShopifyOrdersPage: React.FC = () => {
   }, []);
 
   // 获取 Shopify 订单列表
-  const fetchOrders = useCallback(async (storeId: string, pageNum: number = 1) => {
-    if (!storeId) return;
+  const fetchOrders = useCallback(async (store: ShopifyStore, pageNum: number = 1) => {
+    if (!store) return;
     
     setLoading(true);
     setError(null);
     
     try {
-      frontendLogger.info('🔄 获取 Shopify 订单列表', { storeId, page: pageNum });
-      const response = await frontendApi.get(`/api/external-systems/shopify/${storeId}/orders`, {
+      frontendLogger.info('🔄 获取 Shopify 订单列表', { storeId: store.external_id, page: pageNum });
+      const response = await frontendApi.get(`/api/external-systems/shopify/${store.external_id}/orders`, {
         params: {
           page: pageNum,
           limit: 20,
@@ -170,15 +170,15 @@ const ShopifyOrdersPage: React.FC = () => {
   }, [searchTerm, sortBy, sortOrder, statusFilter, financialStatusFilter, fulfillmentStatusFilter]);
 
   // 同步订单
-  const syncOrders = useCallback(async (storeId: string) => {
-    if (!storeId) return;
+  const syncOrders = useCallback(async (store: ShopifyStore) => {
+    if (!store) return;
     
     setSyncing(true);
     setError(null);
     
     try {
-      frontendLogger.info('🔄 开始同步 Shopify 订单', { storeId });
-      const response = await frontendApi.post(`/api/external-systems/shopify/${storeId}/sync-orders`);
+      frontendLogger.info('🔄 开始同步 Shopify 订单', { storeId: store.external_id });
+      const response = await frontendApi.post(`/api/external-systems/shopify/${store.external_id}/sync-orders`);
       
       frontendLogger.info('✅ Shopify 订单同步成功', { 
         ordersSynced: response.data.orders_synced,
@@ -187,7 +187,7 @@ const ShopifyOrdersPage: React.FC = () => {
       });
       
       // 同步成功后刷新订单列表
-      await fetchOrders(storeId, 1);
+      await fetchOrders(store, 1);
       
     } catch (error: any) {
       frontendLogger.error('❌ Shopify 订单同步失败', { error: error.message });
@@ -224,9 +224,71 @@ const ShopifyOrdersPage: React.FC = () => {
   }, [selectedStore, fetchOrders, page]);
 
   // 查看订单详情
-  const handleViewOrder = (order: ShopifyOrder) => {
-    setSelectedOrder(order);
-    setDetailsOpen(true);
+  const handleViewOrder = async (order: ShopifyOrder) => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      if (!selectedStore) {
+        setError('请先选择一个店铺');
+        return;
+      }
+
+      // 从订单ID中提取Shopify订单ID
+      const orderId = order.id.split('/').pop(); // 移除 "gid://shopify/Order/" 前缀
+      
+      frontendLogger.info('🔍 开始获取订单详情', {
+        page: 'shopify-orders',
+        component: 'handleViewOrder',
+        action: 'fetch-order-details',
+        orderId,
+        shopId: selectedStore.external_id,
+      });
+
+      const response = await fetch(
+        `/api/external-systems/shopify/orders/${orderId}?shop_id=${selectedStore.external_id}`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${localStorage.getItem('access_token')}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      frontendLogger.info('📡 订单详情响应数据', {
+        page: 'shopify-orders',
+        component: 'handleViewOrder',
+        action: 'order-details-response',
+        hasOrder: !!data.order,
+        orderKeys: data.order ? Object.keys(data.order) : [],
+      });
+
+      if (data.success && data.order) {
+        setSelectedOrder(data.order);
+        setDetailsOpen(true);
+      } else {
+        throw new Error(data.message || '获取订单详情失败');
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : '获取订单详情失败';
+      setError(errorMessage);
+      frontendLogger.error('❌ 获取订单详情失败', {
+        page: 'shopify-orders',
+        component: 'handleViewOrder',
+        action: 'fetch-order-details-error',
+        error: errorMessage,
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   // 获取状态颜色
@@ -287,11 +349,11 @@ const ShopifyOrdersPage: React.FC = () => {
                     <Card
                       sx={{
                         cursor: 'pointer',
-                        border: selectedStore === store.external_system_id ? 2 : 1,
-                        borderColor: selectedStore === store.external_system_id ? 'primary.main' : 'divider',
+                        border: selectedStore?.external_system_id === store.external_system_id ? 2 : 1,
+                        borderColor: selectedStore?.external_system_id === store.external_system_id ? 'primary.main' : 'divider',
                         '&:hover': { borderColor: 'primary.main' },
                       }}
-                      onClick={() => setSelectedStore(store.external_system_id)}
+                      onClick={() => setSelectedStore(store)}
                     >
                       <CardContent>
                         <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
@@ -560,7 +622,7 @@ const ShopifyOrdersPage: React.FC = () => {
           <Dialog
             open={detailsOpen}
             onClose={() => setDetailsOpen(false)}
-            maxWidth="md"
+            maxWidth="lg"
             fullWidth
           >
             <DialogTitle>
@@ -570,6 +632,7 @@ const ShopifyOrdersPage: React.FC = () => {
               {selectedOrder && (
                 <Box>
                   <Grid container spacing={3}>
+                    {/* 基本信息 */}
                     <Grid item xs={12} md={6}>
                       <Typography variant="h6" gutterBottom>
                         基本信息
@@ -611,6 +674,8 @@ const ShopifyOrdersPage: React.FC = () => {
                         </Box>
                       </Stack>
                     </Grid>
+
+                    {/* 客户信息 */}
                     <Grid item xs={12} md={6}>
                       <Typography variant="h6" gutterBottom>
                         客户信息
@@ -624,8 +689,16 @@ const ShopifyOrdersPage: React.FC = () => {
                           <Typography variant="body2" color="text.secondary">邮箱:</Typography>
                           <Typography variant="body2">{selectedOrder.customer?.email || selectedOrder.email || '无'}</Typography>
                         </Box>
+                        {selectedOrder.phone && (
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <Typography variant="body2" color="text.secondary">电话:</Typography>
+                            <Typography variant="body2">{selectedOrder.phone}</Typography>
+                          </Box>
+                        )}
                       </Stack>
                     </Grid>
+
+                    {/* 收货地址 */}
                     {selectedOrder.shipping_address && (
                       <Grid item xs={12} md={6}>
                         <Typography variant="h6" gutterBottom>
@@ -635,18 +708,29 @@ const ShopifyOrdersPage: React.FC = () => {
                           <Typography variant="body2">
                             {selectedOrder.shipping_address.firstName} {selectedOrder.shipping_address.lastName}
                           </Typography>
+                          {selectedOrder.shipping_address.company && (
+                            <Typography variant="body2">{selectedOrder.shipping_address.company}</Typography>
+                          )}
                           <Typography variant="body2">
                             {selectedOrder.shipping_address.address1}
                           </Typography>
+                          {selectedOrder.shipping_address.address2 && (
+                            <Typography variant="body2">{selectedOrder.shipping_address.address2}</Typography>
+                          )}
                           <Typography variant="body2">
                             {selectedOrder.shipping_address.city}, {selectedOrder.shipping_address.province} {selectedOrder.shipping_address.zip}
                           </Typography>
                           <Typography variant="body2">
                             {selectedOrder.shipping_address.country}
                           </Typography>
+                          {selectedOrder.shipping_address.phone && (
+                            <Typography variant="body2">电话: {selectedOrder.shipping_address.phone}</Typography>
+                          )}
                         </Stack>
                       </Grid>
                     )}
+
+                    {/* 账单地址 */}
                     {selectedOrder.billing_address && (
                       <Grid item xs={12} md={6}>
                         <Typography variant="h6" gutterBottom>
@@ -656,15 +740,142 @@ const ShopifyOrdersPage: React.FC = () => {
                           <Typography variant="body2">
                             {selectedOrder.billing_address.firstName} {selectedOrder.billing_address.lastName}
                           </Typography>
+                          {selectedOrder.billing_address.company && (
+                            <Typography variant="body2">{selectedOrder.billing_address.company}</Typography>
+                          )}
                           <Typography variant="body2">
                             {selectedOrder.billing_address.address1}
                           </Typography>
+                          {selectedOrder.billing_address.address2 && (
+                            <Typography variant="body2">{selectedOrder.billing_address.address2}</Typography>
+                          )}
                           <Typography variant="body2">
                             {selectedOrder.billing_address.city}, {selectedOrder.billing_address.province} {selectedOrder.billing_address.zip}
                           </Typography>
                           <Typography variant="body2">
                             {selectedOrder.billing_address.country}
                           </Typography>
+                          {selectedOrder.billing_address.phone && (
+                            <Typography variant="body2">电话: {selectedOrder.billing_address.phone}</Typography>
+                          )}
+                        </Stack>
+                      </Grid>
+                    )}
+
+                    {/* 商品列表 */}
+                    {selectedOrder.line_items && selectedOrder.line_items.length > 0 && (
+                      <Grid item xs={12}>
+                        <Typography variant="h6" gutterBottom>
+                          商品列表
+                        </Typography>
+                        <TableContainer component={Paper} variant="outlined">
+                          <Table size="small">
+                            <TableHead>
+                              <TableRow>
+                                <TableCell>商品名称</TableCell>
+                                <TableCell align="right">数量</TableCell>
+                                <TableCell align="right">单价</TableCell>
+                                <TableCell align="right">小计</TableCell>
+                              </TableRow>
+                            </TableHead>
+                            <TableBody>
+                              {selectedOrder.line_items.map((item: any, index: number) => (
+                                <TableRow key={index}>
+                                  <TableCell>
+                                    <Typography variant="body2">{item.title}</Typography>
+                                    {item.variant?.title && (
+                                      <Typography variant="caption" color="text.secondary">
+                                        {item.variant.title}
+                                      </Typography>
+                                    )}
+                                  </TableCell>
+                                  <TableCell align="right">{item.quantity}</TableCell>
+                                  <TableCell align="right">
+                                    {formatPrice(item.price, item.currency)}
+                                  </TableCell>
+                                  <TableCell align="right">
+                                    {formatPrice(
+                                      (parseFloat(item.price) * item.quantity).toString(),
+                                      item.currency
+                                    )}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
+                      </Grid>
+                    )}
+
+                    {/* 履行信息 */}
+                    {selectedOrder.fulfillments && selectedOrder.fulfillments.length > 0 && (
+                      <Grid item xs={12}>
+                        <Typography variant="h6" gutterBottom>
+                          履行信息
+                        </Typography>
+                        <Stack spacing={2}>
+                          {selectedOrder.fulfillments.map((fulfillment: any, index: number) => (
+                            <Card key={index} variant="outlined">
+                              <CardContent>
+                                <Typography variant="subtitle2">
+                                  履行 #{index + 1} - {fulfillment.status}
+                                </Typography>
+                                {fulfillment.trackingInfo && (
+                                  <Box sx={{ mt: 1 }}>
+                                    <Typography variant="body2">
+                                      跟踪号: {fulfillment.trackingInfo.number}
+                                    </Typography>
+                                    {fulfillment.trackingInfo.company && (
+                                      <Typography variant="body2">
+                                        承运商: {fulfillment.trackingInfo.company}
+                                      </Typography>
+                                    )}
+                                    {fulfillment.trackingInfo.url && (
+                                      <Typography variant="body2">
+                                        <a href={fulfillment.trackingInfo.url} target="_blank" rel="noopener noreferrer">
+                                          跟踪链接
+                                        </a>
+                                      </Typography>
+                                    )}
+                                  </Box>
+                                )}
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </Stack>
+                      </Grid>
+                    )}
+
+                    {/* 退款信息 */}
+                    {selectedOrder.refunds && selectedOrder.refunds.length > 0 && (
+                      <Grid item xs={12}>
+                        <Typography variant="h6" gutterBottom>
+                          退款信息
+                        </Typography>
+                        <Stack spacing={2}>
+                          {selectedOrder.refunds.map((refund: any, index: number) => (
+                            <Card key={index} variant="outlined">
+                              <CardContent>
+                                <Typography variant="subtitle2">
+                                  退款 #{index + 1}
+                                </Typography>
+                                <Typography variant="body2">
+                                  金额: {formatPrice(
+                                    refund.totalRefundedSet?.shopMoney?.amount || '0',
+                                    refund.totalRefundedSet?.shopMoney?.currencyCode || 'USD'
+                                  )}
+                                </Typography>
+                                {refund.note && (
+                                  <Typography variant="body2">
+                                    备注: {refund.note}
+                                  </Typography>
+                                )}
+                                <Typography variant="caption" color="text.secondary">
+                                  {formatDate(refund.createdAt)}
+                                </Typography>
+                              </CardContent>
+                            </Card>
+                          ))}
                         </Stack>
                       </Grid>
                     )}

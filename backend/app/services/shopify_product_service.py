@@ -10,7 +10,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
 
 from app.models.external_system import ExternalSystem
-from app.models.product import Product
+from app.models.product_new import Product
 from app.services.product_mapper import ProductMapper
 from app.core.logging import get_logger
 
