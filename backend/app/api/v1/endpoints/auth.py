@@ -3,24 +3,34 @@ Authentication endpoints - Simplified version without JWT
 """
 
 from typing import Any
-import hashlib
-import hmac
 import base64
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import rsa, padding
-from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import (
+    hashes,
+    serialization,
+)
+from cryptography.hazmat.primitives.asymmetric import (
+    padding,
+)
+from cryptography.hazmat.backends import (
+    default_backend,
+)
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request, Form, Header
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    status,
+    Request,
+    Form,
+    Header,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.database import get_async_db
 from app.core.logging import RequestLogger
-from app.models.user import User
 from app.models.tenant import Tenant
 from app.schemas.auth import UserCreate, UserResponse
 from app.services.user_service import UserService
-from app.core.hashids_utils import hashids_encoder
 from app.core.jwt_utils import jwt_utils
 
 router = APIRouter()
@@ -33,47 +43,95 @@ async def verify_tenant_signature(
     验证租户签名
     """
     try:
-        from sqlalchemy import select
+        from sqlalchemy import select  # pyright: ignore[reportMissingImports]
 
-        print(f"🔍 签名验证调试信息:")
-        print(f"   tenant_name: {tenant_name}")
-        print(f"   signature: {signature[:50]}...")
-        print(f"   message: {message}")
-        print(f"   message_length: {len(message)}")
+        # 使用标准日志记录替换 print，便于后续排查和生产环境调试
+        from app.core.logging import get_logger
+
+        logger = get_logger(__name__)
+        logger.info(
+            "🔍 签名验证调试信息",
+            tenant_name=tenant_name,
+            signature_preview=(
+                signature[:50] + "..." if len(signature) > 50 else signature
+            ),
+            message_preview=(message[:100] + "..." if len(message) > 100 else message),
+            message_length=len(message),
+        )
 
         # 获取租户信息和公钥
-        print(f"🔍 查询数据库获取租户信息...")
-        tenant_result = await db.execute(
-            select(Tenant).where(Tenant.name == tenant_name)
-        )
-        tenant = tenant_result.scalar_one_or_none()
+        logger.info("🔍 查询数据库获取租户信息...", tenant_name=tenant_name)
+        try:
+            tenant_result = await db.execute(
+                select(Tenant).where(Tenant.name == tenant_name)
+            )
+            tenant = tenant_result.scalar_one_or_none()
+            if tenant:
+                logger.info(
+                    "✅ 租户信息查询成功", tenant_id=tenant.id, tenant_name=tenant.name
+                )
+            else:
+                logger.error("❌ 未找到租户信息", tenant_name=tenant_name)
+        except Exception as e:
+            logger.error(
+                "❌ 查询租户信息时发生异常", error=str(e), tenant_name=tenant_name
+            )
+            import traceback
+
+            logger.error("   异常堆栈", stack=traceback.format_exc())
+            return False
 
         if not tenant:
             print(f"❌ 租户不存在: {tenant_name}")
             return False
+        # 日志记录：租户存在
+        from app.core.logging import get_logger
 
-        print(
-            f"✅ 租户存在: id={tenant.id}, name={tenant.name}, is_active={tenant.is_active}"
+        logger = get_logger(__name__)
+        logger.info(
+            "✅ 租户存在",
+            tenant_id=tenant.id,
+            tenant_name=tenant.name,
+            is_active=tenant.is_active,
         )
 
         if not tenant.public_key:
-            print(f"❌ 租户公钥不存在")
+            logger.error(
+                "❌ 租户公钥不存在", tenant_id=tenant.id, tenant_name=tenant.name
+            )
+            logger.error(
+                "❌ 租户公钥不存在", tenant_id=tenant.id, tenant_name=tenant.name
+            )
             return False
 
-        print(f"✅ 从租户表获取公钥成功")
-        print(f"   key_id: {tenant.key_id}")
-        print(f"   key_type: {tenant.key_type}")
-        print(f"   public_key_length: {len(tenant.public_key)}")
-        print(f"   public_key_preview: {tenant.public_key[:100]}...")
+        logger.info(
+            "✅ 从租户表获取公钥成功",
+            key_id=tenant.key_id,
+            key_type=tenant.key_type,
+            public_key_length=len(tenant.public_key),
+            public_key_preview=(
+                tenant.public_key[:100] + "..."
+                if len(tenant.public_key) > 100
+                else tenant.public_key
+            ),
+        )
 
         # 加载公钥
         try:
             public_key = serialization.load_pem_public_key(
                 tenant.public_key.encode("utf-8"), backend=default_backend()
             )
-            print(f"✅ 公钥加载成功")
+            logger.info("✅ 公钥加载成功", tenant_id=tenant.id, tenant_name=tenant.name)
         except Exception as e:
-            print(f"❌ 公钥加载失败: {e}")
+            logger.error(
+                "❌ 公钥加载失败",
+                error=str(e),
+                tenant_id=tenant.id,
+                tenant_name=tenant.name,
+            )
+            import traceback
+
+            logger.error("   异常堆栈", stack=traceback.format_exc())
             return False
 
         # 解码签名
@@ -92,10 +150,18 @@ async def verify_tenant_signature(
                 padding.PKCS1v15(),
                 hashes.SHA256(),
             )
-            print(f"✅ 签名验证成功")
+            logger.info("✅ 签名验证成功", tenant_id=tenant.id, tenant_name=tenant.name)
         except Exception as e:
-            print(f"❌ 签名验证失败: {e}")
-            print(f"   异常类型: {type(e).__name__}")
+            logger.error(
+                "❌ 签名验证失败",
+                error=str(e),
+                tenant_id=tenant.id,
+                tenant_name=tenant.name,
+            )
+            import traceback
+
+            logger.error("   异常堆栈", stack=traceback.format_exc())
+            logger.error("   异常类型", error_type=type(e).__name__)
             return False
 
         # 更新租户密钥使用统计（如果需要的话）
@@ -127,12 +193,23 @@ async def login(
     db: AsyncSession = Depends(get_async_db),
 ) -> Any:
     """
-    Main login endpoint
-    This endpoint is called by the frontend API route after signature verification
+    主登录端点
+    此端点由前端 API 路由在签名验证后调用
     """
-    logger = RequestLogger("auth.login")
+    from app.core.logging import get_logger
+
+    logger = get_logger(__name__)
 
     try:
+        logger.info(
+            "🔍 开始处理登录请求",
+            params={
+                "username": username,
+                "tenant_name": tenant_name,
+                "timestamp": x_timestamp,
+                "nonce": x_nonce,
+            },
+        )
         logger.info(
             f"Login attempt - username: {username}, "
             f"tenant_name: {tenant_name}, timestamp: {x_timestamp}, "
@@ -140,10 +217,14 @@ async def login(
         )
 
         # 验证签名
-        body = f"username={username}&password={password}&" f"tenant_name={tenant_name}"
+        # 构建 body 字符串，避免超过最大行长度
+        # 按照PEP8规范，每行不超过79字符
+        body = (
+            f"username={username}" f"&password={password}" f"&tenant_name={tenant_name}"
+        )
         backend_path = "/api/v1/auth/login"
         signature_string = (
-            f"POST{backend_path}{x_timestamp}{x_nonce}" f"{tenant_name}{body}"
+            f"POST{backend_path}{x_timestamp}{x_nonce}{tenant_name}{body}"
         )
 
         logger.info(
@@ -162,7 +243,7 @@ async def login(
         logger.info("Signature verified successfully")
 
         # Get tenant by name
-        from sqlalchemy import select
+        from sqlalchemy import select  # pyright: ignore[reportMissingImports]
 
         result = await db.execute(select(Tenant).where(Tenant.name == tenant_name))
         tenant = result.scalar_one_or_none()
@@ -257,18 +338,24 @@ async def login_tenant(
 
     try:
         logger.info(
-            f"Tenant login attempt - username: {username}, tenant_name: {tenant_name}, timestamp: {x_timestamp}, nonce: {x_nonce}"
+            f"Tenant login attempt - username: {username}, "
+            f"tenant_name: {tenant_name}, timestamp: {x_timestamp}, "
+            f"nonce: {x_nonce}"
         )
 
         # 验证签名
-        body = f"username={username}&password={password}&tenant_name={tenant_name}"
+        body = f"username={username}&password={password}&" f"tenant_name={tenant_name}"
         backend_path = "/api/v1/auth/login/tenant"
         signature_string = (
             f"POST{backend_path}{x_timestamp}{x_nonce}{tenant_name}{body}"
         )
 
         logger.info(
-            f"🔍 Backend 签名验证调试信息: username={username}, tenant_name={tenant_name}, timestamp={x_timestamp}, nonce={x_nonce}, body={body}, backend_path={backend_path}, signature_string_length={len(signature_string)}, x_signature_length={len(x_signature)}"
+            f"🔍 Backend 签名验证调试信息: username={username}, "
+            f"tenant_name={tenant_name}, timestamp={x_timestamp}, "
+            f"nonce={x_nonce}, body={body}, backend_path={backend_path}, "
+            f"signature_string_length={len(signature_string)}, "
+            f"x_signature_length={len(x_signature)}"
         )
 
         if not await verify_tenant_signature(
@@ -279,7 +366,7 @@ async def login_tenant(
         logger.info("Signature verified successfully")
 
         # Get tenant by name
-        from sqlalchemy import select
+        from sqlalchemy import select  # pyright: ignore[reportMissingImports]
 
         result = await db.execute(select(Tenant).where(Tenant.name == tenant_name))
         tenant = result.scalar_one_or_none()
@@ -302,7 +389,8 @@ async def login_tenant(
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
         logger.info(
-            f"User authenticated successfully - user_id: {user.id}, tenant_id: {tenant_id}, tenant_name: {tenant_name}"
+            f"User authenticated successfully - user_id: {user.id}, "
+            f"tenant_id: {tenant_id}, tenant_name: {tenant_name}"
         )
 
         # Return user data (without sensitive information)
@@ -311,7 +399,9 @@ async def login_tenant(
                 "id": user.id,
                 "email": user.email,
                 "is_active": user.is_active,
-                "created_at": user.created_at.isoformat() if user.created_at else None,
+                "created_at": (
+                    user.created_at.isoformat() if user.created_at else None
+                ),
             },
             "tenant_name": tenant.name,
             "tenant_id": tenant_id,
@@ -359,7 +449,8 @@ async def read_users_me(
     # For now, we'll return a placeholder response
     raise HTTPException(
         status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="This endpoint requires authentication. Use API Key or RSA JWT authentication.",
+        detail="This endpoint requires authentication. "
+        "Use API Key or RSA JWT authentication.",
     )
 
 
