@@ -181,8 +181,17 @@ class ExternalSystemService:
         if "credentials" in kwargs:
             encrypted_credentials = {}
             for key, value in kwargs["credentials"].items():
-                if value:  # Only encrypt non-empty values
+                if value and value.strip():  # Only encrypt non-empty values
                     encrypted_credentials[key] = encrypt_data(str(value))
+                else:
+                    # Keep existing encrypted value if new value is empty
+                    if (
+                        hasattr(external_system, "credentials")
+                        and external_system.credentials
+                    ):
+                        encrypted_credentials[key] = external_system.credentials.get(
+                            key, ""
+                        )
             kwargs["credentials"] = encrypted_credentials
 
         # Update the external system

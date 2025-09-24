@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Button,
@@ -17,6 +17,11 @@ import {
   IconButton,
   Tooltip,
   Stack,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Alert,
 } from '@mui/material';
 import {
   LocalShipping as Package,
@@ -29,6 +34,7 @@ import {
   PrintifyOrderResponse,
 } from '@/lib/printify-api';
 import { frontendLogger } from '@/lib/frontend-logger';
+import { frontendApi } from '@/lib/api';
 
 interface CreatePrintifyOrderButtonProps {
   orderId: string;
@@ -38,12 +44,20 @@ interface CreatePrintifyOrderButtonProps {
     shipping_address?: {
       address1?: string;
       city?: string;
+      province?: string;
       state?: string;
       country?: string;
       zip?: string;
       phone?: string;
     };
   };
+}
+
+interface PrintifyStore {
+  id: number;
+  name: string;
+  external_system_id: string;
+  is_active: boolean;
 }
 
 export function CreatePrintifyOrderButton({
@@ -53,6 +67,10 @@ export function CreatePrintifyOrderButton({
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<PrintifyOrderResponse | null>(null);
+  const [stores, setStores] = useState<PrintifyStore[]>([]);
+  const [selectedStoreId, setSelectedStoreId] = useState<string>('');
+  const [loadingStores, setLoadingStores] = useState(false);
+  const [storeError, setStoreError] = useState<string | null>(null);
 
   // 表单数据
   const [formData, setFormData] = useState({
@@ -60,12 +78,47 @@ export function CreatePrintifyOrderButton({
     customer_email: orderData?.customer_email || 'test@example.com',
     address_line1: orderData?.shipping_address?.address1 || '123 Test Street',
     city: orderData?.shipping_address?.city || 'Tokyo',
-    state: orderData?.shipping_address?.state || 'Tokyo',
+    state: orderData?.shipping_address?.province || orderData?.shipping_address?.state || 'Tokyo',
     country: orderData?.shipping_address?.country || 'JP',
     zip_code: orderData?.shipping_address?.zip || '100-0001',
     phone: orderData?.shipping_address?.phone || '+81-90-1234-5678',
     quantity: 1,
   });
+
+  // 获取Printify店铺列表
+  const fetchStores = async () => {
+    try {
+      setLoadingStores(true);
+      setStoreError(null);
+      
+      const response = await frontendApi.get('/api/external-systems?system_type=printify');
+      const printifyStores = response.data.external_systems.filter(
+        (store: any) => store.system_type === 'PRINTIFY' && store.is_active
+      );
+      
+      setStores(printifyStores);
+      
+      // 如果只有一个店铺，自动选择
+      if (printifyStores.length === 1) {
+        setSelectedStoreId(printifyStores[0].id_hashid);
+      }
+      
+      frontendLogger.info('✅ Printify店铺列表获取成功', { count: printifyStores.length });
+    } catch (error: any) {
+      console.error('❌ 获取Printify店铺列表失败:', error);
+      setStoreError('获取Printify店铺列表失败，请稍后重试');
+      frontendLogger.error('❌ 获取Printify店铺列表失败', { error: error.message });
+    } finally {
+      setLoadingStores(false);
+    }
+  };
+
+  // 当对话框打开时获取店铺列表
+  useEffect(() => {
+    if (isOpen && stores.length === 0) {
+      fetchStores();
+    }
+  }, [isOpen]);
 
   const handleInputChange = (field: string, value: string | number) => {
     setFormData(prev => ({
@@ -75,11 +128,16 @@ export function CreatePrintifyOrderButton({
   };
 
   const handleCreateOrder = async () => {
+    if (!selectedStoreId) {
+      alert('请选择一个Printify店铺');
+      return;
+    }
+
     setIsLoading(true);
     setResult(null);
 
     try {
-      frontendLogger.info('🚀 开始创建Printify订单', { orderId });
+      frontendLogger.info('🚀 开始创建Printify订单', { orderId, selectedStoreId });
 
       const request: PrintifyOrderRequest = {
         order_id: parseInt(orderId),
@@ -109,6 +167,8 @@ export function CreatePrintifyOrderButton({
   const handleClose = () => {
     setIsOpen(false);
     setResult(null);
+    setSelectedStoreId('');
+    setStoreError(null);
   };
 
   return (
@@ -133,6 +193,48 @@ export function CreatePrintifyOrderButton({
           </Typography>
 
           <Stack spacing={3}>
+            {/* 店铺选择 */}
+            <Card variant='outlined'>
+              <CardHeader>
+                <Typography variant='h6' component='div' sx={{ p: 2, pb: 0 }}>
+                  Printify店铺选择
+                </Typography>
+              </CardHeader>
+              <CardContent>
+                {storeError && (
+                  <Alert severity='error' sx={{ mb: 2 }}>
+                    {storeError}
+                  </Alert>
+                )}
+                
+                {loadingStores ? (
+                  <Box display='flex' alignItems='center' gap={2}>
+                    <CircularProgress size={20} />
+                    <Typography variant='body2'>正在加载Printify店铺...</Typography>
+                  </Box>
+                ) : stores.length === 0 ? (
+                  <Alert severity='warning'>
+                    没有找到可用的Printify店铺，请先在外部系统管理中配置Printify连接。
+                  </Alert>
+                ) : (
+                  <FormControl fullWidth>
+                    <InputLabel>选择Printify店铺 *</InputLabel>
+                    <Select
+                      value={selectedStoreId}
+                      onChange={(e) => setSelectedStoreId(e.target.value)}
+                      label='选择Printify店铺 *'
+                    >
+                      {stores.map((store) => (
+                        <MenuItem key={store.id} value={store.id_hashid}>
+                          {store.name} ({store.external_system_id})
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                )}
+              </CardContent>
+            </Card>
+
             {/* 客户信息 */}
             <Card variant='outlined'>
               <CardHeader>

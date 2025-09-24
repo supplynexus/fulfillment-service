@@ -238,7 +238,7 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
                     Shopify订单ID:
                   </Typography>
                   <Typography variant='body2' fontWeight='medium'>
-                    {order.shopify_order_id}
+                    {order.external_order_id || order.shopify_order_id}
                   </Typography>
                 </Box>
                 {order.shopify_order_number && (
@@ -326,14 +326,16 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
                     </Typography>
                   </Box>
                 )}
-                <Box display='flex' justifyContent='space-between'>
-                  <Typography variant='body2' color='text.secondary'>
-                    客户ID:
-                  </Typography>
-                  <Typography variant='body2' fontWeight='medium'>
-                    {order.customer_id}
-                  </Typography>
-                </Box>
+                {order.customer_id && (
+                  <Box display='flex' justifyContent='space-between'>
+                    <Typography variant='body2' color='text.secondary'>
+                      客户ID:
+                    </Typography>
+                    <Typography variant='body2' fontWeight='medium'>
+                      {order.customer_id}
+                    </Typography>
+                  </Box>
+                )}
               </Stack>
             </CardContent>
           </Card>

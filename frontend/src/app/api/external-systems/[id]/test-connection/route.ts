@@ -103,7 +103,7 @@ export async function POST(
     const backendUrl =
       process.env.BACKEND_API_URL ||
       process.env.NEXT_PUBLIC_API_URL ||
-      'http://localhost:8000';
+      'http://backend:8000';
     const backendEndpoint = `${backendUrl}/api/v1/external-systems/${externalSystemId}/test-connection`;
 
     logger.info('Forwarding request to backend', {
