@@ -67,7 +67,7 @@ export async function GET(
     });
 
     const backendUrl =
-      `${process.env.NEXT_PUBLIC_API_URL}/api/v1/external-systems/shopify/${external_system_hashid}/products`;
+      `${process.env.BACKEND_API_URL}/api/v1/external-systems/shopify/${external_system_hashid}/products`;
 
     logger.info('Forwarding request to backend', {
       backendEndpoint: backendUrl,

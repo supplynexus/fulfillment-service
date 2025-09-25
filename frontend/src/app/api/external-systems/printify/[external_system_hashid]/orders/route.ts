@@ -67,7 +67,7 @@ export async function GET(
     });
 
     const backendApiUrl =
-      process.env.BACKEND_API_URL || 'http://localhost:8000';
+      process.env.BACKEND_API_URL || 'http://backend:8000';
     const backendEndpoint = `${backendApiUrl}${backendPath}`;
 
     logger.info('Forwarding request to backend', { backendEndpoint });

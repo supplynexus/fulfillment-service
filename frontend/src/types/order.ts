@@ -1,6 +1,9 @@
 export interface Order {
   id: number;
-  shopify_order_id: string;
+  shopify_order_id?: string;
+  external_order_id?: string;
+  external_order_name?: string;
+  external_order_number?: string;
   shopify_order_number?: string;
   shopify_order_name?: string;
   printify_order_id?: string;
@@ -24,7 +27,7 @@ export interface Order {
   fulfilled_at?: string;
   created_at: string;
   updated_at?: string;
-  customer_id: number;
+  customer_id?: number;
 }
 
 export interface OrderCreate {

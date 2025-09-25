@@ -8,7 +8,7 @@ const logger = createLogger('api.external-systems.shopify.orders');
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { shop_id: string } }
+  { params }: { params: { external_system_hashid: string } }
 ) {
   const startTime = Date.now();
   
@@ -16,7 +16,7 @@ export async function GET(
     logger.info('Request started', { 
       method: request.method, 
       url: request.url,
-      shop_id: params.shop_id
+      external_system_hashid: params.external_system_hashid
     });
 
     const authorization = request.headers.get('authorization');
@@ -50,7 +50,7 @@ export async function GET(
     const timestamp = Math.floor(Date.now() / 1000);
     const nonce = Math.random().toString(36).substring(2, 15);
     const bodyString = '';
-    const backendPath = `/api/v1/external-systems/shopify/${params.shop_id}/orders`;
+    const backendPath = `/api/v1/external-systems/shopify/${params.external_system_hashid}/orders`;
     const signatureString = `GET${backendPath}${timestamp}${nonce}${tenantName}${bodyString}`;
 
     logger.info('🔍 前端签名生成调试信息', {

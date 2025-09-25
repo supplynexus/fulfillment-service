@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 class SCMOrderCreate(BaseModel):
     """创建SCM订单的 schema"""
+
     source_order_id: int
     target_system_type: str
     target_system_id: Optional[str] = None
@@ -26,9 +27,10 @@ class SCMOrderCreate(BaseModel):
 
 class SCMOrderResponse(BaseModel):
     """SCM订单响应 schema"""
+
     id: int
     tenant_id: int
-    source_order_id: int
+    source_order_id: Optional[int] = None
     target_system_type: str
     target_system_id: Optional[str] = None
     scm_order_number: Optional[str] = None
@@ -53,13 +55,14 @@ class SCMOrderResponse(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime] = None
     fulfilled_at: Optional[datetime] = None
-    
+
     class Config:
         from_attributes = True
 
 
 class SCMOrderListResponse(BaseModel):
     """SCM订单列表响应 schema"""
+
     scm_orders: List[SCMOrderResponse]
     total: int
     skip: int
@@ -68,6 +71,7 @@ class SCMOrderListResponse(BaseModel):
 
 class RoutingRuleCreate(BaseModel):
     """创建路由规则的 schema"""
+
     name: str
     description: Optional[str] = None
     conditions: Dict[str, Any]
@@ -79,6 +83,7 @@ class RoutingRuleCreate(BaseModel):
 
 class RoutingRuleResponse(BaseModel):
     """路由规则响应 schema"""
+
     id: int
     tenant_id: int
     name: str
@@ -90,13 +95,14 @@ class RoutingRuleResponse(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: Optional[datetime] = None
-    
+
     class Config:
         from_attributes = True
 
 
 class RoutingRuleListResponse(BaseModel):
     """路由规则列表响应 schema"""
+
     routing_rules: List[RoutingRuleResponse]
     total: int
     skip: int
@@ -105,6 +111,7 @@ class RoutingRuleListResponse(BaseModel):
 
 class OrderRoutingConfig(BaseModel):
     """订单路由配置 schema"""
+
     routing_strategy: str = "auto"  # auto, manual, hybrid
     target_systems: List[Dict[str, Any]] = []
     routing_rules: Dict[str, Any] = {}
@@ -113,6 +120,7 @@ class OrderRoutingConfig(BaseModel):
 
 class OrderRoutingResponse(BaseModel):
     """订单路由响应 schema"""
+
     success: bool
     original_order_id: int
     scm_orders: List[Dict[str, Any]]
@@ -122,6 +130,7 @@ class OrderRoutingResponse(BaseModel):
 
 class BatchOrderRoutingConfig(BaseModel):
     """批量订单路由配置 schema"""
+
     order_ids: List[int]
     routing_strategy: str = "auto"
     batch_processing: Dict[str, Any] = {}
@@ -129,6 +138,7 @@ class BatchOrderRoutingConfig(BaseModel):
 
 class BatchOrderRoutingResponse(BaseModel):
     """批量订单路由响应 schema"""
+
     success: bool
     processed_orders: int
     total_orders: int

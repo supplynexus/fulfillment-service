@@ -17,7 +17,6 @@ import {
   Button,
   TextField,
   InputAdornment,
-  Pagination,
   IconButton,
   Tooltip,
   Alert,
@@ -28,12 +27,13 @@ import {
   Refresh as RefreshIcon,
   Visibility as ViewIcon,
   FilterList as FilterIcon,
+  Sync as SyncIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
 import { Order, OrderStatus } from '@/types/order';
 import { frontendApi } from '@/lib/api';
 
-const ITEMS_PER_PAGE = 10;
+const ITEMS_PER_PAGE = 1000; // 显示所有订单，设置一个较大的值
 
 export function OrdersList() {
   const router = useRouter();
@@ -41,8 +41,9 @@ export function OrdersList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
+  // 移除分页相关状态，显示所有订单
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
   const fetchOrders = useCallback(async () => {
     try {
@@ -51,21 +52,19 @@ export function OrdersList() {
 
       const response = await frontendApi.get('/api/orders', {
         params: {
-          page: currentPage,
           limit: ITEMS_PER_PAGE,
           search: searchTerm || undefined,
         },
       });
 
       setOrders(response.data.orders || []);
-      setTotalPages(Math.ceil((response.data.total || 0) / ITEMS_PER_PAGE));
     } catch (err: any) {
       console.error('Failed to fetch orders:', err);
       setError(err.response?.data?.detail || 'Failed to fetch orders');
     } finally {
       setLoading(false);
     }
-  }, [currentPage, searchTerm]);
+  }, [searchTerm]);
 
   useEffect(() => {
     fetchOrders();
@@ -73,11 +72,71 @@ export function OrdersList() {
 
   const handleSearch = (event: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(event.target.value);
-    setCurrentPage(1); // Reset to first page when searching
   };
 
   const handleRefresh = () => {
     fetchOrders();
+  };
+
+  const handleSyncShopifyOrders = async () => {
+    try {
+      setSyncing(true);
+      setSyncMessage('正在同步 Shopify 订单...');
+      setError(null);
+
+      // 首先获取所有 Shopify 店铺
+      const storesResponse = await frontendApi.get('/api/external-systems?system_type=shopify');
+      const shopifyStores = storesResponse.data.external_systems || [];
+
+      if (shopifyStores.length === 0) {
+        setSyncMessage('没有找到 Shopify 店铺，请先配置 Shopify 连接');
+        return;
+      }
+
+      let totalSynced = 0;
+      let totalErrors = 0;
+
+      // 为每个 Shopify 店铺同步订单
+      for (const store of shopifyStores) {
+        try {
+          setSyncMessage(`正在同步店铺: ${store.name}...`);
+          
+          const syncResponse = await frontendApi.post(
+            `/api/external-systems/shopify/${store.id_hashid}/sync-orders`,
+            {
+              limit: 100, // 每次同步最多100个订单
+              status: 'any', // 同步所有状态的订单
+            }
+          );
+
+          if (syncResponse.data.success) {
+            totalSynced += syncResponse.data.synced_count || 0;
+            console.log(`✅ 店铺 ${store.name} 同步成功: ${syncResponse.data.synced_count || 0} 个订单`);
+          }
+        } catch (storeError: any) {
+          console.error(`❌ 店铺 ${store.name} 同步失败:`, storeError);
+          totalErrors++;
+        }
+      }
+
+      if (totalErrors === 0) {
+        setSyncMessage(`✅ 同步完成！共同步了 ${totalSynced} 个订单`);
+      } else {
+        setSyncMessage(`⚠️ 同步完成，成功同步 ${totalSynced} 个订单，${totalErrors} 个店铺同步失败`);
+      }
+
+      // 同步完成后刷新订单列表
+      await fetchOrders();
+
+    } catch (error: any) {
+      console.error('❌ Shopify 订单同步失败:', error);
+      setError(error.response?.data?.detail || '同步失败，请稍后重试');
+      setSyncMessage(null);
+    } finally {
+      setSyncing(false);
+      // 3秒后清除同步消息
+      setTimeout(() => setSyncMessage(null), 3000);
+    }
   };
 
   const handleViewOrder = (orderId: number) => {
@@ -144,19 +203,39 @@ export function OrdersList() {
         <Typography variant='h4' component='h1'>
           订单管理
         </Typography>
-        <Button
-          variant='outlined'
-          startIcon={<RefreshIcon />}
-          onClick={handleRefresh}
-          disabled={loading}
-        >
-          刷新
-        </Button>
+        <Box display='flex' gap={2}>
+          <Button
+            variant='contained'
+            startIcon={syncing ? <CircularProgress size={16} /> : <SyncIcon />}
+            onClick={handleSyncShopifyOrders}
+            disabled={syncing || loading}
+            color='primary'
+          >
+            {syncing ? '同步中...' : '同步 Shopify 订单'}
+          </Button>
+          <Button
+            variant='outlined'
+            startIcon={<RefreshIcon />}
+            onClick={handleRefresh}
+            disabled={loading || syncing}
+          >
+            刷新
+          </Button>
+        </Box>
       </Box>
 
       {error && (
         <Alert severity='error' sx={{ mb: 2 }}>
           {error}
+        </Alert>
+      )}
+
+      {syncMessage && (
+        <Alert 
+          severity={syncMessage.includes('✅') ? 'success' : syncMessage.includes('⚠️') ? 'warning' : 'info'} 
+          sx={{ mb: 2 }}
+        >
+          {syncMessage}
         </Alert>
       )}
 
@@ -213,7 +292,7 @@ export function OrdersList() {
                       </TableCell>
                       <TableCell>
                         <Typography variant='body2'>
-                          {order.shopify_order_number || order.shopify_order_id}
+                          {order.external_order_name || order.external_order_id}
                         </Typography>
                       </TableCell>
                       <TableCell>
@@ -260,16 +339,7 @@ export function OrdersList() {
             </Table>
           </TableContainer>
 
-          {totalPages > 1 && (
-            <Box display='flex' justifyContent='center' mt={3}>
-              <Pagination
-                count={totalPages}
-                page={currentPage}
-                onChange={(_, page) => setCurrentPage(page)}
-                color='primary'
-              />
-            </Box>
-          )}
+          {/* 移除分页组件，显示所有订单 */}
         </CardContent>
       </Card>
     </Box>

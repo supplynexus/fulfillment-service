@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
 
     // Get query parameters
     const { searchParams } = new URL(request.url);
-    const systemType = searchParams.get('system_type');
+    const systemType = searchParams.get('system_type')?.toUpperCase();
     const activeOnly = searchParams.get('active_only') !== 'false';
 
     const timestamp = Math.floor(Date.now() / 1000);
