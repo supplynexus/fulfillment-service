@@ -20,7 +20,7 @@ class ExternalSystemBase(BaseModel):
     settings: Dict[str, Any] = Field(default_factory=dict, description="System-specific settings")
     sync_enabled: bool = Field(True, description="Enable automatic sync")
     webhook_enabled: bool = Field(True, description="Enable webhook processing")
-    sync_interval_minutes: int = Field(60, description="Sync interval in minutes")
+    sync_interval_minutes: Optional[int] = Field(60, description="Sync interval in minutes")
 
 
 class ExternalSystemCreate(ExternalSystemBase):
