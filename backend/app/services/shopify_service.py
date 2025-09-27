@@ -1638,6 +1638,206 @@ class ShopifyService:
                 "error": f"Failed to get product JSON: {str(e)}",
             }
 
+    async def get_order_json(
+        self,
+        shop_id: str,
+        order_id: str,
+        access_token: str,
+        api_version: str = "2024-10",
+    ) -> Dict[str, Any]:
+        """Get complete JSON data for a specific Shopify order"""
+        try:
+            logger.info(
+                f"🔍 开始获取 Shopify 订单 JSON: shop_id={shop_id}, order_id={order_id}"
+            )
+
+            # Prepare GraphQL query for complete order data
+            query = """
+            query($id: ID!) {
+                order(id: $id) {
+                    id
+                    name
+                    email
+                    phone
+                    createdAt
+                    updatedAt
+                    processedAt
+                    totalPriceSet {
+                        shopMoney {
+                            amount
+                            currencyCode
+                        }
+                    }
+                    subtotalPriceSet {
+                        shopMoney {
+                            amount
+                            currencyCode
+                        }
+                    }
+                    totalTaxSet {
+                        shopMoney {
+                            amount
+                            currencyCode
+                        }
+                    }
+                    totalShippingPriceSet {
+                        shopMoney {
+                            amount
+                            currencyCode
+                        }
+                    }
+                    displayFulfillmentStatus
+                    displayFinancialStatus
+                    tags
+                    note
+                    customer {
+                        id
+                        firstName
+                        lastName
+                        email
+                        phone
+                        defaultAddress {
+                            id
+                            firstName
+                            lastName
+                            company
+                            address1
+                            address2
+                            city
+                            province
+                            country
+                            zip
+                            phone
+                        }
+                    }
+                    shippingAddress {
+                        id
+                        firstName
+                        lastName
+                        company
+                        address1
+                        address2
+                        city
+                        province
+                        country
+                        zip
+                        phone
+                    }
+                    billingAddress {
+                        id
+                        firstName
+                        lastName
+                        company
+                        address1
+                        address2
+                        city
+                        province
+                        country
+                        zip
+                        phone
+                    }
+                    lineItems(first: 50) {
+                        edges {
+                            node {
+                                id
+                                title
+                                quantity
+                                originalUnitPriceSet {
+                                    shopMoney {
+                                        amount
+                                        currencyCode
+                                    }
+                                }
+                                variant {
+                                    id
+                                    title
+                                    sku
+                                    barcode
+                                    image {
+                                        url
+                                        altText
+                                    }
+                                }
+                                product {
+                                    id
+                                    title
+                                    handle
+                                    vendor
+                                    productType
+                                }
+                            }
+                        }
+                    }
+                    fulfillments {
+                        id
+                        status
+                        createdAt
+                        updatedAt
+                    }
+                    refunds {
+                        id
+                        createdAt
+                        note
+                        totalRefundedSet {
+                            shopMoney {
+                                amount
+                                currencyCode
+                            }
+                        }
+                    }
+                }
+            }
+            """
+
+            variables = {"id": f"gid://shopify/Order/{order_id}"}
+
+            response = await self.client.post(
+                f"https://{shop_id}.myshopify.com/admin/api/{api_version}/graphql.json",
+                headers={
+                    "X-Shopify-Access-Token": access_token,
+                    "Content-Type": "application/json",
+                },
+                json={"query": query, "variables": variables},
+            )
+
+            if response.status_code != 200:
+                logger.error(f"❌ Shopify API 请求失败: status={response.status_code}")
+                return {
+                    "success": False,
+                    "error": f"Shopify API request failed with status {response.status_code}",
+                }
+
+            data = response.json()
+
+            if "errors" in data:
+                logger.error(f"❌ Shopify GraphQL 错误: {data['errors']}")
+                return {
+                    "success": False,
+                    "error": f"GraphQL errors: {data['errors']}",
+                }
+
+            order_data = data.get("data", {}).get("order")
+            if not order_data:
+                logger.error(f"❌ 未找到订单: order_id={order_id}")
+                return {
+                    "success": False,
+                    "error": f"Order not found: {order_id}",
+                }
+
+            logger.info(f"✅ Shopify 订单 JSON 获取成功: order_id={order_id}")
+
+            return {
+                "success": True,
+                "order": order_data,
+            }
+
+        except Exception as e:
+            logger.error(f"❌ 获取 Shopify 订单 JSON 失败: {str(e)}")
+            return {
+                "success": False,
+                "error": f"Failed to get order JSON: {str(e)}",
+            }
+
     async def close(self):
         """Close HTTP client"""
         await self.client.aclose()

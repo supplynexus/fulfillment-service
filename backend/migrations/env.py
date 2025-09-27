@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 
 # Load environment.local file
 load_dotenv(".env.local")
+# load_dotenv("environment.local")
 
 # Add the backend directory to the path so we can import our models
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))

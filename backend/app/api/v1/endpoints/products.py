@@ -809,3 +809,194 @@ async def full_sync_shopify_products(
         "status": "PENDING",
         "sync_type": "full_resync"
     }
+
+
+# External Products API endpoints
+@router.post("/external-products/", response_model=dict)
+async def create_external_product(
+    product_data: dict,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
+):
+    """
+    创建或更新外部商品
+    """
+    tenant, user = auth
+    
+    try:
+        logger.info("🔍 开始处理外部商品同步请求", 
+                   tenant_id=tenant.id, 
+                   external_product_id=product_data.get('external_product_id'))
+        
+        # 检查是否已存在相同的外部商品
+        existing_product = await db.execute(
+            select(ExternalProduct).where(
+                ExternalProduct.tenant_id == tenant.id,
+                ExternalProduct.external_system_id == product_data.get('external_system_id'),
+                ExternalProduct.external_product_id == product_data.get('external_product_id')
+            )
+        )
+        existing = existing_product.scalar_one_or_none()
+        
+        if existing:
+            # 更新现有商品
+            logger.info("🔄 更新现有外部商品", 
+                       external_product_id=product_data.get('external_product_id'))
+            
+            # 更新商品信息，处理字段映射
+            field_mappings = {
+                'product_name': 'title',
+                'raw_data': 'external_data'
+            }
+            
+            for key, value in product_data.items():
+                if key in field_mappings:
+                    # 映射字段
+                    db_field = field_mappings[key]
+                    if hasattr(existing, db_field):
+                        setattr(existing, db_field, value)
+                elif hasattr(existing, key) and key not in ['id', 'tenant_id', 'created_at']:
+                    setattr(existing, key, value)
+            
+            existing.updated_at = func.now()
+            await db.commit()
+            await db.refresh(existing)
+            
+            logger.info("✅ 外部商品更新成功", 
+                       external_product_id=product_data.get('external_product_id'),
+                       product_id=existing.id)
+            
+            return {
+                "id": encode_id(existing.id),
+                "message": "外部商品更新成功",
+                "action": "updated"
+            }
+        else:
+            # 创建新商品
+            logger.info("🆕 创建新外部商品", 
+                       external_product_id=product_data.get('external_product_id'))
+            
+            # 处理字段映射
+            mapped_data = product_data.copy()
+            
+            # 字段映射规则
+            field_mappings = {
+                'product_name': 'title',
+                'raw_data': 'external_data'
+            }
+            
+            for frontend_field, db_field in field_mappings.items():
+                if frontend_field in mapped_data:
+                    mapped_data[db_field] = mapped_data.pop(frontend_field)
+            
+            external_product = ExternalProduct(
+                tenant_id=tenant.id,
+                **mapped_data
+            )
+            
+            db.add(external_product)
+            await db.commit()
+            await db.refresh(external_product)
+            
+            logger.info("✅ 外部商品创建成功", 
+                       external_product_id=product_data.get('external_product_id'),
+                       product_id=external_product.id)
+            
+            return {
+                "id": encode_id(external_product.id),
+                "message": "外部商品创建成功",
+                "action": "created"
+            }
+            
+    except Exception as e:
+        logger.error("❌ 外部商品同步失败", 
+                    error=str(e), 
+                    tenant_id=tenant.id)
+        import traceback
+        logger.error("   异常堆栈", stack=traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"外部商品同步失败: {str(e)}")
+
+
+@router.get("/external-products/", response_model=dict)
+async def get_external_products(
+    skip: int = Query(0, ge=0, description="跳过的记录数"),
+    limit: int = Query(10, ge=1, le=100, description="每页记录数"),
+    external_system_id: Optional[int] = Query(None, description="外部系统ID过滤"),
+    status: Optional[str] = Query(None, description="商品状态过滤"),
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
+):
+    """
+    获取外部商品列表
+    """
+    tenant, user = auth
+    
+    try:
+        logger.info("🔍 获取外部商品列表", 
+                   tenant_id=tenant.id, 
+                   skip=skip, 
+                   limit=limit)
+        
+        # 构建查询条件
+        query = select(ExternalProduct).where(ExternalProduct.tenant_id == tenant.id)
+        
+        if external_system_id:
+            query = query.where(ExternalProduct.external_system_id == external_system_id)
+        
+        if status:
+            query = query.where(ExternalProduct.status == status)
+        
+        # 获取总数
+        count_query = select(func.count(ExternalProduct.id)).where(ExternalProduct.tenant_id == tenant.id)
+        if external_system_id:
+            count_query = count_query.where(ExternalProduct.external_system_id == external_system_id)
+        if status:
+            count_query = count_query.where(ExternalProduct.status == status)
+        
+        total_result = await db.execute(count_query)
+        total = total_result.scalar()
+        
+        # 获取分页数据
+        query = query.offset(skip).limit(limit).order_by(ExternalProduct.updated_at.desc())
+        result = await db.execute(query)
+        products = result.scalars().all()
+        
+        # 转换为响应格式
+        product_list = []
+        for product in products:
+            product_list.append({
+                "id": encode_id(product.id),
+                "external_system_id": product.external_system_id,
+                "external_product_id": product.external_product_id,
+                "external_variant_id": product.external_variant_id,
+                "product_name": product.product_name,
+                "product_type": product.product_type,
+                "vendor": product.vendor,
+                "status": product.status,
+                "published_at": product.published_at,
+                "tags": product.tags,
+                "sync_status": product.sync_status,
+                "last_synced_at": product.last_synced_at,
+                "created_at": product.created_at,
+                "updated_at": product.updated_at
+            })
+        
+        logger.info("✅ 外部商品列表获取成功", 
+                   tenant_id=tenant.id, 
+                   total=total, 
+                   count=len(product_list))
+        
+        return {
+            "products": product_list,
+            "total": total,
+            "skip": skip,
+            "limit": limit
+        }
+        
+    except Exception as e:
+        logger.error("❌ 获取外部商品列表失败", 
+                    error=str(e), 
+                    tenant_id=tenant.id)
+        import traceback
+        logger.error("   异常堆栈", stack=traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"获取外部商品列表失败: {str(e)}")

@@ -14,6 +14,7 @@ from app.api.v1.endpoints import (
     health,
     external_systems,
     shopify_orders,
+    shopify_orders_crud,
     shopify_products,
     shopify_stores,
     sync_configs,
@@ -41,6 +42,7 @@ api_router.include_router(
 )
 api_router.include_router(sync_status.router, prefix="/sync", tags=["sync"])
 api_router.include_router(shopify_orders.router, prefix="/shopify", tags=["shopify"])
+api_router.include_router(shopify_orders_crud.router, prefix="/shopify-orders", tags=["shopify-orders-crud"])
 api_router.include_router(
     shopify_products.router, prefix="/external-systems", tags=["shopify-products"]
 )
