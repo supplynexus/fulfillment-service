@@ -69,7 +69,7 @@ export function ProductSync() {
       const result: SyncResult = {
         success: true,
         message: '商品同步完成',
-        details: `成功同步 ${response.data.synced_count || 0} 个商品`,
+        details: `成功同步 ${response.data.products_saved || 0} 个商品`,
         timestamp: new Date().toLocaleString('zh-CN'),
       };
 

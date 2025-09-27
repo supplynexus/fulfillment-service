@@ -146,8 +146,11 @@ export function OrdersList() {
           );
 
           if (syncResponse.data.success) {
-            totalSynced += syncResponse.data.synced_count || 0;
-            console.log(`✅ 店铺 ${store.name} 同步成功: ${syncResponse.data.synced_count || 0} 个订单`);
+            const syncedCount = syncResponse.data.orders_synced || 0;
+            const updatedCount = syncResponse.data.orders_updated || 0;
+            const totalCount = syncedCount + updatedCount;
+            totalSynced += totalCount;
+            console.log(`✅ 店铺 ${store.name} 同步成功: 新增 ${syncedCount} 个订单，更新 ${updatedCount} 个订单，总计 ${totalCount} 个订单`);
           }
         } catch (storeError: any) {
           console.error(`❌ 店铺 ${store.name} 同步失败:`, storeError);
