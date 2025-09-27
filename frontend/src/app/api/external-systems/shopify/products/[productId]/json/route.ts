@@ -76,7 +76,7 @@ export async function GET(
     });
 
     // Call backend API
-    const backendUrl = `${process.env.NEXT_PUBLIC_API_URL}${backendPath}`;
+    const backendUrl = `${process.env.BACKEND_API_URL}${backendPath}`;
     
     logger.info('Forwarding request to backend', { backendUrl });
 

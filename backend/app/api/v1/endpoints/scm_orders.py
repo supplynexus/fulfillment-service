@@ -3,7 +3,6 @@ SCM Orders API endpoints
 """
 
 from typing import List, Optional
-from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -14,11 +13,7 @@ from app.models.tenant import Tenant
 from app.models.user import User
 from app.models.order import Order
 from app.models.scm_order import SCMOrder
-from app.schemas.scm_order import (
-    SCMOrderResponse, 
-    SCMOrderListResponse,
-    SCMOrderCreate
-)
+from app.schemas.scm_order import SCMOrderResponse, SCMOrderListResponse, SCMOrderCreate
 from app.services.order_routing_service import OrderRoutingService
 
 router = APIRouter()
@@ -29,34 +24,43 @@ async def get_scm_orders(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(100, ge=1, le=1000, description="Number of records to return"),
     status: Optional[str] = Query(None, description="Filter by status"),
-    target_system_type: Optional[str] = Query(None, description="Filter by target system type"),
+    target_system_type: Optional[str] = Query(
+        None, description="Filter by target system type"
+    ),
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
 ) -> SCMOrderListResponse:
     """
     获取SCM订单列表
     """
     from app.core.logging import RequestLogger
+
     logger = RequestLogger("scm_orders.get_scm_orders")
-    
+
     try:
-        logger.info(f"🔍 开始处理SCM订单列表请求: skip={skip}, limit={limit}, status={status}, target_system_type={target_system_type}")
-        
+        logger.info(
+            f"🔍 开始处理SCM订单列表请求: skip={skip}, limit={limit}, status={status}, target_system_type={target_system_type}"
+        )
+
         tenant, user = auth
-        logger.info(f"✅ 认证成功: tenant_id={tenant.id}, tenant_name={tenant.name}, user_id={user.id}")
-        
+        logger.info(
+            f"✅ 认证成功: tenant_id={tenant.id}, tenant_name={tenant.name}, user_id={user.id}"
+        )
+
         # 构建查询
         logger.info(f"🔍 构建SCM订单查询...")
         query = select(SCMOrder).where(SCMOrder.tenant_id == tenant.id)
-        
+
         # 应用过滤器
         if status:
             query = query.where(SCMOrder.status == status)
             logger.info(f"🔍 应用状态过滤器: status={status}")
         if target_system_type:
             query = query.where(SCMOrder.target_system_type == target_system_type)
-            logger.info(f"🔍 应用系统类型过滤器: target_system_type={target_system_type}")
-        
+            logger.info(
+                f"🔍 应用系统类型过滤器: target_system_type={target_system_type}"
+            )
+
         # 获取总数
         logger.info(f"🔍 查询SCM订单总数...")
         try:
@@ -67,9 +71,12 @@ async def get_scm_orders(
         except Exception as e:
             logger.error(f"❌ 查询总数失败: {str(e)}")
             import traceback
+
             logger.error(f"   异常堆栈: {traceback.format_exc()}")
-            raise HTTPException(status_code=500, detail=f"Failed to get SCM orders count: {str(e)}")
-        
+            raise HTTPException(
+                status_code=500, detail=f"Failed to get SCM orders count: {str(e)}"
+            )
+
         # 分页查询
         logger.info(f"🔍 执行分页查询: skip={skip}, limit={limit}")
         try:
@@ -80,9 +87,12 @@ async def get_scm_orders(
         except Exception as e:
             logger.error(f"❌ 分页查询失败: {str(e)}")
             import traceback
+
             logger.error(f"   异常堆栈: {traceback.format_exc()}")
-            raise HTTPException(status_code=500, detail=f"Failed to get SCM orders: {str(e)}")
-        
+            raise HTTPException(
+                status_code=500, detail=f"Failed to get SCM orders: {str(e)}"
+            )
+
         # 转换为响应格式
         logger.info(f"🔍 转换SCM订单响应格式...")
         try:
@@ -93,24 +103,28 @@ async def get_scm_orders(
         except Exception as e:
             logger.error(f"❌ 转换响应格式失败: {str(e)}")
             import traceback
+
             logger.error(f"   异常堆栈: {traceback.format_exc()}")
-            raise HTTPException(status_code=500, detail=f"Failed to convert SCM order responses: {str(e)}")
-        
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to convert SCM order responses: {str(e)}",
+            )
+
         result = SCMOrderListResponse(
-            scm_orders=scm_order_responses,
-            total=total,
-            skip=skip,
-            limit=limit
+            scm_orders=scm_order_responses, total=total, skip=skip, limit=limit
         )
-        
-        logger.info(f"✅ SCM订单列表请求处理成功: total={total}, skip={skip}, limit={limit}")
+
+        logger.info(
+            f"✅ SCM订单列表请求处理成功: total={total}, skip={skip}, limit={limit}"
+        )
         return result
-        
+
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"❌ SCM订单列表请求处理失败: {str(e)}")
         import traceback
+
         logger.error(f"   异常堆栈: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
@@ -119,24 +133,23 @@ async def get_scm_orders(
 async def get_scm_order(
     scm_order_id: int,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
 ) -> SCMOrderResponse:
     """
     获取SCM订单详情
     """
     tenant, user = auth
-    
+
     result = await db.execute(
         select(SCMOrder).where(
-            SCMOrder.id == scm_order_id,
-            SCMOrder.tenant_id == tenant.id
+            SCMOrder.id == scm_order_id, SCMOrder.tenant_id == tenant.id
         )
     )
     scm_order = result.scalar_one_or_none()
-    
+
     if not scm_order:
         raise HTTPException(status_code=404, detail="SCM order not found")
-    
+
     return SCMOrderResponse.from_orm(scm_order)
 
 
@@ -144,29 +157,26 @@ async def get_scm_order(
 async def get_scm_orders_by_order_id(
     order_id: int,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
 ) -> List[SCMOrderResponse]:
     """
     根据原始订单ID获取SCM订单
     """
     tenant, user = auth
-    
+
     # 验证原始订单存在
     result = await db.execute(
-        select(Order).where(
-            Order.id == order_id,
-            Order.tenant_id == tenant.id
-        )
+        select(Order).where(Order.id == order_id, Order.tenant_id == tenant.id)
     )
     order = result.scalar_one_or_none()
-    
+
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    
+
     # 获取SCM订单
     routing_service = OrderRoutingService(db)
     scm_orders = await routing_service.get_scm_orders_by_order_id(order_id, tenant.id)
-    
+
     return [SCMOrderResponse.from_orm(scm_order) for scm_order in scm_orders]
 
 
@@ -174,25 +184,24 @@ async def get_scm_orders_by_order_id(
 async def create_scm_order(
     scm_order_data: SCMOrderCreate,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
 ) -> SCMOrderResponse:
     """
     手动创建SCM订单
     """
     tenant, user = auth
-    
+
     # 验证原始订单存在
     result = await db.execute(
         select(Order).where(
-            Order.id == scm_order_data.source_order_id,
-            Order.tenant_id == tenant.id
+            Order.id == scm_order_data.source_order_id, Order.tenant_id == tenant.id
         )
     )
     order = result.scalar_one_or_none()
-    
+
     if not order:
         raise HTTPException(status_code=404, detail="Source order not found")
-    
+
     # 创建SCM订单
     scm_order = SCMOrder(
         tenant_id=tenant.id,
@@ -208,15 +217,14 @@ async def create_scm_order(
         customer_phone=scm_order_data.customer_phone,
         shipping_address=scm_order_data.shipping_address,
         billing_address=scm_order_data.billing_address,
-<<<<<<< Updated upstream
         routing_metadata=scm_order_data.routing_metadata,
         shopify_order_id=scm_order_data.shopify_order_id,
     )
-    
+
     db.add(scm_order)
     await db.commit()
     await db.refresh(scm_order)
-    
+
     return SCMOrderResponse.from_orm(scm_order)
 
 
@@ -229,15 +237,15 @@ async def update_scm_order(
     tracking_url: Optional[str] = None,
     fulfillment_status: Optional[str] = None,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
 ) -> SCMOrderResponse:
     """
     更新SCM订单
     """
     tenant, user = auth
-    
+
     routing_service = OrderRoutingService(db)
-    
+
     # 准备更新字段
     update_fields = {}
     if status is not None:
@@ -250,29 +258,25 @@ async def update_scm_order(
         update_fields["tracking_url"] = tracking_url
     if fulfillment_status is not None:
         update_fields["fulfillment_status"] = fulfillment_status
-    
+
     scm_order = await routing_service.update_scm_order_status(
-        scm_order_id, 
-        status or "updated", 
-        tenant.id,
-        **update_fields
+        scm_order_id, status or "updated", tenant.id, **update_fields
     )
-    
+
     if not scm_order:
         raise HTTPException(status_code=404, detail="SCM order not found")
-    
+
     return SCMOrderResponse.from_orm(scm_order)
 
 
-@router.put("/{scm_order_id}/link-shopify", response_model=SCMOrderResponse)
-async def link_scm_order_to_shopify(
+@router.delete("/{scm_order_id}")
+async def delete_scm_order(
     scm_order_id: int,
-    shopify_order_id: str,
     db: AsyncSession = Depends(get_async_db),
     auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
-) -> SCMOrderResponse:
+):
     """
-    将SCM订单关联到Shopify订单
+    删除SCM订单
     """
     tenant, user = auth
 
@@ -286,50 +290,17 @@ async def link_scm_order_to_shopify(
     if not scm_order:
         raise HTTPException(status_code=404, detail="SCM order not found")
 
-    # 更新SCM订单的Shopify订单ID
-    scm_order.shopify_order_id = shopify_order_id
-    scm_order.updated_at = datetime.now()
-
-    await db.commit()
-    await db.refresh(scm_order)
-
-    return SCMOrderResponse.from_orm(scm_order)
-
-
-@router.delete("/{scm_order_id}")
-async def delete_scm_order(
-    scm_order_id: int,
-    db: AsyncSession = Depends(get_async_db),
-    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
-):
-    """
-    删除SCM订单
-    """
-    tenant, user = auth
-    
-    result = await db.execute(
-        select(SCMOrder).where(
-            SCMOrder.id == scm_order_id,
-            SCMOrder.tenant_id == tenant.id
-        )
-    )
-    scm_order = result.scalar_one_or_none()
-    
-    if not scm_order:
-        raise HTTPException(status_code=404, detail="SCM order not found")
-    
     # 检查是否可以删除（只有创建状态的订单可以删除）
     if scm_order.status not in ["created", "failed"]:
         raise HTTPException(
-            status_code=400, 
-            detail="Cannot delete SCM order with status: " + scm_order.status
+            status_code=400,
+            detail="Cannot delete SCM order with status: " + scm_order.status,
         )
-    
+
     await db.delete(scm_order)
     await db.commit()
-    
-    return {"message": "SCM order deleted successfully"}
 
+    return {"message": "SCM order deleted successfully"}
 
 
 @router.post("/sync-printify-orders", response_model=dict)
@@ -449,73 +420,6 @@ async def sync_printify_orders(
 
                         if existing_order:
                             # 更新现有订单
-                            # 从Printify订单数据中提取客户信息
-                            address_to = order.get("address_to", {})
-                            customer_email = (
-                                address_to.get("email", "") or "no-email@example.com"
-                            )
-                            customer_name = (
-                                f"{address_to.get('first_name', '')} "
-                                f"{address_to.get('last_name', '')}"
-                            ).strip() or "Unknown Customer"
-                            customer_phone = address_to.get("phone", "") or "N/A"
-
-                            # 构建收货地址
-                            shipping_address = {
-                                "first_name": address_to.get("first_name", ""),
-                                "last_name": address_to.get("last_name", ""),
-                                "company": address_to.get("company", ""),
-                                "address1": address_to.get("address1", ""),
-                                "address2": address_to.get("address2", ""),
-                                "city": address_to.get("city", ""),
-                                "state": address_to.get("region", ""),
-                                "zip": address_to.get("zip", ""),
-                                "country": address_to.get("country", ""),
-                                "phone": address_to.get("phone", ""),
-                            }
-
-                            # 构建账单地址（如果存在）
-                            address_from = order.get("address_from", {})
-                            billing_address = (
-                                {
-                                    "first_name": address_from.get("first_name", ""),
-                                    "last_name": address_from.get("last_name", ""),
-                                    "company": address_from.get("company", ""),
-                                    "address1": address_from.get("address1", ""),
-                                    "address2": address_from.get("address2", ""),
-                                    "city": address_from.get("city", ""),
-                                    "state": address_from.get("region", ""),
-                                    "zip": address_from.get("zip", ""),
-                                    "country": address_from.get("country", ""),
-                                    "phone": address_from.get("phone", ""),
-                                }
-                                if address_from
-                                else None
-                            )
-
-                            # 尝试通过external_id找到对应的Shopify订单
-                            external_id = order.get("external_id", "")
-                            shopify_order_id = None
-                            source_order_id = None
-
-                            if external_id and external_id.startswith(
-                                "gid://shopify/Order/"
-                            ):
-                                # external_id是Shopify订单ID
-                                shopify_order_id = external_id
-                                # 尝试找到对应的本地订单
-                                from app.models.order import Order
-
-                                result = await db.execute(
-                                    select(Order).where(
-                                        Order.shopify_order_id == external_id,
-                                        Order.tenant_id == tenant.id,
-                                    )
-                                )
-                                source_order = result.scalar_one_or_none()
-                                if source_order:
-                                    source_order_id = source_order.id
-
                             existing_order.status = order.get("status", "unknown")
                             existing_order.fulfillment_status = order.get(
                                 "fulfillment_status", "unknown"
@@ -524,118 +428,35 @@ async def sync_printify_orders(
                                 "tracking_number"
                             )
                             existing_order.tracking_url = order.get("tracking_url")
-                            existing_order.customer_email = customer_email
-                            existing_order.customer_name = customer_name
-                            existing_order.customer_phone = customer_phone
-                            existing_order.shipping_address = shipping_address
-                            existing_order.billing_address = billing_address
-                            existing_order.shopify_order_id = (
-                                shopify_order_id  # 更新Shopify订单ID
-                            )
-                            existing_order.source_order_id = (
-                                source_order_id  # 更新源订单ID
-                            )
                             existing_order.updated_at = func.now()
 
                             logger.info(f"✅ 更新现有 SCM 订单: {existing_order.id}")
                         else:
                             # 创建新的SCM订单
-                            # 从Printify订单数据中提取客户信息
-                            address_to = order.get("address_to", {})
-                            customer_email = (
-                                address_to.get("email", "") or "no-email@example.com"
-                            )
-                            customer_name = (
-                                f"{address_to.get('first_name', '')} "
-                                f"{address_to.get('last_name', '')}"
-                            ).strip() or "Unknown Customer"
-                            customer_phone = address_to.get("phone", "") or "N/A"
-
-                            # 构建收货地址
-                            shipping_address = {
-                                "first_name": address_to.get("first_name", ""),
-                                "last_name": address_to.get("last_name", ""),
-                                "company": address_to.get("company", ""),
-                                "address1": address_to.get("address1", ""),
-                                "address2": address_to.get("address2", ""),
-                                "city": address_to.get("city", ""),
-                                "state": address_to.get("region", ""),
-                                "zip": address_to.get("zip", ""),
-                                "country": address_to.get("country", ""),
-                                "phone": address_to.get("phone", ""),
-                            }
-
-                            # 构建账单地址（如果存在）
-                            address_from = order.get("address_from", {})
-                            billing_address = (
-                                {
-                                    "first_name": address_from.get("first_name", ""),
-                                    "last_name": address_from.get("last_name", ""),
-                                    "company": address_from.get("company", ""),
-                                    "address1": address_from.get("address1", ""),
-                                    "address2": address_from.get("address2", ""),
-                                    "city": address_from.get("city", ""),
-                                    "state": address_from.get("region", ""),
-                                    "zip": address_from.get("zip", ""),
-                                    "country": address_from.get("country", ""),
-                                    "phone": address_from.get("phone", ""),
-                                }
-                                if address_from
-                                else None
-                            )
-
-                            # 尝试通过external_id找到对应的Shopify订单
-                            external_id = order.get("external_id", "")
-                            shopify_order_id = None
-                            source_order_id = None
-
-                            if external_id and external_id.startswith(
-                                "gid://shopify/Order/"
-                            ):
-                                # external_id是Shopify订单ID
-                                shopify_order_id = external_id
-                                # 尝试找到对应的本地订单
-                                from app.models.order import Order
-
-                                result = await db.execute(
-                                    select(Order).where(
-                                        Order.shopify_order_id == external_id,
-                                        Order.tenant_id == tenant.id,
-                                    )
-                                )
-                                source_order = result.scalar_one_or_none()
-                                if source_order:
-                                    source_order_id = source_order.id
-                            elif external_id and external_id.startswith("SCM-"):
-                                # external_id是SCM订单号，没有关联的Shopify订单
-                                pass
-
                             scm_order = SCMOrder(
                                 tenant_id=tenant.id,
-                                source_order_id=source_order_id,
+                                source_order_id=None,  # Printify订单没有关联的本地订单
                                 target_system_type="PRINTIFY",
                                 target_system_id=str(order.get("id", "")),
                                 routing_strategy="printify_direct",
                                 line_items=order.get("line_items", []),
                                 total_amount=float(order.get("total_price", 0)),
                                 currency=order.get("currency", "USD"),
-                                customer_email=customer_email,
-                                customer_name=customer_name,
-                                customer_phone=customer_phone,
-                                shipping_address=shipping_address,
-                                billing_address=billing_address,
+                                customer_email=order.get("customer_email", ""),
+                                customer_name=order.get("customer_name", ""),
+                                customer_phone=order.get("customer_phone"),
+                                shipping_address=order.get("shipping_address", {}),
+                                billing_address=order.get("billing_address", {}),
                                 status=order.get("status", "unknown"),
                                 fulfillment_status=order.get(
                                     "fulfillment_status", "unknown"
                                 ),
                                 tracking_number=order.get("tracking_number"),
                                 tracking_url=order.get("tracking_url"),
-                                shopify_order_id=shopify_order_id,  # 设置Shopify订单ID
                                 routing_metadata={
                                     "printify_order_id": order.get("id"),
                                     "printify_order_number": order.get("order_number"),
                                     "printify_shop_id": order.get("shop_id"),
-                                    "external_id": external_id,
                                     "sync_source": "printify_api",
                                 },
                             )
@@ -694,4 +515,3 @@ async def sync_printify_orders(
             "error_count": 1,
             "errors": [str(e)],
         }
->>>>>>> Stashed changes

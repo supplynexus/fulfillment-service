@@ -144,7 +144,7 @@ function PrintifyOrdersPage() {
 
       if (response.data && response.data.external_systems) {
         const printifyStores = response.data.external_systems.filter(
-          (store: any) => store.system_type === 'printify' && store.is_active
+          (store: any) => store.system_type === 'PRINTIFY' && store.is_active
         );
         setStores(printifyStores);
         frontendLogger.info('✅ Printify 店铺列表获取成功', {

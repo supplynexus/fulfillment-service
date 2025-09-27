@@ -795,17 +795,30 @@ class ShopifyService:
                             }
                             customer {
                                 id
+                                firstName
+                                lastName
+                                email
+                                phone
                             }
-                            lineItems(first: 5) {
+                            lineItems(first: 10) {
                                 edges {
                                     node {
+                                        id
                                         title
                                         quantity
+                                        sku
+                                        variantTitle
+                                        vendor
                                         originalUnitPriceSet {
                                             shopMoney {
                                                 amount
                                                 currencyCode
                                             }
+                                        }
+                                        product {
+                                            id
+                                            title
+                                            handle
                                         }
                                     }
                                 }
@@ -897,6 +910,27 @@ class ShopifyService:
                             if order.get("customer")
                             else None
                         ),
+                        "line_items": [
+                            {
+                                "id": item.get("id"),
+                                "title": item.get("title"),
+                                "quantity": item.get("quantity"),
+                                "sku": item.get("sku"),
+                                "variant_title": item.get("variantTitle"),
+                                "vendor": item.get("vendor"),
+                                "price": item.get("originalUnitPriceSet", {})
+                                .get("shopMoney", {})
+                                .get("amount"),
+                                "currency": item.get("originalUnitPriceSet", {})
+                                .get("shopMoney", {})
+                                .get("currencyCode"),
+                                "product": item.get("product", {}),
+                            }
+                            for item in [
+                                edge["node"]
+                                for edge in order.get("lineItems", {}).get("edges", [])
+                            ]
+                        ],
                         "line_items_count": len(
                             order.get("lineItems", {}).get("edges", [])
                         ),
@@ -1074,52 +1108,116 @@ class ShopifyService:
                 -1
             ]  # Remove "gid://shopify/Order/" prefix
             order_name = order_data.get("name", "")
-            email = ""  # Not available in Basic plan
+            email = order_data.get("email", "")  # Use email from order_data
 
-            # Parse pricing
-            total_price = (
-                order_data.get("totalPriceSet", {})
-                .get("shopMoney", {})
-                .get("amount", "0")
-            )
-            currency = (
-                order_data.get("totalPriceSet", {})
-                .get("shopMoney", {})
-                .get("currencyCode", "USD")
-            )
-
-            # Parse customer info
-            customer = order_data.get("customer", {})
-            customer_name = ""
-            if customer:
-                first_name = customer.get("firstName", "")
-                last_name = customer.get("lastName", "")
-                customer_name = f"{first_name} {last_name}".strip()
-
-            # Parse addresses
-            shipping_address = order_data.get("shippingAddress", {})
-            billing_address = order_data.get("billingAddress", {})
-
-            # Parse line items
-            line_items = []
-            for edge in order_data.get("lineItems", {}).get("edges", []):
-                item = edge["node"]
-                line_items.append(
-                    {
-                        "title": item.get("title", ""),
-                        "quantity": item.get("quantity", 0),
-                        "price": item.get("originalUnitPriceSet", {})
-                        .get("shopMoney", {})
-                        .get("amount", "0"),
-                        "currency": item.get("originalUnitPriceSet", {})
-                        .get("shopMoney", {})
-                        .get("currencyCode", "USD"),
-                    }
+            # Parse pricing - handle both simplified and full data structures
+            if "total_price" in order_data:
+                # Simplified structure from get_orders
+                total_price = order_data.get("total_price", "0")
+                currency = order_data.get("currency", "USD")
+            else:
+                # Full structure from GraphQL
+                total_price = (
+                    order_data.get("totalPriceSet", {})
+                    .get("shopMoney", {})
+                    .get("amount", "0")
+                )
+                currency = (
+                    order_data.get("totalPriceSet", {})
+                    .get("shopMoney", {})
+                    .get("currencyCode", "USD")
                 )
 
+            # Parse customer info - handle both simplified and full data structures
+            customer = order_data.get("customer", {})
+            customer_name = ""
+            customer_email = ""
+            if customer:
+                if isinstance(customer, dict):
+                    if "name" in customer and customer.get("name"):
+                        # Simplified structure with name
+                        customer_name = customer.get("name", "")
+                        customer_email = customer.get("email", "")
+                    elif "firstName" in customer or "lastName" in customer:
+                        # Full structure
+                        first_name = customer.get("firstName", "")
+                        last_name = customer.get("lastName", "")
+                        customer_name = f"{first_name} {last_name}".strip()
+                        customer_email = customer.get("email", "")
+                    else:
+                        # Simplified structure without name
+                        customer_name = customer.get("name", "")
+                        customer_email = customer.get("email", "")
+
+            # Parse addresses - handle both simplified and full data structures
+            if "shipping_address" in order_data:
+                # Simplified structure (from get_orders)
+                shipping_address = order_data.get("shipping_address", {})
+                billing_address = order_data.get("billing_address", {})
+            else:
+                # Full structure (from GraphQL)
+                shipping_address = order_data.get("shippingAddress", {})
+                billing_address = order_data.get("billingAddress", {})
+
+            # Parse line items - handle both simplified and full data structures
+            line_items = []
+            if "line_items" in order_data and order_data.get("line_items"):
+                # New structure with detailed line items
+                for item in order_data.get("line_items", []):
+                    line_items.append(
+                        {
+                            "id": item.get("id", ""),
+                            "title": item.get("title", ""),
+                            "quantity": item.get("quantity", 0),
+                            "sku": item.get("sku", ""),
+                            "variant_title": item.get("variant_title", ""),
+                            "vendor": item.get("vendor", ""),
+                            "price": item.get("price", "0"),
+                            "currency": item.get("currency", currency),
+                            "product": item.get("product", {}),
+                        }
+                    )
+            elif "line_items_count" in order_data:
+                # Simplified structure - create basic line items info
+                line_items_count = order_data.get("line_items_count", 0)
+                if line_items_count > 0:
+                    # Create placeholder line items based on count
+                    for i in range(line_items_count):
+                        line_items.append(
+                            {
+                                "title": f"商品 {i+1}",
+                                "quantity": 1,
+                                "price": "0.00",
+                                "currency": currency,
+                            }
+                        )
+            else:
+                # Full structure - parse line items
+                for edge in order_data.get("lineItems", {}).get("edges", []):
+                    item = edge["node"]
+                    line_items.append(
+                        {
+                            "title": item.get("title", ""),
+                            "quantity": item.get("quantity", 0),
+                            "price": item.get("originalUnitPriceSet", {})
+                            .get("shopMoney", {})
+                            .get("amount", "0"),
+                            "currency": item.get("originalUnitPriceSet", {})
+                            .get("shopMoney", {})
+                            .get("currencyCode", "USD"),
+                        }
+                    )
+
             # Determine order status based on fulfillment and financial status
-            fulfillment_status = order_data.get("displayFulfillmentStatus", "")
-            financial_status = order_data.get("displayFinancialStatus", "")
+            # Handle both simplified and full data structures
+            if "fulfillment_status" in order_data:
+                # Simplified structure
+                fulfillment_status = order_data.get("fulfillment_status", "")
+                financial_status = order_data.get("financial_status", "")
+            else:
+                # Full structure
+                fulfillment_status = order_data.get("displayFulfillmentStatus", "")
+                financial_status = order_data.get("displayFinancialStatus", "")
 
             if fulfillment_status == "FULFILLED":
                 status = OrderStatus.FULFILLED
@@ -1134,12 +1232,14 @@ class ShopifyService:
                 "tenant_id": tenant_id,
                 "external_system_id": external_system_id,
                 "external_order_id": shopify_order_id,
+                "external_order_name": order_name,  # Add external_order_name field
                 "order_number": order_name,
                 "status": status.value,  # Convert enum to string
                 "total_amount": float(total_price) if total_price else 0.0,
                 "currency": currency,
-                "customer_email": email
-                or "no-email@example.com",  # Provide default email if null
+                "customer_email": customer_email
+                or email
+                or "no-email@example.com",  # Use customer_email first, then email, then default
                 "customer_name": customer_name,
                 "shipping_address": shipping_address,
                 "billing_address": billing_address,
@@ -1152,8 +1252,10 @@ class ShopifyService:
                     "line_items": line_items,
                     "shipping_address": shipping_address,
                     "billing_address": billing_address,
-                    "created_at": order_data.get("createdAt"),
-                    "updated_at": order_data.get("updatedAt"),
+                    "created_at": order_data.get("createdAt")
+                    or order_data.get("created_at"),
+                    "updated_at": order_data.get("updatedAt")
+                    or order_data.get("updated_at"),
                 },
                 "external_data": {
                     "system_type": "shopify",
@@ -1176,12 +1278,18 @@ class ShopifyService:
             raise e
 
     async def get_order_details(
-        self, shop_id: str, order_id: str, access_token: str, api_version: str = "2024-10"
+        self,
+        shop_id: str,
+        order_id: str,
+        access_token: str,
+        api_version: str = "2024-10",
     ) -> Dict[str, Any]:
         """Get detailed information for a specific Shopify order"""
         try:
-            logger.info(f"🔍 开始获取 Shopify 订单详情: shop_id={shop_id}, order_id={order_id}")
-            
+            logger.info(
+                f"🔍 开始获取 Shopify 订单详情: shop_id={shop_id}, order_id={order_id}"
+            )
+
             # Prepare GraphQL query for order details
             query = """
             query($id: ID!) {
@@ -1331,9 +1439,7 @@ class ShopifyService:
             """
 
             # Prepare variables
-            variables = {
-                "id": f"gid://shopify/Order/{order_id}"
-            }
+            variables = {"id": f"gid://shopify/Order/{order_id}"}
 
             # Make GraphQL request
             response = await self.client.post(
@@ -1353,7 +1459,7 @@ class ShopifyService:
                 }
 
             data = response.json()
-            
+
             if "errors" in data:
                 logger.error(f"❌ Shopify GraphQL 错误: {data['errors']}")
                 return {
@@ -1370,7 +1476,7 @@ class ShopifyService:
                 }
 
             logger.info(f"✅ Shopify 订单详情获取成功: order_id={order_id}")
-            
+
             return {
                 "success": True,
                 "order": order_data,
@@ -1384,12 +1490,18 @@ class ShopifyService:
             }
 
     async def get_product_json(
-        self, shop_id: str, product_id: str, access_token: str, api_version: str = "2024-10"
+        self,
+        shop_id: str,
+        product_id: str,
+        access_token: str,
+        api_version: str = "2024-10",
     ) -> Dict[str, Any]:
         """Get complete Shopify product JSON data"""
         try:
-            logger.info(f"🔍 开始获取 Shopify 商品完整 JSON: shop_id={shop_id}, product_id={product_id}")
-            
+            logger.info(
+                f"🔍 开始获取 Shopify 商品完整 JSON: shop_id={shop_id}, product_id={product_id}"
+            )
+
             # Prepare GraphQL query for complete product data
             query = """
             query($id: ID!) {
@@ -1476,9 +1588,7 @@ class ShopifyService:
             """
 
             # Prepare variables
-            variables = {
-                "id": f"gid://shopify/Product/{product_id}"
-            }
+            variables = {"id": f"gid://shopify/Product/{product_id}"}
 
             # Make GraphQL request
             response = await self.client.post(
@@ -1498,7 +1608,7 @@ class ShopifyService:
                 }
 
             data = response.json()
-            
+
             if "errors" in data:
                 logger.error(f"❌ Shopify GraphQL 错误: {data['errors']}")
                 return {
@@ -1515,7 +1625,7 @@ class ShopifyService:
                 }
 
             logger.info(f"✅ Shopify 商品 JSON 获取成功: product_id={product_id}")
-            
+
             return {
                 "success": True,
                 "product": product_data,

@@ -38,7 +38,7 @@ class SCMOrder(Base):
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
 
     # Source order reference
-    source_order_id = Column(Integer, ForeignKey("orders.id"), nullable=False)
+    source_order_id = Column(Integer, ForeignKey("orders.id"), nullable=True)
 
     # SCM system information
     target_system_type = Column(

@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     const signature = generateBackendSignature(privateKey, signatureString, timestamp, nonce, tenantName);
 
     // 调用后端 API
-    const backendUrl = `http://backend:8000/api/v1/scm-orders/sync-printify-orders`;
+    const backendUrl = `${process.env.BACKEND_API_URL || 'http://backend:8000'}/api/v1/scm-orders/sync-printify-orders`;
     
     logger.info('📡 调用后端 Printify 发货单同步 API', { backendUrl });
 

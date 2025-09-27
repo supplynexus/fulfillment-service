@@ -50,16 +50,25 @@ async def create_external_system(
     service = ExternalSystemService(db)
 
     try:
-        system_type = ExternalSystemType(external_system_data.system_type)
+        # Convert to uppercase to match enum values
+        system_type_upper = external_system_data.system_type.upper()
+        logger.info(
+            "🔍 系统类型转换",
+            {
+                "original": external_system_data.system_type,
+                "converted": system_type_upper,
+            },
+        )
+        system_type = ExternalSystemType(system_type_upper)
         logger.info("✅ 系统类型验证成功", {"system_type": system_type.value})
     except ValueError as e:
         logger.error(
             "❌ 系统类型验证失败",
-            {"system_type": external_system_data.system_type, "error": str(e)},
+            {"system_type": system_type_upper, "error": str(e)},
         )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid system type: {external_system_data.system_type}",
+            detail=f"Invalid system type: {system_type_upper}",
         )
 
     try:
@@ -285,38 +294,99 @@ async def update_external_system(
     Update external system
     """
     tenant, user = auth
+    logger = get_logger(__name__)
+
+    logger.info(
+        "🔍 开始更新外部系统",
+        {
+            "tenant_id": tenant.id,
+            "tenant_name": tenant.name,
+            "external_system_id": external_system_id,
+            "system_type": external_system_data.system_type,
+            "name": external_system_data.name,
+        },
+    )
 
     service = ExternalSystemService(db)
 
-    # Convert system_type string to enum if provided
-    system_type_enum = None
-    if external_system_data.system_type:
-        try:
-            system_type_enum = ExternalSystemType(external_system_data.system_type)
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid system type: {external_system_data.system_type}",
+    try:
+        # Convert system_type string to enum if provided
+        system_type_enum = None
+        if external_system_data.system_type:
+            # Convert to uppercase to match enum values
+            system_type_upper = external_system_data.system_type.upper()
+            logger.info(
+                "🔍 系统类型转换",
+                {
+                    "original": external_system_data.system_type,
+                    "converted": system_type_upper,
+                },
             )
+            try:
+                system_type_enum = ExternalSystemType(system_type_upper)
+                logger.info(
+                    "✅ 系统类型验证成功", {"system_type": system_type_enum.value}
+                )
+            except ValueError as e:
+                logger.error(
+                    "❌ 系统类型验证失败",
+                    {"system_type": system_type_upper, "error": str(e)},
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid system type: {system_type_upper}",
+                )
 
-    # Prepare update data
-    update_data = external_system_data.dict(exclude_unset=True)
-    if system_type_enum:
-        update_data["system_type"] = system_type_enum
+        # Prepare update data
+        update_data = external_system_data.dict(exclude_unset=True)
+        if system_type_enum:
+            update_data["system_type"] = system_type_enum
 
-    # Remove external_system_id from update_data to avoid conflict with the parameter
-    update_data.pop("external_system_id", None)
+        # Remove external_system_id from update_data to avoid conflict with the parameter
+        update_data.pop("external_system_id", None)
 
-    external_system = await service.update_external_system(
-        external_system_id=external_system_id, tenant_id=tenant.id, **update_data
-    )
+        logger.info("🔍 准备更新数据", {"update_data_keys": list(update_data.keys())})
 
-    if not external_system:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="External system not found"
+        external_system = await service.update_external_system(
+            external_system_id=external_system_id, tenant_id=tenant.id, **update_data
         )
 
-    return external_system
+        if not external_system:
+            logger.error(
+                "❌ 外部系统未找到",
+                {"external_system_id": external_system_id, "tenant_id": tenant.id},
+            )
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="External system not found",
+            )
+
+        logger.info(
+            "✅ 外部系统更新成功",
+            {
+                "external_system_id": external_system.id,
+                "name": external_system.name,
+                "system_type": external_system.system_type.value,
+            },
+        )
+
+        return external_system
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            "❌ 外部系统更新失败",
+            {
+                "error": str(e),
+                "tenant_id": tenant.id,
+                "external_system_id": external_system_id,
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update external system: {str(e)}",
+        )
 
 
 @router.delete("/{external_system_id}")
@@ -809,14 +879,33 @@ async def sync_shopify_orders_by_shop_id(
             f"✅ 认证成功: tenant_id={tenant.id}, tenant_name={tenant.name}, user_id={user.id}"
         )
 
-        # Get external system by shop_id (external_system_id)
+        # Decode hashid to get external system ID
+        from app.core.hashids_utils import decode_id
+
+        try:
+            external_system_id = decode_id(shop_id)
+            if not external_system_id:
+                logger.error(f"❌ 无效的 hashid: {shop_id}")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid external system ID",
+                )
+            logger.info(f"✅ hashid 解码成功: {shop_id} -> {external_system_id}")
+        except Exception as e:
+            logger.error(f"❌ hashid 解码失败: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Failed to decode external system ID",
+            )
+
+        # Get external system by ID
         service = ExternalSystemService(db)
-        external_system = await service.get_external_system_by_external_system_id(
-            shop_id, tenant.id
+        external_system = await service.get_external_system(
+            external_system_id, tenant.id
         )
         if not external_system:
             logger.error(
-                f"❌ 未找到 Shopify 店铺: shop_id={shop_id}, tenant_id={tenant.id}"
+                f"❌ 未找到 Shopify 店铺: external_system_id={external_system_id}, tenant_id={tenant.id}"
             )
             raise HTTPException(status_code=404, detail="Shopify store not found")
 
@@ -853,9 +942,16 @@ async def sync_shopify_orders_by_shop_id(
 
         shopify_service = ShopifyService(db)
 
-        logger.info(f"🔍 开始同步 Shopify 订单: shop_id={shop_id}")
+        # Extract shop domain from base_url
+        base_url = external_system.base_url
+        if base_url.startswith("https://"):
+            shop_domain = base_url.replace("https://", "").replace(".myshopify.com", "")
+        else:
+            shop_domain = base_url.replace(".myshopify.com", "")
+
+        logger.info(f"🔍 开始同步 Shopify 订单: shop_domain={shop_domain}")
         result = await shopify_service.sync_orders_to_database(
-            shop_id=shop_id,
+            shop_id=shop_domain,
             access_token=access_token,
             tenant_id=tenant.id,
             external_system_id=external_system.id,
@@ -1131,7 +1227,9 @@ async def get_shopify_products_by_shop_id(
 
         shopify_service = ShopifyService(db)
 
-        logger.info(f"🔍 开始获取 Shopify 商品: external_system_id={external_system_id}")
+        logger.info(
+            f"🔍 开始获取 Shopify 商品: external_system_id={external_system_id}"
+        )
         products_response = await shopify_service.get_products(
             shop_id=external_system.external_system_id,  # Use the external system's shop_id
             access_token=access_token,
@@ -1344,7 +1442,9 @@ async def get_shopify_order_details(
 
         shopify_service = ShopifyService(db)
 
-        logger.info(f"🔍 开始获取 Shopify 订单详情: shop_id={shop_id}, order_id={order_id}")
+        logger.info(
+            f"🔍 开始获取 Shopify 订单详情: shop_id={shop_id}, order_id={order_id}"
+        )
         order_response = await shopify_service.get_order_details(
             shop_id=shop_id,
             order_id=order_id,
@@ -1387,7 +1487,9 @@ async def get_shopify_order_details(
         )
 
 
-@router.get("/shopify/{external_system_hashid}/products/{product_id}/json", response_model=dict)
+@router.get(
+    "/shopify/{external_system_hashid}/products/{product_id}/json", response_model=dict
+)
 async def get_shopify_product_json(
     external_system_hashid: str,
     product_id: str,
@@ -1464,7 +1566,9 @@ async def get_shopify_product_json(
 
         shopify_service = ShopifyService(db)
 
-        logger.info(f"🔍 开始获取 Shopify 商品完整 JSON: external_system_id={external_system_id}, product_id={product_id}")
+        logger.info(
+            f"🔍 开始获取 Shopify 商品完整 JSON: external_system_id={external_system_id}, product_id={product_id}"
+        )
         product_response = await shopify_service.get_product_json(
             shop_id=external_system.external_system_id,  # Use the external system's shop_id
             product_id=product_id,
