@@ -138,17 +138,13 @@ export function OrdersList() {
           setSyncMessage(`正在同步店铺: ${store.name}...`);
           
           const syncResponse = await frontendApi.post(
-            `/api/external-systems/shopify/${store.id_hashid}/sync-orders`,
-            {
-              limit: 100, // 每次同步最多100个订单
-              status: 'any', // 同步所有状态的订单
-            }
+            `/api/external-systems/shopify/${store.id_hashid}/sync-orders`
           );
 
           if (syncResponse.data.success) {
             const syncedCount = syncResponse.data.orders_synced || 0;
             const updatedCount = syncResponse.data.orders_updated || 0;
-            const totalCount = syncedCount + updatedCount;
+            const totalCount = syncedCount   + updatedCount;
             totalSynced += totalCount;
             console.log(`✅ 店铺 ${store.name} 同步成功: 新增 ${syncedCount} 个订单，更新 ${updatedCount} 个订单，总计 ${totalCount} 个订单`);
           }
