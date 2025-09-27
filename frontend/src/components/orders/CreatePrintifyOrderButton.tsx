@@ -88,10 +88,90 @@ export function CreatePrintifyOrderButton({
 
       const response = await printifyApi.createOrder(request);
 
-      setResult(response);
+      frontendLogger.info('📋 Printify API响应', { 
+        success: response.success, 
+        printifyOrderId: response.printify_order_id,
+        externalId: response.external_id,
+        status: response.status,
+        totalPrice: response.total_price,
+        message: response.message,
+        fullResponse: response
+      });
+
       if (response.success) {
         frontendLogger.info('✅ Printify订单创建成功', { response });
-        alert('Printify订单创建成功！');
+        
+        // 创建SCM订单
+        try {
+          frontendLogger.info('🚀 开始创建SCM订单', { orderId, printifyOrderId: response.printify_order_id });
+          
+          // 获取订单的Shopify订单ID
+          const orderResponse = await frontendApi.get(`/api/orders/${orderId}`);
+          const shopifyOrderId = orderResponse.data?.shopify_order_id;
+          
+          frontendLogger.info('📋 订单信息', { 
+            orderId, 
+            shopifyOrderId, 
+            orderData: orderResponse.data 
+          });
+
+          const scmOrderData = {
+            source_order_id: parseInt(orderId),
+            target_system_type: 'PRINTIFY',
+            target_system_id: response.printify_order_id,
+            routing_strategy: 'manual',
+            line_items: [{
+              product_id: 'default',
+              variant_id: 'default',
+              quantity: formData.quantity,
+              price: response.total_price || 0
+            }],
+            total_amount: response.total_price || 0,
+            currency: 'USD',
+            customer_email: formData.customer_email,
+            customer_name: formData.customer_name,
+            customer_phone: formData.phone,
+            shipping_address: {
+              first_name: formData.customer_name.split(' ')[0] || 'Customer',
+              last_name: formData.customer_name.split(' ').slice(1).join(' ') || '',
+              address1: formData.address_line1,
+              city: formData.city,
+              state: formData.state,
+              country: formData.country,
+              zip: formData.zip_code,
+              phone: formData.phone,
+            },
+            routing_metadata: {
+              strategy: 'manual',
+              printify_order_id: response.printify_order_id,
+              external_id: response.external_id,
+            },
+            // 添加Shopify订单ID关联（可能为null）
+            shopify_order_id: shopifyOrderId,
+          };
+
+          frontendLogger.info('📤 发送SCM订单创建请求', { scmOrderData });
+          const scmResponse = await frontendApi.post('/api/scm-orders', scmOrderData);
+          
+          frontendLogger.info('📥 SCM订单创建响应', { scmResponse: scmResponse.data });
+          
+          if (scmResponse.data) {
+            frontendLogger.info('✅ SCM订单创建成功', { scmOrderId: scmResponse.data.id });
+            alert(`Printify订单和SCM订单创建成功！\nPrintify订单ID: ${response.printify_order_id}\nSCM订单ID: ${scmResponse.data.id}`);
+          } else {
+            frontendLogger.warning('⚠️ SCM订单创建失败，但Printify订单已创建', { response: scmResponse.data });
+            alert(`Printify订单创建成功！\nPrintify订单ID: ${response.printify_order_id}\n但SCM订单创建失败，请手动创建SCM订单。`);
+          }
+        } catch (scmError: any) {
+          frontendLogger.error('❌ 创建SCM订单时发生错误', { 
+            error: scmError.message,
+            stack: scmError.stack,
+            response: scmError.response?.data 
+          });
+          alert(`Printify订单创建成功！\nPrintify订单ID: ${response.printify_order_id}\n但SCM订单创建失败，请手动创建SCM订单。\n错误: ${scmError.message}`);
+        }
+        
+        setResult(response);
       } else {
         frontendLogger.error('❌ Printify订单创建失败', { response });
         alert(response.message || '订单创建失败');

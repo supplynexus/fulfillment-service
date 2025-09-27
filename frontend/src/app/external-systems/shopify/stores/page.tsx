@@ -48,6 +48,7 @@ import {
 
 interface ShopifyStore {
   id: number;
+  id_hashid: string;
   name: string;
   system_type: string;
   external_id?: string;
@@ -181,15 +182,15 @@ export default function ShopifyStoresPage() {
       external_id: store.external_id || '',
       base_url: store.base_url || '',
       credentials: {
-        access_token: store.credentials.access_token || '',
-        shop_id: store.credentials.shop_id || '',
-        store_url: store.credentials.store_url || '',
-        api_key: store.credentials.api_key || '',
-        api_secret: store.credentials.api_secret || '',
+        access_token: store.credentials?.access_token || '',
+        shop_id: store.credentials?.shop_id || '',
+        store_url: store.credentials?.store_url || '',
+        api_key: store.credentials?.api_key || '',
+        api_secret: store.credentials?.api_secret || '',
       },
       settings: {
-        api_version: store.settings.api_version || '2024-10',
-        webhook_topics: store.settings.webhook_topics || [
+        api_version: store.settings?.api_version || '2024-10',
+        webhook_topics: store.settings?.webhook_topics || [
           'orders/create',
           'orders/updated',
           'orders/cancelled',
@@ -299,17 +300,17 @@ export default function ShopifyStoresPage() {
   };
 
   const handleSyncOrders = async (store: ShopifyStore) => {
-    if (!store.external_id) {
-      setError('该店铺未配置 external_id，无法同步订单。');
+    if (!store.id_hashid) {
+      setError('该店铺未配置 id_hashid，无法同步订单。');
       return;
     }
 
     try {
       setError(null);
-      setSyncingOrders(prev => ({ ...prev, [store.external_id!]: true }));
+      setSyncingOrders(prev => ({ ...prev, [store.id_hashid!]: true }));
 
       const response = await fetch(
-        `/api/external-systems/shopify/${store.external_id}/sync-orders`,
+        `/api/external-systems/shopify/${store.id_hashid}/sync-orders`,
         {
           method: 'POST',
           headers: {
@@ -358,7 +359,7 @@ export default function ShopifyStoresPage() {
       setShowSyncResultDialog(true);
       console.error('Error syncing orders:', err);
     } finally {
-      setSyncingOrders(prev => ({ ...prev, [store.external_id!]: false }));
+      setSyncingOrders(prev => ({ ...prev, [store.id_hashid!]: false }));
     }
   };
 

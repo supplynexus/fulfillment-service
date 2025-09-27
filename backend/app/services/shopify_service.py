@@ -1122,11 +1122,11 @@ class ShopifyService:
             financial_status = order_data.get("displayFinancialStatus", "")
 
             if fulfillment_status == "FULFILLED":
-                status = OrderStatus.COMPLETED
+                status = OrderStatus.FULFILLED
             elif fulfillment_status == "PARTIALLY_FULFILLED":
                 status = OrderStatus.PROCESSING
             elif financial_status == "PAID":
-                status = OrderStatus.CONFIRMED
+                status = OrderStatus.PROCESSING  # 已付款但未发货的订单设为处理中
             else:
                 status = OrderStatus.PENDING
 
@@ -1168,6 +1168,7 @@ class ShopifyService:
                     order_data.get("createdAt")
                 ),  # Parse date properly
                 "fulfillment_status": fulfillment_status,
+                "shopify_order_id": f"gid://shopify/Order/{shopify_order_id}",  # 添加完整的Shopify订单ID
             }
 
         except Exception as e:

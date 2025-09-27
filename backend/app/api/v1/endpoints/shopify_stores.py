@@ -47,6 +47,13 @@ async def get_shopify_stores(
                     "external_id": store.external_system_id,  # Use external_system_id as external_id for frontend compatibility
                     "external_system_id": store.external_system_id,
                     "base_url": store.base_url,
+                    "credentials": store.credentials or {},  # Include credentials
+                    "settings": store.settings or {},  # Include settings
+                    "sync_enabled": store.sync_enabled,
+                    "webhook_enabled": store.webhook_enabled,
+                    "last_sync_at": (
+                        store.last_sync_at.isoformat() if store.last_sync_at else None
+                    ),
                     "created_at": (
                         store.created_at.isoformat() if store.created_at else None
                     ),

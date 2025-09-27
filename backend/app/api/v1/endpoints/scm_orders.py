@@ -3,6 +3,7 @@ SCM Orders API endpoints
 """
 
 from typing import List, Optional
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -207,7 +208,9 @@ async def create_scm_order(
         customer_phone=scm_order_data.customer_phone,
         shipping_address=scm_order_data.shipping_address,
         billing_address=scm_order_data.billing_address,
-        routing_metadata=scm_order_data.routing_metadata
+<<<<<<< Updated upstream
+        routing_metadata=scm_order_data.routing_metadata,
+        shopify_order_id=scm_order_data.shopify_order_id,
     )
     
     db.add(scm_order)
@@ -261,6 +264,38 @@ async def update_scm_order(
     return SCMOrderResponse.from_orm(scm_order)
 
 
+@router.put("/{scm_order_id}/link-shopify", response_model=SCMOrderResponse)
+async def link_scm_order_to_shopify(
+    scm_order_id: int,
+    shopify_order_id: str,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
+) -> SCMOrderResponse:
+    """
+    将SCM订单关联到Shopify订单
+    """
+    tenant, user = auth
+
+    result = await db.execute(
+        select(SCMOrder).where(
+            SCMOrder.id == scm_order_id, SCMOrder.tenant_id == tenant.id
+        )
+    )
+    scm_order = result.scalar_one_or_none()
+
+    if not scm_order:
+        raise HTTPException(status_code=404, detail="SCM order not found")
+
+    # 更新SCM订单的Shopify订单ID
+    scm_order.shopify_order_id = shopify_order_id
+    scm_order.updated_at = datetime.now()
+
+    await db.commit()
+    await db.refresh(scm_order)
+
+    return SCMOrderResponse.from_orm(scm_order)
+
+
 @router.delete("/{scm_order_id}")
 async def delete_scm_order(
     scm_order_id: int,
@@ -294,3 +329,369 @@ async def delete_scm_order(
     await db.commit()
     
     return {"message": "SCM order deleted successfully"}
+
+
+
+@router.post("/sync-printify-orders", response_model=dict)
+async def sync_printify_orders(
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
+) -> dict:
+    """
+    同步Printify发货单到SCM订单
+    """
+    from app.core.logging import get_logger
+    from app.services.external_system_service import ExternalSystemService
+    from app.services.printify_service import PrintifyService
+    from app.core.security import decrypt_data
+
+    logger = get_logger(__name__)
+
+    try:
+        logger.info("🔍 开始同步 Printify 发货单", tenant_id=auth[0].id)
+
+        tenant, user = auth
+
+        # 获取所有Printify外部系统
+        service = ExternalSystemService(db)
+        printify_systems = await service.get_external_systems_by_type(
+            tenant.id, "PRINTIFY"
+        )
+
+        if not printify_systems:
+            logger.warning("⚠️ 没有找到 Printify 外部系统")
+            return {
+                "success": False,
+                "message": "没有找到 Printify 外部系统，请先配置 Printify 连接",
+                "synced_count": 0,
+            }
+
+        total_synced = 0
+        total_errors = 0
+        errors = []
+
+        # 为每个Printify系统同步发货单
+        for printify_system in printify_systems:
+            try:
+                logger.info(f"🔍 开始同步 Printify 系统: {printify_system.name}")
+
+                # 解密凭据
+                access_token = decrypt_data(
+                    printify_system.credentials.get("access_token", "")
+                )
+
+                if not access_token:
+                    logger.warning(
+                        f"⚠️ Printify 系统 {printify_system.name} 没有访问令牌"
+                    )
+                    continue
+
+                # 创建Printify服务
+                printify_service = PrintifyService(access_token)
+
+                # 首先获取所有店铺
+                logger.info(f"🔍 开始获取 Printify 店铺列表...")
+                shops = await printify_service.get_shops()
+                logger.info(f"📊 获取到 {len(shops) if shops else 0} 个 Printify 店铺")
+
+                if not shops:
+                    logger.warning(
+                        f"⚠️ Printify 系统 {printify_system.name} 没有店铺或获取店铺失败"
+                    )
+                    continue
+
+                # 为每个店铺获取发货单
+                all_orders = []
+                for shop in shops:
+                    shop_id = shop.get("id")
+                    if not shop_id:
+                        continue
+
+                    logger.info(f"🔍 获取店铺 {shop.get('title', shop_id)} 的发货单")
+                    orders_result = await printify_service.get_orders(shop_id)
+                    logger.info(
+                        f"📊 店铺 {shop.get('title', shop_id)} 订单API结果: success={orders_result.get('success')}, orders_count={len(orders_result.get('orders', []))}"
+                    )
+
+                    if orders_result.get("success") and orders_result.get("orders"):
+                        # 为每个订单添加店铺信息
+                        for order in orders_result.get("orders", []):
+                            order["shop_id"] = shop_id
+                            order["shop_title"] = shop.get("title", "")
+                            all_orders.append(order)
+                        logger.info(
+                            f"✅ 店铺 {shop.get('title', shop_id)} 添加了 {len(orders_result.get('orders', []))} 个订单"
+                        )
+                    else:
+                        logger.warning(
+                            f"⚠️ 店铺 {shop.get('title', shop_id)} 获取订单失败或无订单: {orders_result.get('message', 'Unknown error')}"
+                        )
+
+                orders = all_orders
+
+                if not orders:
+                    logger.info(f"ℹ️ Printify 系统 {printify_system.name} 没有发货单")
+                    continue
+
+                # 转换发货单为SCM订单
+                synced_count = 0
+                for order in orders:
+                    try:
+                        # 检查是否已存在相同的Printify订单ID
+                        existing_scm_order = await db.execute(
+                            select(SCMOrder).where(
+                                SCMOrder.tenant_id == tenant.id,
+                                SCMOrder.target_system_id == str(order.get("id", "")),
+                                SCMOrder.target_system_type == "PRINTIFY",
+                            )
+                        )
+                        existing_order = existing_scm_order.scalar_one_or_none()
+
+                        if existing_order:
+                            # 更新现有订单
+                            # 从Printify订单数据中提取客户信息
+                            address_to = order.get("address_to", {})
+                            customer_email = (
+                                address_to.get("email", "") or "no-email@example.com"
+                            )
+                            customer_name = (
+                                f"{address_to.get('first_name', '')} "
+                                f"{address_to.get('last_name', '')}"
+                            ).strip() or "Unknown Customer"
+                            customer_phone = address_to.get("phone", "") or "N/A"
+
+                            # 构建收货地址
+                            shipping_address = {
+                                "first_name": address_to.get("first_name", ""),
+                                "last_name": address_to.get("last_name", ""),
+                                "company": address_to.get("company", ""),
+                                "address1": address_to.get("address1", ""),
+                                "address2": address_to.get("address2", ""),
+                                "city": address_to.get("city", ""),
+                                "state": address_to.get("region", ""),
+                                "zip": address_to.get("zip", ""),
+                                "country": address_to.get("country", ""),
+                                "phone": address_to.get("phone", ""),
+                            }
+
+                            # 构建账单地址（如果存在）
+                            address_from = order.get("address_from", {})
+                            billing_address = (
+                                {
+                                    "first_name": address_from.get("first_name", ""),
+                                    "last_name": address_from.get("last_name", ""),
+                                    "company": address_from.get("company", ""),
+                                    "address1": address_from.get("address1", ""),
+                                    "address2": address_from.get("address2", ""),
+                                    "city": address_from.get("city", ""),
+                                    "state": address_from.get("region", ""),
+                                    "zip": address_from.get("zip", ""),
+                                    "country": address_from.get("country", ""),
+                                    "phone": address_from.get("phone", ""),
+                                }
+                                if address_from
+                                else None
+                            )
+
+                            # 尝试通过external_id找到对应的Shopify订单
+                            external_id = order.get("external_id", "")
+                            shopify_order_id = None
+                            source_order_id = None
+
+                            if external_id and external_id.startswith(
+                                "gid://shopify/Order/"
+                            ):
+                                # external_id是Shopify订单ID
+                                shopify_order_id = external_id
+                                # 尝试找到对应的本地订单
+                                from app.models.order import Order
+
+                                result = await db.execute(
+                                    select(Order).where(
+                                        Order.shopify_order_id == external_id,
+                                        Order.tenant_id == tenant.id,
+                                    )
+                                )
+                                source_order = result.scalar_one_or_none()
+                                if source_order:
+                                    source_order_id = source_order.id
+
+                            existing_order.status = order.get("status", "unknown")
+                            existing_order.fulfillment_status = order.get(
+                                "fulfillment_status", "unknown"
+                            )
+                            existing_order.tracking_number = order.get(
+                                "tracking_number"
+                            )
+                            existing_order.tracking_url = order.get("tracking_url")
+                            existing_order.customer_email = customer_email
+                            existing_order.customer_name = customer_name
+                            existing_order.customer_phone = customer_phone
+                            existing_order.shipping_address = shipping_address
+                            existing_order.billing_address = billing_address
+                            existing_order.shopify_order_id = (
+                                shopify_order_id  # 更新Shopify订单ID
+                            )
+                            existing_order.source_order_id = (
+                                source_order_id  # 更新源订单ID
+                            )
+                            existing_order.updated_at = func.now()
+
+                            logger.info(f"✅ 更新现有 SCM 订单: {existing_order.id}")
+                        else:
+                            # 创建新的SCM订单
+                            # 从Printify订单数据中提取客户信息
+                            address_to = order.get("address_to", {})
+                            customer_email = (
+                                address_to.get("email", "") or "no-email@example.com"
+                            )
+                            customer_name = (
+                                f"{address_to.get('first_name', '')} "
+                                f"{address_to.get('last_name', '')}"
+                            ).strip() or "Unknown Customer"
+                            customer_phone = address_to.get("phone", "") or "N/A"
+
+                            # 构建收货地址
+                            shipping_address = {
+                                "first_name": address_to.get("first_name", ""),
+                                "last_name": address_to.get("last_name", ""),
+                                "company": address_to.get("company", ""),
+                                "address1": address_to.get("address1", ""),
+                                "address2": address_to.get("address2", ""),
+                                "city": address_to.get("city", ""),
+                                "state": address_to.get("region", ""),
+                                "zip": address_to.get("zip", ""),
+                                "country": address_to.get("country", ""),
+                                "phone": address_to.get("phone", ""),
+                            }
+
+                            # 构建账单地址（如果存在）
+                            address_from = order.get("address_from", {})
+                            billing_address = (
+                                {
+                                    "first_name": address_from.get("first_name", ""),
+                                    "last_name": address_from.get("last_name", ""),
+                                    "company": address_from.get("company", ""),
+                                    "address1": address_from.get("address1", ""),
+                                    "address2": address_from.get("address2", ""),
+                                    "city": address_from.get("city", ""),
+                                    "state": address_from.get("region", ""),
+                                    "zip": address_from.get("zip", ""),
+                                    "country": address_from.get("country", ""),
+                                    "phone": address_from.get("phone", ""),
+                                }
+                                if address_from
+                                else None
+                            )
+
+                            # 尝试通过external_id找到对应的Shopify订单
+                            external_id = order.get("external_id", "")
+                            shopify_order_id = None
+                            source_order_id = None
+
+                            if external_id and external_id.startswith(
+                                "gid://shopify/Order/"
+                            ):
+                                # external_id是Shopify订单ID
+                                shopify_order_id = external_id
+                                # 尝试找到对应的本地订单
+                                from app.models.order import Order
+
+                                result = await db.execute(
+                                    select(Order).where(
+                                        Order.shopify_order_id == external_id,
+                                        Order.tenant_id == tenant.id,
+                                    )
+                                )
+                                source_order = result.scalar_one_or_none()
+                                if source_order:
+                                    source_order_id = source_order.id
+                            elif external_id and external_id.startswith("SCM-"):
+                                # external_id是SCM订单号，没有关联的Shopify订单
+                                pass
+
+                            scm_order = SCMOrder(
+                                tenant_id=tenant.id,
+                                source_order_id=source_order_id,
+                                target_system_type="PRINTIFY",
+                                target_system_id=str(order.get("id", "")),
+                                routing_strategy="printify_direct",
+                                line_items=order.get("line_items", []),
+                                total_amount=float(order.get("total_price", 0)),
+                                currency=order.get("currency", "USD"),
+                                customer_email=customer_email,
+                                customer_name=customer_name,
+                                customer_phone=customer_phone,
+                                shipping_address=shipping_address,
+                                billing_address=billing_address,
+                                status=order.get("status", "unknown"),
+                                fulfillment_status=order.get(
+                                    "fulfillment_status", "unknown"
+                                ),
+                                tracking_number=order.get("tracking_number"),
+                                tracking_url=order.get("tracking_url"),
+                                shopify_order_id=shopify_order_id,  # 设置Shopify订单ID
+                                routing_metadata={
+                                    "printify_order_id": order.get("id"),
+                                    "printify_order_number": order.get("order_number"),
+                                    "printify_shop_id": order.get("shop_id"),
+                                    "external_id": external_id,
+                                    "sync_source": "printify_api",
+                                },
+                            )
+
+                            db.add(scm_order)
+                            synced_count += 1
+
+                            logger.info(
+                                f"✅ 创建新 SCM 订单: Printify ID {order.get('id')}"
+                            )
+
+                    except Exception as order_error:
+                        logger.error(f"❌ 处理 Printify 订单失败: {str(order_error)}")
+                        errors.append(
+                            f"订单 {order.get('id', 'unknown')}: {str(order_error)}"
+                        )
+                        total_errors += 1
+
+                await db.commit()
+                total_synced += synced_count
+
+                logger.info(
+                    f"✅ Printify 系统 {printify_system.name} 同步完成: {synced_count} 个订单"
+                )
+
+            except Exception as system_error:
+                logger.error(
+                    f"❌ 同步 Printify 系统 {printify_system.name} 失败: {str(system_error)}"
+                )
+                errors.append(f"系统 {printify_system.name}: {str(system_error)}")
+                total_errors += 1
+
+        result = {
+            "success": total_errors == 0,
+            "message": f"同步完成，共同步了 {total_synced} 个发货单",
+            "synced_count": total_synced,
+            "error_count": total_errors,
+            "errors": errors[:10] if errors else [],  # 只返回前10个错误
+        }
+
+        logger.info(
+            f"✅ Printify 发货单同步完成: {total_synced} 个订单, {total_errors} 个错误"
+        )
+        return result
+
+    except Exception as e:
+        logger.error(f"❌ Printify 发货单同步失败: {str(e)}")
+        import traceback
+
+        logger.error(f"   异常堆栈: {traceback.format_exc()}")
+
+        return {
+            "success": False,
+            "message": f"同步失败: {str(e)}",
+            "synced_count": 0,
+            "error_count": 1,
+            "errors": [str(e)],
+        }
+>>>>>>> Stashed changes

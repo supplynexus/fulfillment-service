@@ -17,23 +17,27 @@ import {
   Button,
   TextField,
   InputAdornment,
-  Pagination,
   IconButton,
   Tooltip,
   Alert,
   CircularProgress,
+  Pagination,
+  Stack,
 } from '@mui/material';
 import {
   Search as SearchIcon,
   Refresh as RefreshIcon,
   Visibility as ViewIcon,
   FilterList as FilterIcon,
+  Sync as SyncIcon,
+  ArrowUpward as ArrowUpwardIcon,
+  ArrowDownward as ArrowDownwardIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
 import { Order, OrderStatus } from '@/types/order';
 import { frontendApi } from '@/lib/api';
 
-const ITEMS_PER_PAGE = 10;
+const ITEMS_PER_PAGE = 20; // 每页显示20个订单
 
 export function OrdersList() {
   const router = useRouter();
@@ -43,6 +47,11 @@ export function OrdersList() {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<'created_at' | 'order_date'>('created_at');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   const fetchOrders = useCallback(async () => {
     try {
@@ -54,18 +63,29 @@ export function OrdersList() {
           page: currentPage,
           limit: ITEMS_PER_PAGE,
           search: searchTerm || undefined,
+          sort_by: sortBy,
+          sort_order: sortOrder,
         },
       });
 
+      console.log('🔍 前端接收到的订单数据:', {
+        orders: response.data.orders?.length || 0,
+        total: response.data.total,
+        total_pages: response.data.total_pages,
+        current_page: response.data.current_page,
+        fullResponse: response.data
+      });
+
       setOrders(response.data.orders || []);
-      setTotalPages(Math.ceil((response.data.total || 0) / ITEMS_PER_PAGE));
+      setTotalPages(response.data.total_pages || 1);
+      setTotalCount(response.data.total || 0);
     } catch (err: any) {
       console.error('Failed to fetch orders:', err);
       setError(err.response?.data?.detail || 'Failed to fetch orders');
     } finally {
       setLoading(false);
     }
-  }, [currentPage, searchTerm]);
+  }, [currentPage, searchTerm, sortBy, sortOrder]);
 
   useEffect(() => {
     fetchOrders();
@@ -73,11 +93,86 @@ export function OrdersList() {
 
   const handleSearch = (event: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(event.target.value);
-    setCurrentPage(1); // Reset to first page when searching
+    setCurrentPage(1); // 搜索时重置到第一页
   };
 
   const handleRefresh = () => {
     fetchOrders();
+  };
+
+  const handlePageChange = (event: React.ChangeEvent<unknown>, page: number) => {
+    setCurrentPage(page);
+  };
+
+  const handleSort = (field: 'created_at' | 'order_date') => {
+    if (sortBy === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(field);
+      setSortOrder('desc'); // 默认降序
+    }
+    setCurrentPage(1); // 排序时重置到第一页
+  };
+
+  const handleSyncShopifyOrders = async () => {
+    try {
+      setSyncing(true);
+      setSyncMessage('正在同步 Shopify 订单...');
+      setError(null);
+
+      // 首先获取所有 Shopify 店铺
+      const storesResponse = await frontendApi.get('/api/external-systems?system_type=shopify');
+      const shopifyStores = storesResponse.data.external_systems || [];
+
+      if (shopifyStores.length === 0) {
+        setSyncMessage('没有找到 Shopify 店铺，请先配置 Shopify 连接');
+        return;
+      }
+
+      let totalSynced = 0;
+      let totalErrors = 0;
+
+      // 为每个 Shopify 店铺同步订单
+      for (const store of shopifyStores) {
+        try {
+          setSyncMessage(`正在同步店铺: ${store.name}...`);
+          
+          const syncResponse = await frontendApi.post(
+            `/api/external-systems/shopify/${store.id_hashid}/sync-orders`,
+            {
+              limit: 100, // 每次同步最多100个订单
+              status: 'any', // 同步所有状态的订单
+            }
+          );
+
+          if (syncResponse.data.success) {
+            totalSynced += syncResponse.data.synced_count || 0;
+            console.log(`✅ 店铺 ${store.name} 同步成功: ${syncResponse.data.synced_count || 0} 个订单`);
+          }
+        } catch (storeError: any) {
+          console.error(`❌ 店铺 ${store.name} 同步失败:`, storeError);
+          totalErrors++;
+        }
+      }
+
+      if (totalErrors === 0) {
+        setSyncMessage(`✅ 同步完成！共同步了 ${totalSynced} 个订单`);
+      } else {
+        setSyncMessage(`⚠️ 同步完成，成功同步 ${totalSynced} 个订单，${totalErrors} 个店铺同步失败`);
+      }
+
+      // 同步完成后刷新订单列表
+      await fetchOrders();
+
+    } catch (error: any) {
+      console.error('❌ Shopify 订单同步失败:', error);
+      setError(error.response?.data?.detail || '同步失败，请稍后重试');
+      setSyncMessage(null);
+    } finally {
+      setSyncing(false);
+      // 3秒后清除同步消息
+      setTimeout(() => setSyncMessage(null), 3000);
+    }
   };
 
   const handleViewOrder = (orderId: number) => {
@@ -98,6 +193,25 @@ export function OrdersList() {
         return 'error';
       case OrderStatus.REFUNDED:
         return 'default';
+      default:
+        return 'default';
+    }
+  };
+
+  const getFulfillmentStatusColor = (fulfillmentStatus: string | null | undefined) => {
+    if (!fulfillmentStatus) return 'default';
+    
+    switch (fulfillmentStatus.toLowerCase()) {
+      case 'fulfilled':
+        return 'success';
+      case 'partial':
+        return 'warning';
+      case 'unfulfilled':
+        return 'default';
+      case 'cancelled':
+        return 'error';
+      case 'in_progress':
+        return 'info';
       default:
         return 'default';
     }
@@ -144,19 +258,39 @@ export function OrdersList() {
         <Typography variant='h4' component='h1'>
           订单管理
         </Typography>
-        <Button
-          variant='outlined'
-          startIcon={<RefreshIcon />}
-          onClick={handleRefresh}
-          disabled={loading}
-        >
-          刷新
-        </Button>
+        <Box display='flex' gap={2}>
+          <Button
+            variant='contained'
+            startIcon={syncing ? <CircularProgress size={16} /> : <SyncIcon />}
+            onClick={handleSyncShopifyOrders}
+            disabled={syncing || loading}
+            color='primary'
+          >
+            {syncing ? '同步中...' : '同步 Shopify 订单'}
+          </Button>
+          <Button
+            variant='outlined'
+            startIcon={<RefreshIcon />}
+            onClick={handleRefresh}
+            disabled={loading || syncing}
+          >
+            刷新
+          </Button>
+        </Box>
       </Box>
 
       {error && (
         <Alert severity='error' sx={{ mb: 2 }}>
           {error}
+        </Alert>
+      )}
+
+      {syncMessage && (
+        <Alert 
+          severity={syncMessage.includes('✅') ? 'success' : syncMessage.includes('⚠️') ? 'warning' : 'info'} 
+          sx={{ mb: 2 }}
+        >
+          {syncMessage}
         </Alert>
       )}
 
@@ -190,14 +324,30 @@ export function OrdersList() {
                   <TableCell>客户</TableCell>
                   <TableCell>金额</TableCell>
                   <TableCell>状态</TableCell>
-                  <TableCell>订单日期</TableCell>
+                  <TableCell>履约状态</TableCell>
+                  <TableCell>
+                    <Box display="flex" alignItems="center" gap={1}>
+                      订单日期
+                      <IconButton
+                        size="small"
+                        onClick={() => handleSort('order_date')}
+                        color={sortBy === 'order_date' ? 'primary' : 'default'}
+                      >
+                        {sortBy === 'order_date' && sortOrder === 'desc' ? (
+                          <ArrowDownwardIcon fontSize="small" />
+                        ) : (
+                          <ArrowUpwardIcon fontSize="small" />
+                        )}
+                      </IconButton>
+                    </Box>
+                  </TableCell>
                   <TableCell>操作</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {orders.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} align='center'>
+                    <TableCell colSpan={8} align='center'>
                       <Typography variant='body2' color='text.secondary'>
                         {searchTerm ? '没有找到匹配的订单' : '暂无订单数据'}
                       </Typography>
@@ -213,7 +363,7 @@ export function OrdersList() {
                       </TableCell>
                       <TableCell>
                         <Typography variant='body2'>
-                          {order.shopify_order_number || order.shopify_order_id}
+                          {order.external_order_name || order.external_order_id}
                         </Typography>
                       </TableCell>
                       <TableCell>
@@ -239,6 +389,13 @@ export function OrdersList() {
                         />
                       </TableCell>
                       <TableCell>
+                        <Chip
+                          label={order.fulfillment_status || 'unfulfilled'}
+                          color={getFulfillmentStatusColor(order.fulfillment_status)}
+                          size='small'
+                        />
+                      </TableCell>
+                      <TableCell>
                         <Typography variant='body2'>
                           {formatDate(order.order_date)}
                         </Typography>
@@ -260,16 +417,22 @@ export function OrdersList() {
             </Table>
           </TableContainer>
 
-          {totalPages > 1 && (
-            <Box display='flex' justifyContent='center' mt={3}>
+          {/* 分页组件 */}
+          <Box display="flex" justifyContent="center" mt={3}>
+            <Stack spacing={2}>
               <Pagination
                 count={totalPages}
                 page={currentPage}
-                onChange={(_, page) => setCurrentPage(page)}
-                color='primary'
+                onChange={handlePageChange}
+                color="primary"
+                showFirstButton
+                showLastButton
               />
-            </Box>
-          )}
+              <Typography variant="body2" color="text.secondary" textAlign="center">
+                共 {totalCount} 个订单，第 {currentPage} 页，共 {totalPages} 页
+              </Typography>
+            </Stack>
+          </Box>
         </CardContent>
       </Card>
     </Box>
