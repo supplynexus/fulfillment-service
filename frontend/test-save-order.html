@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>测试保存订单到数据库</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .button { 
+            background: #1976d2; 
+            color: white; 
+            border: none; 
+            padding: 10px 20px; 
+            border-radius: 4px; 
+            cursor: pointer; 
+            margin: 10px 0;
+        }
+        .button:hover { background: #1565c0; }
+        .button:disabled { background: #ccc; cursor: not-allowed; }
+        .result { 
+            margin: 20px 0; 
+            padding: 15px; 
+            border-radius: 4px; 
+            background: #f5f5f5; 
+            border-left: 4px solid #1976d2;
+        }
+        .error { 
+            background: #ffebee; 
+            border-left-color: #f44336; 
+            color: #c62828;
+        }
+        .success { 
+            background: #e8f5e8; 
+            border-left-color: #4caf50; 
+            color: #2e7d32;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>测试保存 Shopify 订单到数据库</h1>
+        
+        <div>
+            <h3>测试数据</h3>
+            <p>订单ID: gid://shopify/Order/5839241838692</p>
+            <p>订单名称: #1021</p>
+            <p>金额: USD 41.17</p>
+        </div>
+        
+        <button class="button" onclick="testSaveOrder()" id="saveBtn">
+            保存订单到数据库
+        </button>
+        
+        <div id="result"></div>
+    </div>
+
+    <script>
+        async function testSaveOrder() {
+            const btn = document.getElementById('saveBtn');
+            const result = document.getElementById('result');
+            
+            btn.disabled = true;
+            btn.textContent = '保存中...';
+            result.innerHTML = '<div class="result">正在保存订单到数据库...</div>';
+            
+            try {
+                // 模拟订单数据
+                const orderData = {
+                    shopify_order_id: "gid://shopify/Order/5839241838692",
+                    name: "#1021",
+                    confirmation_number: "#1021",
+                    financial_status: "paid",
+                    fulfillment_status: "unfulfilled",
+                    confirmed: true,
+                    closed: false,
+                    cancelled: false,
+                    currency_code: "USD",
+                    total_price: 41.17,
+                    subtotal_price: 41.17,
+                    total_tax: 0,
+                    total_shipping: 0,
+                    tags: [],
+                    note: "测试订单",
+                    customer_data: {
+                        id: "gid://shopify/Customer/1234567890",
+                        name: "Test Customer",
+                        email: "test@example.com",
+                        phone: "+17804277362"
+                    },
+                    billing_address: {
+                        firstName: "Test",
+                        lastName: "Customer",
+                        address1: "10800 97 Avenue Northwest",
+                        city: "Edmonton",
+                        province: "Alberta",
+                        country: "Canada",
+                        zip: "T5K 2B6"
+                    },
+                    shipping_address: {
+                        firstName: "Test",
+                        lastName: "Customer",
+                        address1: "10800 97 Avenue Northwest",
+                        city: "Edmonton",
+                        province: "Alberta",
+                        country: "Canada",
+                        zip: "T5K 2B6"
+                    },
+                    line_items: [
+                        {
+                            id: "gid://shopify/LineItem/1234567890",
+                            title: "Unisex Oversized Boxy Tee",
+                            quantity: 1,
+                            price: "41.17",
+                            variant: {
+                                title: "White / S"
+                            }
+                        }
+                    ],
+                    fulfillments: [],
+                    refunds: [],
+                    raw_data: {
+                        id: "gid://shopify/Order/5839241838692",
+                        name: "#1021",
+                        createdAt: "2025-09-27T19:54:39Z"
+                    }
+                };
+                
+                // 调用后端 API
+                const response = await fetch('/api/shopify-orders/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('access_token') || 'test-token'}`
+                    },
+                    body: JSON.stringify(orderData)
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    result.innerHTML = `
+                        <div class="result success">
+                            <h3>✅ 订单保存成功！</h3>
+                            <p>订单ID: ${data.id}</p>
+                            <p>Shopify订单ID: ${data.shopify_order_id}</p>
+                            <p>订单名称: ${data.name}</p>
+                            <p>创建时间: ${new Date(data.created_at).toLocaleString()}</p>
+                        </div>
+                    `;
+                } else {
+                    const error = await response.text();
+                    result.innerHTML = `
+                        <div class="result error">
+                            <h3>❌ 保存失败</h3>
+                            <p>状态码: ${response.status}</p>
+                            <p>错误信息: ${error}</p>
+                        </div>
+                    `;
+                }
+                
+            } catch (error) {
+                result.innerHTML = `
+                    <div class="result error">
+                        <h3>❌ 请求失败</h3>
+                        <p>错误信息: ${error.message}</p>
+                    </div>
+                `;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '保存订单到数据库';
+            }
+        }
+    </script>
+</body>
+</html>

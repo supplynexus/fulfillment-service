@@ -57,6 +57,7 @@ interface ShopifyOrder {
   id: string;
   name: string;
   email: string;
+  phone?: string;
   created_at: string;
   updated_at: string;
   total_price: string;
@@ -66,26 +67,35 @@ interface ShopifyOrder {
   shipping_address?: {
     firstName?: string;
     lastName?: string;
+    company?: string;
     address1?: string;
+    address2?: string;
     city?: string;
     province?: string;
     country?: string;
     zip?: string;
+    phone?: string;
   };
   billing_address?: {
     firstName?: string;
     lastName?: string;
+    company?: string;
     address1?: string;
+    address2?: string;
     city?: string;
     province?: string;
     country?: string;
     zip?: string;
+    phone?: string;
   };
   customer?: {
     id: string;
     name: string;
     email: string;
   };
+  line_items?: any[];
+  fulfillments?: any[];
+  refunds?: any[];
   line_items_count: number;
 }
 
@@ -94,6 +104,7 @@ interface ShopifyStore {
   id_hashid: string;
   name: string;
   external_system_id: string;
+  external_id?: string; // 添加这个字段
   shop_domain: string;
   access_token: string;
   is_active: boolean;
@@ -118,6 +129,11 @@ const ShopifyOrdersPage: React.FC = () => {
   const [financialStatusFilter, setFinancialStatusFilter] = useState<string>('all');
   const [fulfillmentStatusFilter, setFulfillmentStatusFilter] = useState<string>('all');
   const [syncing, setSyncing] = useState(false);
+  const [jsonModalOpen, setJsonModalOpen] = useState(false);
+  const [orderJson, setOrderJson] = useState<any>(null);
+  const [loadingJson, setLoadingJson] = useState(false);
+  const [savingToDatabase, setSavingToDatabase] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
   // 获取 Shopify 店铺列表
   const fetchStores = useCallback(async () => {
@@ -140,8 +156,8 @@ const ShopifyOrdersPage: React.FC = () => {
     setError(null);
     
     try {
-      frontendLogger.info('🔄 获取 Shopify 订单列表', { storeId: store.external_id, page: pageNum });
-      const response = await frontendApi.get(`/api/external-systems/shopify/${store.external_id}/orders`, {
+      frontendLogger.info('🔄 获取 Shopify 订单列表', { storeId: store.external_system_id, page: pageNum });
+      const response = await frontendApi.get(`/api/external-systems/shopify/${store.external_system_id}/orders`, {
         params: {
           page: pageNum,
           limit: 20,
@@ -243,11 +259,11 @@ const ShopifyOrdersPage: React.FC = () => {
         component: 'handleViewOrder',
         action: 'fetch-order-details',
         orderId,
-        shopId: selectedStore.external_id,
+        shopId: selectedStore.external_system_id,
       });
 
       const response = await fetch(
-        `/api/external-systems/shopify/orders/${orderId}?shop_id=${selectedStore.external_id}`,
+        `/api/external-systems/shopify/orders/${orderId}?shop_id=${selectedStore.external_system_id}`,
         {
           method: 'GET',
           headers: {
@@ -273,7 +289,30 @@ const ShopifyOrdersPage: React.FC = () => {
       });
 
       if (data.success && data.order) {
-        setSelectedOrder(data.order);
+        // 转换数据格式以匹配前端期望的结构
+        const transformedOrder = {
+          ...data.order,
+          created_at: data.order.createdAt,
+          updated_at: data.order.updatedAt,
+          total_price: data.order.totalPriceSet?.shopMoney?.amount || '0',
+          currency: data.order.totalPriceSet?.shopMoney?.currencyCode || 'USD',
+          fulfillment_status: data.order.displayFulfillmentStatus,
+          financial_status: data.order.displayFinancialStatus,
+          customer: data.order.customer ? {
+            id: data.order.customer.id,
+            name: `${data.order.customer.firstName || ''} ${data.order.customer.lastName || ''}`.trim(),
+            email: data.order.customer.email
+          } : null,
+          shipping_address: data.order.shippingAddress,
+          billing_address: data.order.billingAddress,
+          line_items: data.order.lineItems?.edges?.map((edge: any) => ({
+            ...edge.node,
+            price: edge.node.originalUnitPriceSet?.shopMoney?.amount || '0',
+            currency: edge.node.originalUnitPriceSet?.shopMoney?.currencyCode || 'USD'
+          })) || []
+        };
+        
+        setSelectedOrder(transformedOrder);
         setDetailsOpen(true);
       } else {
         throw new Error(data.message || '获取订单详情失败');
@@ -311,12 +350,127 @@ const ShopifyOrdersPage: React.FC = () => {
 
   // 格式化日期
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString('zh-CN');
+    if (!dateString) return '未知';
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '无效日期';
+    return date.toLocaleString('zh-CN');
   };
 
+  // 获取订单 JSON 数据
+  const fetchOrderJson = useCallback(async (orderId: string) => {
+    if (!selectedStore) return;
+    
+    try {
+      setLoadingJson(true);
+      
+      // 从 GraphQL ID 中提取纯数字 ID (例如: gid://shopify/Order/5839241838692 -> 5839241838692)
+      const numericOrderId = orderId.replace('gid://shopify/Order/', '');
+      
+      frontendLogger.info('🔄 获取 Shopify 订单完整 JSON 数据', { 
+        originalId: orderId,
+        numericId: numericOrderId,
+        storeId: selectedStore.external_system_id
+      });
+      
+      const response = await frontendApi.get(
+        `/api/external-systems/shopify/orders/${numericOrderId}/json?shop_id=${selectedStore.external_system_id}`
+      );
+      
+      frontendLogger.info('✅ Shopify 订单 JSON 数据获取成功', { 
+        orderId, 
+        hasData: !!response.data 
+      });
+      
+      setOrderJson(response.data);
+      setJsonModalOpen(true);
+    } catch (error: any) {
+      frontendLogger.error('❌ 获取订单 JSON 数据失败', { 
+        error: error.message,
+        orderId 
+      });
+      setError(error.message || '获取订单 JSON 数据失败');
+    } finally {
+      setLoadingJson(false);
+    }
+  }, [selectedStore]);
+
+  // 保存订单到数据库
+  const handleSaveToDatabase = useCallback(async () => {
+    if (!selectedOrder || !selectedStore) return;
+    
+    try {
+      setSavingToDatabase(true);
+      
+      frontendLogger.info('🔄 保存 Shopify 订单到数据库', { 
+        orderId: selectedOrder.id,
+        orderName: selectedOrder.name,
+        storeId: selectedStore.external_system_id
+      });
+      
+      // 构建保存到数据库的订单数据
+      const orderData = {
+        shopify_order_id: selectedOrder.id,
+        name: selectedOrder.name,
+        confirmation_number: selectedOrder.name, // 使用订单名称作为确认号
+        financial_status: selectedOrder.financial_status,
+        fulfillment_status: selectedOrder.fulfillment_status,
+        confirmed: true, // 假设已确认
+        closed: selectedOrder.fulfillment_status === 'fulfilled',
+        cancelled: selectedOrder.financial_status === 'cancelled',
+        currency_code: selectedOrder.currency,
+        total_price: parseFloat(selectedOrder.total_price) || 0,
+        subtotal_price: parseFloat(selectedOrder.total_price) || 0, // 简化处理
+        total_tax: 0, // 简化处理
+        total_shipping: 0, // 简化处理
+        tags: [], // 简化处理
+        note: '', // 简化处理
+        customer_data: {
+          id: selectedOrder.customer?.id,
+          name: selectedOrder.customer?.name,
+          email: selectedOrder.customer?.email || selectedOrder.email,
+          phone: selectedOrder.phone
+        },
+        billing_address: selectedOrder.billing_address,
+        shipping_address: selectedOrder.shipping_address,
+        line_items: selectedOrder.line_items || [],
+        fulfillments: selectedOrder.fulfillments || [],
+        refunds: selectedOrder.refunds || [],
+        raw_data: orderJson || {} // 使用已获取的 JSON 数据
+      };
+      
+      // 调用后端 API 保存订单
+      const response = await frontendApi.post('/api/shopify-orders/', orderData);
+      
+      frontendLogger.info('✅ Shopify 订单保存到数据库成功', { 
+        orderId: selectedOrder.id,
+        savedOrderId: response.data.id
+      });
+      
+      // 显示成功消息
+      setError(null);
+      setSaveSuccess(true);
+      
+      // 3秒后自动隐藏成功消息
+      setTimeout(() => {
+        setSaveSuccess(false);
+      }, 3000);
+      
+    } catch (error: any) {
+      frontendLogger.error('❌ 保存订单到数据库失败', { 
+        error: error.message,
+        orderId: selectedOrder.id
+      });
+      setError(error.message || '保存订单到数据库失败');
+    } finally {
+      setSavingToDatabase(false);
+    }
+  }, [selectedOrder, selectedStore, orderJson]);
+
   // 格式化金额
-  const formatPrice = (price: string, currency: string) => {
-    return `${currency} ${parseFloat(price).toFixed(2)}`;
+  const formatPrice = (price: string | number, currency: string) => {
+    const numPrice = typeof price === 'string' ? parseFloat(price) : price;
+    if (isNaN(numPrice)) return `${currency} 0.00`;
+    return `${currency} ${numPrice.toFixed(2)}`;
   };
 
   return (
@@ -511,6 +665,12 @@ const ShopifyOrdersPage: React.FC = () => {
                     </Alert>
                   )}
 
+                  {saveSuccess && (
+                    <Alert severity="success" sx={{ mb: 2 }}>
+                      订单已成功保存到数据库！
+                    </Alert>
+                  )}
+
                   {!loading && !error && orders.length === 0 && (
                     <Box sx={{ textAlign: 'center', py: 4 }}>
                       <ShoppingCartIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
@@ -627,7 +787,25 @@ const ShopifyOrdersPage: React.FC = () => {
             fullWidth
           >
             <DialogTitle>
-              订单详情 - {selectedOrder?.name}
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Typography variant="h6">
+                  订单详情 - {selectedOrder?.name}
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Shopify订单ID:
+                  </Typography>
+                  <Chip 
+                    label={selectedOrder?.id || ''} 
+                    color="primary" 
+                    size="small" 
+                    sx={{ cursor: 'pointer' }}
+                    onClick={() => selectedOrder && fetchOrderJson(selectedOrder.id)}
+                    disabled={loadingJson}
+                  />
+                  {loadingJson && <CircularProgress size={16} />}
+                </Box>
+              </Box>
             </DialogTitle>
             <DialogContent>
               {selectedOrder && (
@@ -885,7 +1063,74 @@ const ShopifyOrdersPage: React.FC = () => {
               )}
             </DialogContent>
             <DialogActions>
+              <Button 
+                variant="contained" 
+                color="primary"
+                startIcon={<SyncIcon />}
+                onClick={handleSaveToDatabase}
+                disabled={!selectedOrder || savingToDatabase}
+              >
+                {savingToDatabase ? <CircularProgress size={20} /> : '保存到数据库'}
+              </Button>
               <Button onClick={() => setDetailsOpen(false)}>关闭</Button>
+            </DialogActions>
+          </Dialog>
+
+          {/* JSON 数据模态框 */}
+          <Dialog
+            open={jsonModalOpen}
+            onClose={() => setJsonModalOpen(false)}
+            maxWidth="lg"
+            fullWidth
+          >
+            <DialogTitle>
+              Shopify 订单完整 JSON 数据
+              {selectedOrder && (
+                <Typography variant="body2" color="text.secondary">
+                  {selectedOrder.name}
+                </Typography>
+              )}
+            </DialogTitle>
+            <DialogContent>
+              {orderJson ? (
+                <Box sx={{ mt: 2 }}>
+                  <Typography variant="h6" gutterBottom>
+                    订单 JSON 数据
+                  </Typography>
+                  <Paper 
+                    sx={{ 
+                      p: 2, 
+                      backgroundColor: '#f5f5f5', 
+                      maxHeight: '60vh', 
+                      overflow: 'auto',
+                      fontFamily: 'monospace',
+                      fontSize: '0.875rem'
+                    }}
+                  >
+                    <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
+                      {JSON.stringify(orderJson, null, 2)}
+                    </pre>
+                  </Paper>
+                </Box>
+              ) : (
+                <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '200px' }}>
+                  <CircularProgress />
+                </Box>
+              )}
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setJsonModalOpen(false)}>关闭</Button>
+              {orderJson && (
+                <Button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(JSON.stringify(orderJson, null, 2));
+                    // 这里可以添加一个提示，表示已复制到剪贴板
+                  }}
+                  variant="outlined"
+                >
+                  复制到剪贴板
+                </Button>
+              )}
             </DialogActions>
           </Dialog>
         </Box>

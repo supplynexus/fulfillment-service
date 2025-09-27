@@ -8,15 +8,16 @@ const logger = createLogger('api.external-systems.shopify.orders');
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { external_system_hashid: string } }
+  { params }: { params: Promise<{ external_system_hashid: string }> }
 ) {
   const startTime = Date.now();
+  const { external_system_hashid } = await params;
   
   try {
     logger.info('Request started', { 
       method: request.method, 
       url: request.url,
-      external_system_hashid: params.external_system_hashid
+      external_system_hashid
     });
 
     const authorization = request.headers.get('authorization');
@@ -50,7 +51,7 @@ export async function GET(
     const timestamp = Math.floor(Date.now() / 1000);
     const nonce = Math.random().toString(36).substring(2, 15);
     const bodyString = '';
-    const backendPath = `/api/v1/external-systems/shopify/${params.external_system_hashid}/orders`;
+    const backendPath = `/api/v1/external-systems/shopify/${external_system_hashid}/orders`;
     const signatureString = `GET${backendPath}${timestamp}${nonce}${tenantName}${bodyString}`;
 
     logger.info('🔍 前端签名生成调试信息', {
@@ -80,7 +81,7 @@ export async function GET(
       tenantName,
     });
 
-    const backendUrl = `${process.env.BACKEND_API_URL}${backendPath}?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}&sort_by=${sortBy}&sort_order=${sortOrder}&status=${status}&financial_status=${financialStatus}&fulfillment_status=${fulfillmentStatus}`;
+    const backendUrl = `${process.env.BACKEND_API_URL || 'http://localhost:8000'}${backendPath}?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}&sort_by=${sortBy}&sort_order=${sortOrder}&status=${status}&financial_status=${financialStatus}&fulfillment_status=${fulfillmentStatus}`;
     
     logger.info('Forwarding request to backend', { backendUrl });
 

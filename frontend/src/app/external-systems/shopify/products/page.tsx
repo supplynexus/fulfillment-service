@@ -53,6 +53,7 @@ import {
   Cancel as InactiveIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
+  Sync as SyncIcon,
 } from '@mui/icons-material';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -173,6 +174,8 @@ const ShopifyProductsPage: React.FC = () => {
   const [sortBy, setSortBy] = useState<'title' | 'created_at' | 'updated_at' | 'price'>('title');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [syncingToDatabase, setSyncingToDatabase] = useState(false);
+  const [syncSuccess, setSyncSuccess] = useState(false);
 
   // 获取 Shopify 店铺列表
   const fetchStores = useCallback(async () => {
@@ -245,6 +248,80 @@ const ShopifyProductsPage: React.FC = () => {
       setLoadingJson(false);
     }
   }, [selectedStore]);
+
+  // 同步商品到数据库
+  const syncProductToDatabase = useCallback(async () => {
+    if (!selectedProduct || !selectedStore) return;
+
+    try {
+      setSyncingToDatabase(true);
+
+      frontendLogger.info('🔄 同步 Shopify 商品到数据库', {
+        productId: selectedProduct.id,
+        productName: selectedProduct.title,
+        storeId: selectedStore.id_hashid
+      });
+
+      const productData = {
+        external_system_id: selectedStore.id,
+        external_product_id: selectedProduct.id,
+        product_name: selectedProduct.title,
+        product_type: selectedProduct.product_type || '',
+        vendor: selectedProduct.vendor || '',
+        status: selectedProduct.status,
+        published_at: selectedProduct.published_at,
+        tags: selectedProduct.tags ? selectedProduct.tags.split(',').map(tag => tag.trim()) : [],
+        raw_data: productJson || {},
+        variants: selectedProduct.variants?.map(variant => ({
+          external_variant_id: variant.id,
+          title: variant.title,
+          sku: variant.sku || '',
+          price: parseFloat(variant.price) || 0,
+          compare_at_price: variant.compareAtPrice ? parseFloat(variant.compareAtPrice) : null,
+          inventory_quantity: variant.inventoryQuantity || 0,
+          inventory_policy: variant.inventoryPolicy || 'deny',
+          weight: variant.weight || 0,
+          weight_unit: variant.weightUnit || 'kg',
+          taxable: variant.taxable || false,
+          tax_code: variant.taxCode || '',
+          position: variant.position || 0,
+          created_at: variant.createdAt,
+          updated_at: variant.updatedAt,
+          selected_options: variant.selectedOptions || [],
+          image: variant.image ? {
+            id: variant.image.id,
+            url: variant.image.url,
+            alt_text: variant.image.altText || '',
+            width: variant.image.width || 0,
+            height: variant.image.height || 0
+          } : null
+        })) || []
+      };
+
+      const response = await frontendApi.post('/api/external-products/', productData);
+
+      frontendLogger.info('✅ Shopify 商品同步到数据库成功', {
+        productId: selectedProduct.id,
+        savedProductId: response.data.id
+      });
+
+      setError(null);
+      setSyncSuccess(true);
+
+      setTimeout(() => {
+        setSyncSuccess(false);
+      }, 3000);
+
+    } catch (error: any) {
+      frontendLogger.error('❌ 同步商品到数据库失败', {
+        error: error.message,
+        productId: selectedProduct.id
+      });
+      setError(error.message || '同步商品到数据库失败');
+    } finally {
+      setSyncingToDatabase(false);
+    }
+  }, [selectedProduct, selectedStore, productJson]);
 
   // 获取 Shopify 商品列表
   const fetchProducts = useCallback(async (store: ShopifyStore, pageNum: number = 1) => {
@@ -630,6 +707,11 @@ const ShopifyProductsPage: React.FC = () => {
               </Box>
             </DialogTitle>
             <DialogContent>
+              {syncSuccess && (
+                <Alert severity="success" sx={{ mb: 2 }}>
+                  商品已成功同步到数据库！
+                </Alert>
+              )}
               {selectedProduct && (
                 <Box>
                   <Grid container spacing={3}>
@@ -741,6 +823,15 @@ const ShopifyProductsPage: React.FC = () => {
               )}
             </DialogContent>
             <DialogActions>
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={<SyncIcon />}
+                onClick={syncProductToDatabase}
+                disabled={!selectedProduct || syncingToDatabase}
+              >
+                {syncingToDatabase ? <CircularProgress size={20} /> : '同步到数据库'}
+              </Button>
               <Button onClick={() => setDetailsOpen(false)}>关闭</Button>
             </DialogActions>
           </Dialog>
