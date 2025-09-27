@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@/lib/logger';
+import { jwtUtilsServer } from '@/lib/jwt-utils-server';
+import { keyLoader } from '@/lib/key-loader';
+import { generateBackendSignature } from '@/lib/signature';
 
 const logger = createLogger('api.external-systems.shopify.stores');
 
@@ -22,16 +25,38 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Verify JWT token and get user info
+    const token = authorization.replace('Bearer ', '');
+    const decodedToken = jwtUtilsServer.verifyToken(token);
+    const { tenant_name: tenantName, sub: userId } = decodedToken;
+
+    logger.info('Authenticated user', { tenantName, userId });
+
+    // Generate signature for backend request
+    const timestamp = Math.floor(Date.now() / 1000);
+    const nonce = Math.random().toString(36).substring(2, 15);
+    const bodyString = '';
+    const backendPath = '/api/v1/shopify/stores';
+    const signatureString = `GET${backendPath}${timestamp}${nonce}${tenantName}${bodyString}`;
+
+    const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
+    const signature = generateBackendSignature(privateKey, signatureString, timestamp, nonce, tenantName);
+
     // Forward the request to the backend
-    const backendUrl = `${process.env.BACKEND_API_URL}/api/v1/shopify/stores`;
+    const backendUrl = `${process.env.BACKEND_API_URL}${backendPath}`;
     
     logger.info('Forwarding request to backend', { backendUrl });
 
     const backendResponse = await fetch(backendUrl, {
       method: 'GET',
       headers: {
-        'Authorization': authorization,
         'Content-Type': 'application/json',
+        'Authorization': authorization, // Add Authorization header for backend
+        'X-Tenant-Name': tenantName,
+        'X-User-ID': userId,
+        'X-Timestamp': timestamp.toString(),
+        'X-Nonce': nonce,
+        'X-Signature': signature,
       },
     });
 

@@ -145,6 +145,15 @@ export async function GET(request: NextRequest) {
     }
 
     const data = await backendResponse.json();
+    logger.info('🔍 前端API接收到的后端数据:', {
+      orders: data.orders?.length || 0,
+      total: data.total,
+      total_pages: data.total_pages,
+      current_page: data.current_page,
+      limit: data.limit,
+      fullData: data
+    });
+
     logger.info('Request completed', {
       method: request.method,
       url: request.url,

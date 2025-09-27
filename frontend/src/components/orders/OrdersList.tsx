@@ -21,6 +21,8 @@ import {
   Tooltip,
   Alert,
   CircularProgress,
+  Pagination,
+  Stack,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -28,12 +30,14 @@ import {
   Visibility as ViewIcon,
   FilterList as FilterIcon,
   Sync as SyncIcon,
+  ArrowUpward as ArrowUpwardIcon,
+  ArrowDownward as ArrowDownwardIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
 import { Order, OrderStatus } from '@/types/order';
 import { frontendApi } from '@/lib/api';
 
-const ITEMS_PER_PAGE = 1000; // 显示所有订单，设置一个较大的值
+const ITEMS_PER_PAGE = 20; // 每页显示20个订单
 
 export function OrdersList() {
   const router = useRouter();
@@ -41,9 +45,13 @@ export function OrdersList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  // 移除分页相关状态，显示所有订单
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<'created_at' | 'order_date'>('created_at');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   const fetchOrders = useCallback(async () => {
     try {
@@ -52,19 +60,32 @@ export function OrdersList() {
 
       const response = await frontendApi.get('/api/orders', {
         params: {
+          page: currentPage,
           limit: ITEMS_PER_PAGE,
           search: searchTerm || undefined,
+          sort_by: sortBy,
+          sort_order: sortOrder,
         },
       });
 
+      console.log('🔍 前端接收到的订单数据:', {
+        orders: response.data.orders?.length || 0,
+        total: response.data.total,
+        total_pages: response.data.total_pages,
+        current_page: response.data.current_page,
+        fullResponse: response.data
+      });
+
       setOrders(response.data.orders || []);
+      setTotalPages(response.data.total_pages || 1);
+      setTotalCount(response.data.total || 0);
     } catch (err: any) {
       console.error('Failed to fetch orders:', err);
       setError(err.response?.data?.detail || 'Failed to fetch orders');
     } finally {
       setLoading(false);
     }
-  }, [searchTerm]);
+  }, [currentPage, searchTerm, sortBy, sortOrder]);
 
   useEffect(() => {
     fetchOrders();
@@ -72,10 +93,25 @@ export function OrdersList() {
 
   const handleSearch = (event: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(event.target.value);
+    setCurrentPage(1); // 搜索时重置到第一页
   };
 
   const handleRefresh = () => {
     fetchOrders();
+  };
+
+  const handlePageChange = (event: React.ChangeEvent<unknown>, page: number) => {
+    setCurrentPage(page);
+  };
+
+  const handleSort = (field: 'created_at' | 'order_date') => {
+    if (sortBy === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(field);
+      setSortOrder('desc'); // 默认降序
+    }
+    setCurrentPage(1); // 排序时重置到第一页
   };
 
   const handleSyncShopifyOrders = async () => {
@@ -157,6 +193,25 @@ export function OrdersList() {
         return 'error';
       case OrderStatus.REFUNDED:
         return 'default';
+      default:
+        return 'default';
+    }
+  };
+
+  const getFulfillmentStatusColor = (fulfillmentStatus: string | null | undefined) => {
+    if (!fulfillmentStatus) return 'default';
+    
+    switch (fulfillmentStatus.toLowerCase()) {
+      case 'fulfilled':
+        return 'success';
+      case 'partial':
+        return 'warning';
+      case 'unfulfilled':
+        return 'default';
+      case 'cancelled':
+        return 'error';
+      case 'in_progress':
+        return 'info';
       default:
         return 'default';
     }
@@ -269,14 +324,30 @@ export function OrdersList() {
                   <TableCell>客户</TableCell>
                   <TableCell>金额</TableCell>
                   <TableCell>状态</TableCell>
-                  <TableCell>订单日期</TableCell>
+                  <TableCell>履约状态</TableCell>
+                  <TableCell>
+                    <Box display="flex" alignItems="center" gap={1}>
+                      订单日期
+                      <IconButton
+                        size="small"
+                        onClick={() => handleSort('order_date')}
+                        color={sortBy === 'order_date' ? 'primary' : 'default'}
+                      >
+                        {sortBy === 'order_date' && sortOrder === 'desc' ? (
+                          <ArrowDownwardIcon fontSize="small" />
+                        ) : (
+                          <ArrowUpwardIcon fontSize="small" />
+                        )}
+                      </IconButton>
+                    </Box>
+                  </TableCell>
                   <TableCell>操作</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {orders.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} align='center'>
+                    <TableCell colSpan={8} align='center'>
                       <Typography variant='body2' color='text.secondary'>
                         {searchTerm ? '没有找到匹配的订单' : '暂无订单数据'}
                       </Typography>
@@ -318,6 +389,13 @@ export function OrdersList() {
                         />
                       </TableCell>
                       <TableCell>
+                        <Chip
+                          label={order.fulfillment_status || 'unfulfilled'}
+                          color={getFulfillmentStatusColor(order.fulfillment_status)}
+                          size='small'
+                        />
+                      </TableCell>
+                      <TableCell>
                         <Typography variant='body2'>
                           {formatDate(order.order_date)}
                         </Typography>
@@ -339,7 +417,22 @@ export function OrdersList() {
             </Table>
           </TableContainer>
 
-          {/* 移除分页组件，显示所有订单 */}
+          {/* 分页组件 */}
+          <Box display="flex" justifyContent="center" mt={3}>
+            <Stack spacing={2}>
+              <Pagination
+                count={totalPages}
+                page={currentPage}
+                onChange={handlePageChange}
+                color="primary"
+                showFirstButton
+                showLastButton
+              />
+              <Typography variant="body2" color="text.secondary" textAlign="center">
+                共 {totalCount} 个订单，第 {currentPage} 页，共 {totalPages} 页
+              </Typography>
+            </Stack>
+          </Box>
         </CardContent>
       </Card>
     </Box>

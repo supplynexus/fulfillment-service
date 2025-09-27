@@ -23,6 +23,7 @@ class SCMOrderCreate(BaseModel):
     shipping_address: Dict[str, Any]
     billing_address: Optional[Dict[str, Any]] = None
     routing_metadata: Optional[Dict[str, Any]] = None
+    shopify_order_id: Optional[str] = None
 
 
 class SCMOrderResponse(BaseModel):

@@ -23,6 +23,7 @@ from app.api.v1.endpoints import (
     order_routing,
     routing_rules,
     printify_orders,
+    order_automation,
 )
 
 api_router = APIRouter()
@@ -63,3 +64,8 @@ api_router.include_router(system.router, prefix="/system", tags=["system"])
 
 # Printify Integration
 api_router.include_router(printify_orders.router, prefix="/printify", tags=["printify"])
+
+# Order Automation
+api_router.include_router(
+    order_automation.router, prefix="/automation", tags=["order-automation"]
+)

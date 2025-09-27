@@ -91,6 +91,7 @@ interface ShopifyOrder {
 
 interface ShopifyStore {
   id: number;
+  id_hashid: string;
   name: string;
   external_system_id: string;
   shop_domain: string;
@@ -177,8 +178,8 @@ const ShopifyOrdersPage: React.FC = () => {
     setError(null);
     
     try {
-      frontendLogger.info('🔄 开始同步 Shopify 订单', { storeId: store.external_id });
-      const response = await frontendApi.post(`/api/external-systems/shopify/${store.external_id}/sync-orders`);
+      frontendLogger.info('🔄 开始同步 Shopify 订单', { storeId: store.id_hashid });
+      const response = await frontendApi.post(`/api/external-systems/shopify/${store.id_hashid}/sync-orders`);
       
       frontendLogger.info('✅ Shopify 订单同步成功', { 
         ordersSynced: response.data.orders_synced,

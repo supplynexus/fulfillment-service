@@ -79,9 +79,15 @@ class SCMOrder(Base):
     tracking_url = Column(String, nullable=True)
 
     # Shopify integration
+    shopify_order_id = Column(
+        String, nullable=True
+    )  # Direct reference to Shopify order ID
     shopify_fulfillment_order_id = Column(String, nullable=True)
     shopify_fulfillment_id = Column(String, nullable=True)
 
+    # Printify integration
+    printify_order_id = Column(String, nullable=True)  # Printify order ID
+    printify_shop_id = Column(String, nullable=True)  # Printify shop ID
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

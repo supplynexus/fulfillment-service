@@ -218,6 +218,7 @@ async def create_scm_order(
         shipping_address=scm_order_data.shipping_address,
         billing_address=scm_order_data.billing_address,
         routing_metadata=scm_order_data.routing_metadata,
+        shopify_order_id=scm_order_data.shopify_order_id,
     )
 
     db.add(scm_order)
