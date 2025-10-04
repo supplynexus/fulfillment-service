@@ -107,6 +107,20 @@ interface PrintifyOrder {
     id: string;
   };
   sales_channel_type_id: number;
+  // 发货信息
+  tracking_number?: string;
+  tracking_url?: string;
+  tracking_company?: string;
+  shipped_at?: string;
+  delivered_at?: string;
+  fulfillment_status?: string;
+  shipments?: Array<{
+    carrier: string;
+    number: string;
+    url: string;
+    delivered_at: string | null;
+    shipped_at: string;
+  }>;
 }
 
 // Printify 店铺接口
@@ -239,7 +253,7 @@ function PrintifyOrdersPage() {
   });
 
   // 获取状态颜色
-  const getStatusColor = (status: OrderStatus) => {
+  const getStatusColor = (status: OrderStatus | string) => {
     switch (status) {
       case 'pending':
         return 'warning';
@@ -253,6 +267,12 @@ function PrintifyOrdersPage() {
         return 'error';
       case 'on_hold':
         return 'default';
+      case 'fulfilled':
+        return 'success';
+      case 'unfulfilled':
+        return 'warning';
+      case 'partial':
+        return 'info';
       default:
         return 'default';
     }
@@ -298,9 +318,43 @@ function PrintifyOrdersPage() {
   };
 
   // 查看订单详情
-  const handleViewOrder = (order: PrintifyOrder) => {
-    setSelectedOrder(order);
-    setOpenOrderDialog(true);
+  const handleViewOrder = async (order: PrintifyOrder) => {
+    if (!selectedStore) return;
+    
+    try {
+      frontendLogger.info('🔍 开始获取 Printify 订单详情', {
+        orderId: order.id,
+        appOrderId: order.app_order_id,
+        storeId: selectedStore.id_hashid,
+      });
+
+      const response = await frontendApi.get(
+        `/api/external-systems/printify/${selectedStore.id_hashid}/orders/${order.id}`
+      );
+
+      if (response.data.success && response.data.order) {
+        const orderDetails = response.data.order;
+        setSelectedOrder(orderDetails);
+        setOpenOrderDialog(true);
+        frontendLogger.info('✅ Printify 订单详情获取成功', {
+          orderId: order.id,
+          appOrderId: order.app_order_id,
+          hasShippingInfo: !!(orderDetails.tracking_number || orderDetails.tracking_url),
+        });
+      } else {
+        throw new Error(response.data.message || '获取订单详情失败');
+      }
+    } catch (error) {
+      frontendLogger.error('❌ 获取 Printify 订单详情失败', {
+        error: String(error),
+        orderId: order.id,
+        appOrderId: order.app_order_id,
+        storeId: selectedStore.id_hashid,
+      });
+      // 如果 API 调用失败，仍然显示基本订单信息
+      setSelectedOrder(order);
+      setOpenOrderDialog(true);
+    }
   };
 
   // 分页处理
@@ -696,6 +750,84 @@ function PrintifyOrdersPage() {
                   </Typography>
                 </CardContent>
               </Card>
+
+              {/* 发货信息 */}
+              {(selectedOrder.shipments && selectedOrder.shipments.length > 0) && (
+                <Card sx={{ mb: 2 }}>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>
+                      发货信息
+                    </Typography>
+                    {selectedOrder.shipments.map((shipment, index) => (
+                      <Box key={index} sx={{ mb: 2, p: 2, border: '1px solid #e0e0e0', borderRadius: 1 }}>
+                        <Typography variant="subtitle2" gutterBottom>
+                          包裹 {index + 1}
+                        </Typography>
+                        <Grid container spacing={2}>
+                          <Grid size={{ xs: 12, sm: 6 }}>
+                            <Typography variant="body2" color="text.secondary">
+                              追踪号
+                            </Typography>
+                            <Typography variant="body1" fontFamily="monospace">
+                              {shipment.number}
+                            </Typography>
+                          </Grid>
+                          <Grid size={{ xs: 12, sm: 6 }}>
+                            <Typography variant="body2" color="text.secondary">
+                              物流公司
+                            </Typography>
+                            <Typography variant="body1">
+                              {shipment.carrier}
+                            </Typography>
+                          </Grid>
+                          <Grid size={{ xs: 12 }}>
+                            <Typography variant="body2" color="text.secondary">
+                              追踪链接
+                            </Typography>
+                            <Button
+                              size="small"
+                              href={shipment.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              variant="outlined"
+                            >
+                              查看物流状态
+                            </Button>
+                          </Grid>
+                          <Grid size={{ xs: 12, sm: 6 }}>
+                            <Typography variant="body2" color="text.secondary">
+                              发货时间
+                            </Typography>
+                            <Typography variant="body1">
+                              {formatDate(shipment.shipped_at)}
+                            </Typography>
+                          </Grid>
+                          <Grid size={{ xs: 12, sm: 6 }}>
+                            <Typography variant="body2" color="text.secondary">
+                              送达时间
+                            </Typography>
+                            <Typography variant="body1">
+                              {shipment.delivered_at ? formatDate(shipment.delivered_at) : '未送达'}
+                            </Typography>
+                          </Grid>
+                        </Grid>
+                      </Box>
+                    ))}
+                    {selectedOrder.fulfillment_status && (
+                      <Box sx={{ mt: 2 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          履行状态
+                        </Typography>
+                        <Chip
+                          label={selectedOrder.fulfillment_status}
+                          color={getStatusColor(selectedOrder.fulfillment_status) as any}
+                          size="small"
+                        />
+                      </Box>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
 
             </Box>
           )}

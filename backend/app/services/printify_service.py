@@ -159,15 +159,49 @@ class PrintifyService:
     async def get_order(self, shop_id: str, order_id: str) -> Optional[Dict[str, Any]]:
         """Get order details from Printify"""
         try:
+            # 尝试不同的订单 ID 格式
+            # 1. 原始格式：21704929.46
+            # 2. 点号后部分：46
+            # 3. 点号前部分：21704929
+
+            order_id_formats = [
+                order_id,  # 原始格式
+                order_id.split(".")[-1] if "." in order_id else order_id,  # 点号后部分
+                order_id.split(".")[0] if "." in order_id else order_id,  # 点号前部分
+            ]
+
+            logger.info(
+                f"🔍 开始调用 Printify API 获取订单详情: shop_id={shop_id}, original_order_id={order_id}, trying_formats={order_id_formats}"
+            )
+
             async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    f"{self.base_url}/shops/{shop_id}/orders/{order_id}.json",
-                    headers=self.headers,
-                )
-                response.raise_for_status()
-                return response.json()
+                for i, test_order_id in enumerate(order_id_formats):
+                    try:
+                        logger.info(f"🔍 尝试格式 {i+1}: {test_order_id}")
+                        response = await client.get(
+                            f"{self.base_url}/shops/{shop_id}/orders/{test_order_id}.json",
+                            headers=self.headers,
+                        )
+                        response.raise_for_status()
+                        logger.info(
+                            f"✅ Printify 订单详情获取成功: order_id={test_order_id}"
+                        )
+                        return response.json()
+                    except httpx.HTTPStatusError as e:
+                        logger.info(
+                            f"❌ 格式 {i+1} 失败: {e.response.status_code} - {e.response.text}"
+                        )
+                        continue
+                    except Exception as e:
+                        logger.info(f"❌ 格式 {i+1} 异常: {e}")
+                        continue
+
+                # 所有格式都失败了
+                logger.error(f"❌ 所有订单 ID 格式都失败了: {order_id_formats}")
+                return None
+
         except Exception as e:
-            logger.error(f"Failed to get Printify order: {e}")
+            logger.error(f"❌ Printify 获取订单失败: {e}")
             return None
 
     async def create_shipping_label_from_shopify_order(
