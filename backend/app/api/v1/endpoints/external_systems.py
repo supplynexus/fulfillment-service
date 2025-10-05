@@ -736,6 +736,135 @@ async def get_printify_products(
         )
 
 
+@router.get("/printify/{external_system_hashid}/orders/{order_id}", response_model=dict)
+async def get_printify_order_details(
+    external_system_hashid: str,
+    order_id: str,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
+) -> Any:
+    """Get Printify order details by order ID"""
+    logger = get_logger(__name__)
+    try:
+        logger.info(
+            f"🔍 开始处理 Printify 订单详情请求: external_system_hashid={external_system_hashid}, order_id={order_id}"
+        )
+        tenant, user = auth
+        logger.info(
+            f"✅ 认证成功: tenant_id={tenant.id}, tenant_name={tenant.name}, user_id={user.id}"
+        )
+
+        # Decode hashids to get external_system_id
+        from app.core.hashids_utils import decode_id
+
+        try:
+            external_system_id = decode_id(external_system_hashid)
+            logger.info(
+                f"✅ Hashids 解码成功: {external_system_hashid} -> {external_system_id}"
+            )
+        except Exception as e:
+            logger.error(
+                f"❌ Hashids 解码失败: {external_system_hashid}, 错误: {str(e)}"
+            )
+            raise HTTPException(status_code=400, detail="Invalid external system ID")
+
+        # Get external system by primary key
+        service = ExternalSystemService(db)
+        external_system = await service.get_external_system(
+            external_system_id, tenant.id
+        )
+        if not external_system:
+            logger.error(
+                f"❌ 未找到外部系统: external_system_id={external_system_id}, tenant_id={tenant.id}"
+            )
+            raise HTTPException(status_code=404, detail="External system not found")
+
+        logger.info(
+            f"✅ 找到外部系统: id={external_system.id}, name={external_system.name}, system_type={external_system.system_type}"
+        )
+
+        # Get decrypted credentials
+        decrypted_credentials = await service.get_decrypted_credentials(
+            external_system.id, tenant.id
+        )
+        if not decrypted_credentials:
+            logger.error(
+                f"❌ 无法获取解密后的凭据: external_system_id={external_system.id}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Failed to get decrypted credentials",
+            )
+        logger.info(f"✅ 凭据解密成功: external_system_id={external_system.id}")
+
+        access_token = decrypted_credentials.get("access_token")
+        shop_id = decrypted_credentials.get("shop_id")
+
+        if not access_token:
+            logger.error(
+                f"❌ 缺少 access_token: external_system_id={external_system.id}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Access Token not configured for this store",
+            )
+
+        if not shop_id:
+            logger.error(f"❌ 缺少 shop_id: external_system_id={external_system.id}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Shop ID not configured for this store",
+            )
+
+        # Get order details using PrintifyService
+        from app.services.printify_service import PrintifyService
+
+        printify_service = PrintifyService(printify_api_token=access_token)
+
+        logger.info(
+            f"🔍 开始调用 Printify API 获取订单详情: shop_id={shop_id}, order_id={order_id}"
+        )
+        order_details = await printify_service.get_order(shop_id, order_id)
+
+        if not order_details:
+            logger.error(f"❌ Printify 订单详情获取失败: order_id={order_id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Printify order not found",
+            )
+
+        logger.info(f"✅ Printify 订单详情获取成功: order_id={order_id}")
+        # Log the order_details structure for debugging
+        import json
+
+        logger.info(
+            f"📦 订单详情数据结构: {json.dumps(order_details, ensure_ascii=False, indent=2)}"
+        )
+
+        return {
+            "success": True,
+            "order": order_details,
+            "details": {
+                "shop_id": shop_id,
+                "order_id": order_id,
+                "base_url": external_system.base_url,
+                "system_type": "PRINTIFY",
+            },
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Printify 订单详情请求处理失败: {str(e)}")
+        import traceback
+
+        logger.error(f"   异常堆栈: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get order details: {str(e)}",
+        )
+
+
 @router.get("/printify/{external_system_hashid}/orders", response_model=dict)
 async def get_printify_orders(
     external_system_hashid: str,
@@ -1621,10 +1750,14 @@ async def get_shopify_order_json(
     """获取 Shopify 订单的完整 JSON 数据"""
     logger = get_logger(__name__)
     tenant, user = auth
-    logger.info(f"🔍 开始处理 Shopify 订单 JSON 请求: shop_id={shop_id}, order_id={order_id}")
+    logger.info(
+        f"🔍 开始处理 Shopify 订单 JSON 请求: shop_id={shop_id}, order_id={order_id}"
+    )
 
     try:
-        logger.info(f"✅ 认证成功: tenant_id={tenant.id}, tenant_name={tenant.name}, user_id={user.id}")
+        logger.info(
+            f"✅ 认证成功: tenant_id={tenant.id}, tenant_name={tenant.name}, user_id={user.id}"
+        )
 
         # Get external system by shop_id (external_id)
         service = ExternalSystemService(db)

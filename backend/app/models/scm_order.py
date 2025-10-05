@@ -77,6 +77,9 @@ class SCMOrder(Base):
     # Fulfillment tracking
     tracking_number = Column(String, nullable=True)
     tracking_url = Column(String, nullable=True)
+    carrier = Column(String, nullable=True)  # 物流公司
+    shipped_at = Column(DateTime(timezone=True), nullable=True)  # 发货时间
+    delivered_at = Column(DateTime(timezone=True), nullable=True)  # 送达时间
 
     # Shopify integration
     shopify_order_id = Column(

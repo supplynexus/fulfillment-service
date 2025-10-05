@@ -3,6 +3,7 @@ SCM Orders API endpoints
 """
 
 from typing import List, Optional
+import time
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -314,7 +315,6 @@ async def sync_printify_orders(
     from app.core.logging import get_logger
     from app.services.external_system_service import ExternalSystemService
     from app.services.printify_service import PrintifyService
-    from app.core.security import decrypt_data
 
     logger = get_logger(__name__)
 
@@ -346,11 +346,18 @@ async def sync_printify_orders(
             try:
                 logger.info(f"🔍 开始同步 Printify 系统: {printify_system.name}")
 
-                # 解密凭据
-                access_token = decrypt_data(
-                    printify_system.credentials.get("access_token", "")
+                # 获取解密后的凭据
+                decrypted_credentials = await service.get_decrypted_credentials(
+                    printify_system.id, tenant.id
                 )
 
+                if not decrypted_credentials:
+                    logger.warning(
+                        f"⚠️ Printify 系统 {printify_system.name} 无法获取解密后的凭据"
+                    )
+                    continue
+
+                access_token = decrypted_credentials.get("access_token", "")
                 if not access_token:
                     logger.warning(
                         f"⚠️ Printify 系统 {printify_system.name} 没有访问令牌"
@@ -385,11 +392,33 @@ async def sync_printify_orders(
                     )
 
                     if orders_result.get("success") and orders_result.get("orders"):
-                        # 为每个订单添加店铺信息
+                        # 为每个订单获取完整详情（包含shipments信息）
                         for order in orders_result.get("orders", []):
-                            order["shop_id"] = shop_id
-                            order["shop_title"] = shop.get("title", "")
-                            all_orders.append(order)
+                            order_id = str(order.get("id", ""))
+                            logger.info(f"🔍 获取订单 {order_id} 的完整详情...")
+
+                            # 调用单个订单详情API获取完整信息
+                            order_details = await printify_service.get_order(
+                                shop_id, order_id
+                            )
+
+                            if order_details:
+                                # 使用完整的订单详情替换列表中的简化数据
+                                order_details["shop_id"] = shop_id
+                                order_details["shop_title"] = shop.get("title", "")
+                                all_orders.append(order_details)
+                                logger.info(
+                                    f"✅ 订单 {order_id} 完整详情获取成功，shipments: {len(order_details.get('shipments', []))}"
+                                )
+                            else:
+                                # 如果获取详情失败，使用列表中的简化数据
+                                logger.warning(
+                                    f"⚠️ 订单 {order_id} 详情获取失败，使用列表数据"
+                                )
+                                order["shop_id"] = shop_id
+                                order["shop_title"] = shop.get("title", "")
+                                all_orders.append(order)
+
                         logger.info(
                             f"✅ 店铺 {shop.get('title', shop_id)} 添加了 {len(orders_result.get('orders', []))} 个订单"
                         )
@@ -424,40 +453,247 @@ async def sync_printify_orders(
                             existing_order.fulfillment_status = order.get(
                                 "fulfillment_status", "unknown"
                             )
+                            # 更新物流信息
                             existing_order.tracking_number = order.get(
                                 "tracking_number"
                             )
                             existing_order.tracking_url = order.get("tracking_url")
+
+                            # 处理 Printify 的 shipments 数组
+                            shipments = order.get("shipments", [])
+                            logger.info(
+                                f"🔍 订单 {order.get('id')} 的 shipments 数据: {shipments}"
+                            )
+                            if shipments:
+                                # 取第一个发货信息作为主要追踪信息
+                                first_shipment = shipments[0]
+                                if not existing_order.tracking_number:
+                                    existing_order.tracking_number = first_shipment.get(
+                                        "number", ""
+                                    )
+                                if not existing_order.tracking_url:
+                                    existing_order.tracking_url = first_shipment.get(
+                                        "url", ""
+                                    )
+                                if not existing_order.carrier:
+                                    existing_order.carrier = first_shipment.get(
+                                        "carrier", ""
+                                    )
+                                if (
+                                    not existing_order.shipped_at
+                                    and first_shipment.get("shipped_at")
+                                ):
+                                    from datetime import datetime
+
+                                    existing_order.shipped_at = datetime.fromisoformat(
+                                        first_shipment.get("shipped_at").replace(
+                                            "Z", "+00:00"
+                                        )
+                                    )
+                                if (
+                                    not existing_order.delivered_at
+                                    and first_shipment.get("delivered_at")
+                                ):
+                                    from datetime import datetime
+
+                                    existing_order.delivered_at = (
+                                        datetime.fromisoformat(
+                                            first_shipment.get("delivered_at").replace(
+                                                "Z", "+00:00"
+                                            )
+                                        )
+                                    )
+
+                                # 更新履行状态
+                                if first_shipment.get("delivered_at"):
+                                    existing_order.fulfillment_status = "delivered"
+                                elif first_shipment.get("shipped_at"):
+                                    existing_order.fulfillment_status = "shipped"
+
+                                # 将完整的 shipments 信息存储到路由元数据中
+                                if not existing_order.routing_metadata:
+                                    existing_order.routing_metadata = {}
+                                existing_order.routing_metadata["shipments"] = shipments
+
+                            # 更新客户信息
+                            address_to = order.get("address_to", {})
+                            if address_to:
+                                # 确保 customer_email 不为空
+                                email = address_to.get("email", "") or ""
+                                email = email.strip() if email else ""
+                                if email:
+                                    existing_order.customer_email = email
+
+                                first_name = address_to.get("first_name", "") or ""
+                                last_name = address_to.get("last_name", "") or ""
+                                customer_name = f"{first_name} {last_name}".strip()
+                                if customer_name:
+                                    existing_order.customer_name = customer_name
+
+                                phone = address_to.get("phone", "") or ""
+                                phone = phone.strip() if phone else ""
+                                if phone:
+                                    existing_order.customer_phone = phone
+
+                                # 更新地址信息
+                                shipping_address = {
+                                    "first_name": address_to.get("first_name", ""),
+                                    "last_name": address_to.get("last_name", ""),
+                                    "company": address_to.get("company", ""),
+                                    "address1": address_to.get("address1", ""),
+                                    "address2": address_to.get("address2", ""),
+                                    "city": address_to.get("city", ""),
+                                    "province": address_to.get("region", ""),
+                                    "country": address_to.get("country", ""),
+                                    "zip": address_to.get("zip", ""),
+                                    "phone": address_to.get("phone", ""),
+                                }
+                                existing_order.shipping_address = shipping_address
+                                existing_order.billing_address = shipping_address
+
+                            # 更新 Printify 相关字段
+                            existing_order.printify_order_id = str(order.get("id", ""))
+                            existing_order.printify_shop_id = str(
+                                order.get("shop_id", "")
+                            )
+
+                            # 更新路由元数据
+                            if not existing_order.routing_metadata:
+                                existing_order.routing_metadata = {}
+                            existing_order.routing_metadata.update(
+                                {
+                                    "printify_order_id": order.get("id"),
+                                    "printify_order_number": order.get("order_number"),
+                                    "printify_shop_id": order.get("shop_id"),
+                                    "printify_shop_title": order.get("shop_title", ""),
+                                    "sync_source": "printify_api",
+                                    "created_at": order.get("created_at"),
+                                    "app_order_id": order.get("app_order_id"),
+                                    "last_sync": time.time(),
+                                }
+                            )
+
                             existing_order.updated_at = func.now()
 
                             logger.info(f"✅ 更新现有 SCM 订单: {existing_order.id}")
                         else:
                             # 创建新的SCM订单
+                            # 提取客户信息
+                            address_to = order.get("address_to", {})
+                            email = address_to.get("email", "") or ""
+                            customer_email = email.strip() or "no-email@example.com"
+
+                            first_name = address_to.get("first_name", "") or ""
+                            last_name = address_to.get("last_name", "") or ""
+                            customer_name = (
+                                f"{first_name} {last_name}".strip()
+                                or "Unknown Customer"
+                            )
+
+                            phone = address_to.get("phone", "") or ""
+                            customer_phone = phone.strip() or ""
+
+                            # 构建地址信息
+                            shipping_address = {
+                                "first_name": address_to.get("first_name", ""),
+                                "last_name": address_to.get("last_name", ""),
+                                "company": address_to.get("company", ""),
+                                "address1": address_to.get("address1", ""),
+                                "address2": address_to.get("address2", ""),
+                                "city": address_to.get("city", ""),
+                                "province": address_to.get("region", ""),
+                                "country": address_to.get("country", ""),
+                                "zip": address_to.get("zip", ""),
+                                "phone": address_to.get("phone", ""),
+                            }
+
+                            # 处理物流信息
+                            tracking_number = order.get("tracking_number", "")
+                            tracking_url = order.get("tracking_url", "")
+                            fulfillment_status = order.get(
+                                "fulfillment_status", "unknown"
+                            )
+                            carrier = ""
+                            shipped_at = None
+                            delivered_at = None
+
+                            # 处理 Printify 的 shipments 数组
+                            shipments = order.get("shipments", [])
+                            logger.info(
+                                f"🔍 新订单 {order.get('id')} 的 shipments 数据: {shipments}"
+                            )
+                            if shipments:
+                                # 取第一个发货信息作为主要追踪信息
+                                first_shipment = shipments[0]
+                                if not tracking_number:
+                                    tracking_number = first_shipment.get("number", "")
+                                if not tracking_url:
+                                    tracking_url = first_shipment.get("url", "")
+                                carrier = first_shipment.get("carrier", "")
+
+                                # 处理时间字段
+                                if first_shipment.get("shipped_at"):
+                                    from datetime import datetime
+
+                                    shipped_at = datetime.fromisoformat(
+                                        first_shipment.get("shipped_at").replace(
+                                            "Z", "+00:00"
+                                        )
+                                    )
+                                if first_shipment.get("delivered_at"):
+                                    from datetime import datetime
+
+                                    delivered_at = datetime.fromisoformat(
+                                        first_shipment.get("delivered_at").replace(
+                                            "Z", "+00:00"
+                                        )
+                                    )
+
+                                # 更新履行状态
+                                if first_shipment.get("delivered_at"):
+                                    fulfillment_status = "delivered"
+                                elif first_shipment.get("shipped_at"):
+                                    fulfillment_status = "shipped"
+
+                            # 生成 SCM 订单号
+                            scm_order_number = (
+                                f"SCM-{order.get('id', '')}-{int(time.time())}"
+                            )
+
                             scm_order = SCMOrder(
                                 tenant_id=tenant.id,
                                 source_order_id=None,  # Printify订单没有关联的本地订单
                                 target_system_type="PRINTIFY",
                                 target_system_id=str(order.get("id", "")),
+                                scm_order_number=scm_order_number,
                                 routing_strategy="printify_direct",
                                 line_items=order.get("line_items", []),
                                 total_amount=float(order.get("total_price", 0)),
                                 currency=order.get("currency", "USD"),
-                                customer_email=order.get("customer_email", ""),
-                                customer_name=order.get("customer_name", ""),
-                                customer_phone=order.get("customer_phone"),
-                                shipping_address=order.get("shipping_address", {}),
-                                billing_address=order.get("billing_address", {}),
+                                customer_email=customer_email,
+                                customer_name=customer_name,
+                                customer_phone=customer_phone,
+                                shipping_address=shipping_address,
+                                billing_address=shipping_address,  # Printify 通常只有收货地址
                                 status=order.get("status", "unknown"),
-                                fulfillment_status=order.get(
-                                    "fulfillment_status", "unknown"
-                                ),
-                                tracking_number=order.get("tracking_number"),
-                                tracking_url=order.get("tracking_url"),
+                                fulfillment_status=fulfillment_status,
+                                tracking_number=tracking_number,
+                                tracking_url=tracking_url,
+                                carrier=carrier,
+                                shipped_at=shipped_at,
+                                delivered_at=delivered_at,
+                                printify_order_id=str(order.get("id", "")),
+                                printify_shop_id=str(order.get("shop_id", "")),
                                 routing_metadata={
                                     "printify_order_id": order.get("id"),
                                     "printify_order_number": order.get("order_number"),
                                     "printify_shop_id": order.get("shop_id"),
+                                    "printify_shop_title": order.get("shop_title", ""),
                                     "sync_source": "printify_api",
+                                    "created_at": order.get("created_at"),
+                                    "app_order_id": order.get("app_order_id"),
+                                    "last_sync": time.time(),
+                                    "shipments": shipments,
                                 },
                             )
 
