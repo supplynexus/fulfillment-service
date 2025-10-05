@@ -1750,10 +1750,14 @@ async def get_shopify_order_json(
     """获取 Shopify 订单的完整 JSON 数据"""
     logger = get_logger(__name__)
     tenant, user = auth
-    logger.info(f"🔍 开始处理 Shopify 订单 JSON 请求: shop_id={shop_id}, order_id={order_id}")
+    logger.info(
+        f"🔍 开始处理 Shopify 订单 JSON 请求: shop_id={shop_id}, order_id={order_id}"
+    )
 
     try:
-        logger.info(f"✅ 认证成功: tenant_id={tenant.id}, tenant_name={tenant.name}, user_id={user.id}")
+        logger.info(
+            f"✅ 认证成功: tenant_id={tenant.id}, tenant_name={tenant.name}, user_id={user.id}"
+        )
 
         # Get external system by shop_id (external_id)
         service = ExternalSystemService(db)

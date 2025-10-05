@@ -13,6 +13,17 @@ export interface PrintifyOrderRequest {
   zip_code: string;
   phone?: string;
   quantity: number;
+  line_items?: Array<{
+    id: string;
+    title: string;
+    variant_title?: string;
+    sku?: string;
+    quantity: number;
+    price: number;
+    product_id?: string;
+    variant_id?: string;
+  }>;
+  external_id?: string;
 }
 
 export interface PrintifyOrderResponse {

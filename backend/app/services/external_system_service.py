@@ -2,11 +2,9 @@
 External system management service
 """
 
-import json
 from typing import List, Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
-from sqlalchemy.orm import selectinload
 
 from app.models.external_system import ExternalSystem, ExternalSystemType
 from app.core.security import encrypt_data, decrypt_data
@@ -128,7 +126,7 @@ class ExternalSystemService:
             query = query.where(ExternalSystem.system_type == system_type)
 
         if active_only:
-            query = query.where(ExternalSystem.is_active == True)
+            query = query.where(ExternalSystem.is_active)
 
         # Order by system type and name for better organization
         query = query.order_by(ExternalSystem.system_type, ExternalSystem.name)
@@ -144,6 +142,45 @@ class ExternalSystemService:
         return await self.get_external_systems_by_tenant(
             tenant_id=tenant_id, system_type=system_type, active_only=active_only
         )
+
+    def get_external_systems_by_type_sync(
+        self, tenant_id: int, system_type: str, active_only: bool = True
+    ) -> List[ExternalSystem]:
+        """Get all external systems of a specific type for a tenant (sync version)"""
+        try:
+            from app.core.database import get_sync_db
+
+            db = next(get_sync_db())
+
+            query = db.query(ExternalSystem).filter(
+                ExternalSystem.tenant_id == tenant_id
+            )
+
+            # Convert string to enum
+            if system_type == "SHOPIFY":
+                from app.models.external_system import ExternalSystemType
+
+                query = query.filter(
+                    ExternalSystem.system_type == ExternalSystemType.SHOPIFY
+                )
+            elif system_type == "PRINTIFY":
+                from app.models.external_system import ExternalSystemType
+
+                query = query.filter(
+                    ExternalSystem.system_type == ExternalSystemType.PRINTIFY
+                )
+
+            if active_only:
+                query = query.filter(ExternalSystem.is_active)
+
+            return query.all()
+
+        except Exception as e:
+            from app.core.logging import get_logger
+
+            logger = get_logger(__name__)
+            logger.error(f"Error getting external systems by type: {e}")
+            return []
 
     async def get_shopify_stores(
         self, tenant_id: int, active_only: bool = True

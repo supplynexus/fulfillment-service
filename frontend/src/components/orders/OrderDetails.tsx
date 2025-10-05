@@ -349,33 +349,41 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
                 收货地址
               </Typography>
               <Box>
-                <Typography variant='body2' fontWeight='medium'>
-                  {order.shipping_address.first_name}{' '}
-                  {order.shipping_address.last_name}
-                </Typography>
-                {order.shipping_address.company && (
-                  <Typography variant='body2'>
-                    {order.shipping_address.company}
-                  </Typography>
-                )}
-                <Typography variant='body2'>
-                  {order.shipping_address.address1}
-                </Typography>
-                {order.shipping_address.address2 && (
-                  <Typography variant='body2'>
-                    {order.shipping_address.address2}
-                  </Typography>
-                )}
-                <Typography variant='body2'>
-                  {order.shipping_address.city},{' '}
-                  {order.shipping_address.province} {order.shipping_address.zip}
-                </Typography>
-                <Typography variant='body2'>
-                  {order.shipping_address.country}
-                </Typography>
-                {order.shipping_address.phone && (
-                  <Typography variant='body2'>
-                    电话: {order.shipping_address.phone}
+                {order.shipping_address ? (
+                  <>
+                    <Typography variant='body2' fontWeight='medium'>
+                      {order.shipping_address.first_name}{' '}
+                      {order.shipping_address.last_name}
+                    </Typography>
+                    {order.shipping_address.company && (
+                      <Typography variant='body2'>
+                        {order.shipping_address.company}
+                      </Typography>
+                    )}
+                    <Typography variant='body2'>
+                      {order.shipping_address.address1}
+                    </Typography>
+                    {order.shipping_address.address2 && (
+                      <Typography variant='body2'>
+                        {order.shipping_address.address2}
+                      </Typography>
+                    )}
+                    <Typography variant='body2'>
+                      {order.shipping_address.city},{' '}
+                      {order.shipping_address.province} {order.shipping_address.zip}
+                    </Typography>
+                    <Typography variant='body2'>
+                      {order.shipping_address.country}
+                    </Typography>
+                    {order.shipping_address.phone && (
+                      <Typography variant='body2'>
+                        电话: {order.shipping_address.phone}
+                      </Typography>
+                    )}
+                  </>
+                ) : (
+                  <Typography variant='body2' color='text.secondary'>
+                    收货地址信息不可用
                   </Typography>
                 )}
               </Box>
@@ -390,33 +398,41 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
                   账单地址
                 </Typography>
                 <Box>
-                  <Typography variant='body2' fontWeight='medium'>
-                    {order.billing_address.first_name}{' '}
-                    {order.billing_address.last_name}
-                  </Typography>
-                  {order.billing_address.company && (
-                    <Typography variant='body2'>
-                      {order.billing_address.company}
-                    </Typography>
-                  )}
-                  <Typography variant='body2'>
-                    {order.billing_address.address1}
-                  </Typography>
-                  {order.billing_address.address2 && (
-                    <Typography variant='body2'>
-                      {order.billing_address.address2}
-                    </Typography>
-                  )}
-                  <Typography variant='body2'>
-                    {order.billing_address.city},{' '}
-                    {order.billing_address.province} {order.billing_address.zip}
-                  </Typography>
-                  <Typography variant='body2'>
-                    {order.billing_address.country}
-                  </Typography>
-                  {order.billing_address.phone && (
-                    <Typography variant='body2'>
-                      电话: {order.billing_address.phone}
+                  {order.billing_address ? (
+                    <>
+                      <Typography variant='body2' fontWeight='medium'>
+                        {order.billing_address.first_name}{' '}
+                        {order.billing_address.last_name}
+                      </Typography>
+                      {order.billing_address.company && (
+                        <Typography variant='body2'>
+                          {order.billing_address.company}
+                        </Typography>
+                      )}
+                      <Typography variant='body2'>
+                        {order.billing_address.address1}
+                      </Typography>
+                      {order.billing_address.address2 && (
+                        <Typography variant='body2'>
+                          {order.billing_address.address2}
+                        </Typography>
+                      )}
+                      <Typography variant='body2'>
+                        {order.billing_address.city},{' '}
+                        {order.billing_address.province} {order.billing_address.zip}
+                      </Typography>
+                      <Typography variant='body2'>
+                        {order.billing_address.country}
+                      </Typography>
+                      {order.billing_address.phone && (
+                        <Typography variant='body2'>
+                          电话: {order.billing_address.phone}
+                        </Typography>
+                      )}
+                    </>
+                  ) : (
+                    <Typography variant='body2' color='text.secondary'>
+                      账单地址信息不可用
                     </Typography>
                   )}
                 </Box>
