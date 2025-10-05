@@ -5,13 +5,14 @@ Revises: f154935d6d1f
 Create Date: 2025-10-04 06:18:46.969834
 
 """
+
 from alembic import op
 import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
 revision = "5f35e92d5723"
-down_revision = "f154935d6d1f"
+down_revision = "7b65121bc355"
 branch_labels = None
 depends_on = None
 
@@ -29,9 +30,7 @@ def upgrade() -> None:
         "product_mappings",
         ["tenant_id", "core_product_id", "external_system_id"],
     )
-    op.add_column(
-        "scm_orders", sa.Column("carrier", sa.String(), nullable=True)
-    )
+    op.add_column("scm_orders", sa.Column("carrier", sa.String(), nullable=True))
     op.add_column(
         "scm_orders",
         sa.Column("shipped_at", sa.DateTime(timezone=True), nullable=True),
