@@ -57,6 +57,9 @@ interface ScmOrder {
   routing_metadata?: any;
   tracking_number?: string;
   tracking_url?: string;
+  carrier?: string;
+  shipped_at?: string;
+  delivered_at?: string;
   error_message?: string;
   retry_count: number;
   last_retry_at?: string;
@@ -282,14 +285,46 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
                     </Typography>
                   </Box>
                 )}
+                {order.routing_metadata?.printify_order_id && (
+                  <Box display="flex" justifyContent="space-between">
+                    <Typography variant="body2" color="text.secondary">
+                      Printify 订单ID:
+                    </Typography>
+                    <Typography variant="body2" fontWeight="medium" fontFamily="monospace">
+                      {order.routing_metadata.printify_order_id}
+                    </Typography>
+                  </Box>
+                )}
+                {order.routing_metadata?.printify_shop_id && (
+                  <Box display="flex" justifyContent="space-between">
+                    <Typography variant="body2" color="text.secondary">
+                      Printify 店铺ID:
+                    </Typography>
+                    <Typography variant="body2" fontWeight="medium">
+                      {order.routing_metadata.printify_shop_id}
+                    </Typography>
+                  </Box>
+                )}
+                {order.routing_metadata?.app_order_id && (
+                  <Box display="flex" justifyContent="space-between">
+                    <Typography variant="body2" color="text.secondary">
+                      应用订单ID:
+                    </Typography>
+                    <Typography variant="body2" fontWeight="medium" fontFamily="monospace">
+                      {order.routing_metadata.app_order_id}
+                    </Typography>
+                  </Box>
+                )}
                 {order.fulfillment_status && (
                   <Box display="flex" justifyContent="space-between">
                     <Typography variant="body2" color="text.secondary">
                       履行状态:
                     </Typography>
-                    <Typography variant="body2" fontWeight="medium">
-                      {order.fulfillment_status}
-                    </Typography>
+                    <Chip
+                      label={order.fulfillment_status}
+                      color={getStatusColor(order.fulfillment_status) as any}
+                      size="small"
+                    />
                   </Box>
                 )}
                 <Box display="flex" justifyContent="space-between">
@@ -454,7 +489,7 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
                     <Typography variant="body2" color="text.secondary">
                       跟踪号:
                     </Typography>
-                    <Typography variant="body2" fontWeight="medium">
+                    <Typography variant="body2" fontWeight="medium" fontFamily="monospace">
                       {order.tracking_number}
                     </Typography>
                   </Box>
@@ -474,6 +509,31 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
                     </Button>
                   </Box>
                 )}
+               {/* 从订单字段和 shipments 数据中提取物流公司、发货时间、送达时间 */}
+               <Box display="flex" justifyContent="space-between">
+                 <Typography variant="body2" color="text.secondary">
+                   物流公司:
+                 </Typography>
+                 <Typography variant="body2" fontWeight="medium">
+                   {order.carrier || order.routing_metadata?.shipments?.[0]?.carrier || '未提供'}
+                 </Typography>
+               </Box>
+               <Box display="flex" justifyContent="space-between">
+                 <Typography variant="body2" color="text.secondary">
+                   发货时间:
+                 </Typography>
+                 <Typography variant="body2" fontWeight="medium">
+                   {order.shipped_at ? formatDate(order.shipped_at) : order.routing_metadata?.shipments?.[0]?.shipped_at ? formatDate(order.routing_metadata.shipments[0].shipped_at) : '未发货'}
+                 </Typography>
+               </Box>
+               <Box display="flex" justifyContent="space-between">
+                 <Typography variant="body2" color="text.secondary">
+                   送达时间:
+                 </Typography>
+                 <Typography variant="body2" fontWeight="medium">
+                   {order.delivered_at ? formatDate(order.delivered_at) : order.routing_metadata?.shipments?.[0]?.delivered_at ? formatDate(order.routing_metadata.shipments[0].delivered_at) : '未送达'}
+                 </Typography>
+               </Box>
                 {order.retry_count > 0 && (
                   <Box display="flex" justifyContent="space-between">
                     <Typography variant="body2" color="text.secondary">
@@ -492,6 +552,72 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
                   </Box>
                 )}
               </Stack>
+              
+              {/* Printify Shipments 详细信息 */}
+              {order.routing_metadata?.shipments && order.routing_metadata.shipments.length > 0 && (
+                <Box sx={{ mt: 2 }}>
+                  <Typography variant="subtitle1" gutterBottom>
+                    Printify 发货详情
+                  </Typography>
+                  {order.routing_metadata.shipments.map((shipment: any, index: number) => (
+                    <Box key={index} sx={{ mb: 2, p: 2, border: '1px solid #e0e0e0', borderRadius: 1 }}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        包裹 {index + 1}
+                      </Typography>
+                      <Stack spacing={1}>
+                        <Box display="flex" justifyContent="space-between">
+                          <Typography variant="body2" color="text.secondary">
+                            追踪号:
+                          </Typography>
+                          <Typography variant="body2" fontWeight="medium" fontFamily="monospace">
+                            {shipment.number}
+                          </Typography>
+                        </Box>
+                        <Box display="flex" justifyContent="space-between">
+                          <Typography variant="body2" color="text.secondary">
+                            物流公司:
+                          </Typography>
+                          <Typography variant="body2" fontWeight="medium">
+                            {shipment.carrier}
+                          </Typography>
+                        </Box>
+                        {shipment.url && (
+                          <Box display="flex" justifyContent="space-between">
+                            <Typography variant="body2" color="text.secondary">
+                              追踪链接:
+                            </Typography>
+                            <Button
+                              size="small"
+                              href={shipment.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              variant="outlined"
+                            >
+                              查看物流状态
+                            </Button>
+                          </Box>
+                        )}
+                        <Box display="flex" justifyContent="space-between">
+                          <Typography variant="body2" color="text.secondary">
+                            发货时间:
+                          </Typography>
+                          <Typography variant="body2" fontWeight="medium">
+                            {formatDate(shipment.shipped_at)}
+                          </Typography>
+                        </Box>
+                        <Box display="flex" justifyContent="space-between">
+                          <Typography variant="body2" color="text.secondary">
+                            送达时间:
+                          </Typography>
+                          <Typography variant="body2" fontWeight="medium">
+                            {shipment.delivered_at ? formatDate(shipment.delivered_at) : '未送达'}
+                          </Typography>
+                        </Box>
+                      </Stack>
+                    </Box>
+                  ))}
+                </Box>
+              )}
             </CardContent>
           </Card>
         </Stack>
@@ -509,6 +635,7 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
                     <TableRow>
                       <TableCell>商品名称</TableCell>
                       <TableCell>SKU</TableCell>
+                      <TableCell>规格</TableCell>
                       <TableCell align="right">数量</TableCell>
                       <TableCell align="right">单价</TableCell>
                       <TableCell align="right">小计</TableCell>
@@ -519,17 +646,22 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
                       <TableRow key={index}>
                         <TableCell>
                           <Typography variant="body2" fontWeight="medium">
-                            {item.title || `商品 ${index + 1}`}
+                            {item.metadata?.title || item.title || `商品 ${index + 1}`}
                           </Typography>
-                          {item.variant_title && (
+                          {item.metadata?.variant_label && (
                             <Typography variant="caption" color="text.secondary">
-                              {item.variant_title}
+                              {item.metadata.variant_label}
                             </Typography>
                           )}
                         </TableCell>
                         <TableCell>
-                          <Typography variant="body2">
-                            {item.sku || 'N/A'}
+                          <Typography variant="body2" fontFamily="monospace">
+                            {item.metadata?.sku || item.sku || 'N/A'}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2" color="text.secondary">
+                            {item.metadata?.variant_label || item.variant_title || 'N/A'}
                           </Typography>
                         </TableCell>
                         <TableCell align="right">
@@ -539,13 +671,16 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
                         </TableCell>
                         <TableCell align="right">
                           <Typography variant="body2">
-                            {formatCurrency(item.price || 0, item.currency || order.currency)}
+                            {formatCurrency(
+                              (item.metadata?.price || item.cost || item.price || 0) / 100, 
+                              item.currency || order.currency
+                            )}
                           </Typography>
                         </TableCell>
                         <TableCell align="right">
                           <Typography variant="body2" fontWeight="medium">
                             {formatCurrency(
-                              (item.price || 0) * (item.quantity || 1),
+                              ((item.metadata?.price || item.cost || item.price || 0) / 100) * (item.quantity || 1),
                               item.currency || order.currency
                             )}
                           </Typography>

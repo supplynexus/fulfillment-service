@@ -57,6 +57,9 @@ interface ScmOrder {
   routing_metadata?: any;
   tracking_number?: string;
   tracking_url?: string;
+  carrier?: string;
+  shipped_at?: string;
+  delivered_at?: string;
   error_message?: string;
   retry_count: number;
   last_retry_at?: string;
@@ -277,17 +280,18 @@ export function ScmOrdersList() {
                   <TableCell>目标系统</TableCell>
                   <TableCell>目标系统ID</TableCell>
                   <TableCell>状态</TableCell>
-                  <TableCell>客户邮箱</TableCell>
+                  <TableCell>履行状态</TableCell>
+                  <TableCell>客户信息</TableCell>
                   <TableCell>总金额</TableCell>
+                  <TableCell>物流信息</TableCell>
                   <TableCell>创建时间</TableCell>
                   <TableCell>操作</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {console.log('🔍 渲染表格，订单数量:', orders.length)}
                 {orders.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} align='center'>
+                    <TableCell colSpan={10} align='center'>
                       <Typography variant='body2' color='text.secondary'>
                         {searchTerm
                           ? '没有找到匹配的 SCM 订单'
@@ -314,9 +318,14 @@ export function ScmOrdersList() {
                         </Typography>
                       </TableCell>
                       <TableCell>
-                        <Typography variant='body2' fontWeight='medium'>
+                        <Typography variant='body2' fontWeight='medium' fontFamily="monospace">
                           {order.target_system_id || 'N/A'}
                         </Typography>
+                        {order.routing_metadata?.printify_order_id && (
+                          <Typography variant='caption' color='text.secondary'>
+                            Printify: {order.routing_metadata.printify_order_id}
+                          </Typography>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Chip
@@ -326,14 +335,74 @@ export function ScmOrdersList() {
                         />
                       </TableCell>
                       <TableCell>
-                        <Typography variant='body2'>
-                          {order.customer_email}
-                        </Typography>
+                        {order.fulfillment_status ? (
+                          <Chip
+                            label={order.fulfillment_status}
+                            color={getStatusColor(order.fulfillment_status) as any}
+                            size='small'
+                          />
+                        ) : (
+                          <Typography variant='body2' color='text.secondary'>
+                            N/A
+                          </Typography>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Box>
+                          <Typography variant='body2' fontWeight='medium'>
+                            {order.customer_name || 'N/A'}
+                          </Typography>
+                          <Typography variant='caption' color='text.secondary'>
+                            {order.customer_email}
+                          </Typography>
+                          {order.customer_phone && (
+                            <Typography variant='caption' color='text.secondary' display='block'>
+                              {order.customer_phone}
+                            </Typography>
+                          )}
+                        </Box>
                       </TableCell>
                       <TableCell>
                         <Typography variant='body2' fontWeight='medium'>
                           {order.currency} {order.total_amount.toFixed(2)}
                         </Typography>
+                      </TableCell>
+                      <TableCell>
+                        {order.tracking_number ? (
+                          <Box>
+                            <Typography variant='body2' fontFamily="monospace" fontSize="0.75rem">
+                              {order.tracking_number}
+                            </Typography>
+                            {order.tracking_url && (
+                              <Button
+                                size="small"
+                                href={order.tracking_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                variant="outlined"
+                                sx={{ mt: 0.5, fontSize: '0.7rem', py: 0.2 }}
+                              >
+                                查看
+                              </Button>
+                            )}
+                 {/* 显示物流公司、发货时间、送达时间 */}
+                 <Box sx={{ mt: 1, fontSize: '0.7rem', color: 'text.secondary' }}>
+                   <Typography variant="caption" display="block">
+                     物流公司: {order.carrier || order.routing_metadata?.shipments?.[0]?.carrier || '未提供'}
+                   </Typography>
+                   <Typography variant="caption" display="block">
+                     发货时间: {order.shipped_at ? new Date(order.shipped_at).toLocaleString('zh-CN') : order.routing_metadata?.shipments?.[0]?.shipped_at ? new Date(order.routing_metadata.shipments[0].shipped_at).toLocaleString('zh-CN') : '未发货'}
+                   </Typography>
+                   <Typography variant="caption" display="block">
+                     送达时间: {order.delivered_at ? new Date(order.delivered_at).toLocaleString('zh-CN') : order.routing_metadata?.shipments?.[0]?.delivered_at ? new Date(order.routing_metadata.shipments[0].delivered_at).toLocaleString('zh-CN') : '未送达'}
+                   </Typography>
+                 </Box>
+                          </Box>
+                        ) : (
+                          <Typography variant='body2' color='text.secondary'>
+                            无物流信息
+                          </Typography>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Typography variant='body2'>

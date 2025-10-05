@@ -3,28 +3,16 @@
 用于自动化处理订单流程
 """
 
-import asyncio
-from typing import Dict, Any, Optional
-from datetime import datetime, timedelta
-import logging
-
-from celery import Celery
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
-
-from app.core.database import get_async_db
 from app.core.logging import get_logger
 from app.models.order import Order
 from app.models.scm_order import SCMOrder
 from app.services.order_routing_service import OrderRoutingService
-from app.services.order_status_sync_service import OrderStatusSyncService
 from app.services.printify_service import PrintifyService
 from app.core.security import decrypt_data
+from app.tasks.celery_app import celery_app
+from sqlalchemy import and_
 
 logger = get_logger(__name__)
-
-# 获取Celery应用实例
-from app.tasks.celery_app import celery_app
 
 
 @celery_app.task(bind=True)
@@ -77,7 +65,6 @@ async def process_new_shopify_orders(self, tenant_id: int, limit: int = 50):
                 routing_service = OrderRoutingService(db)
 
                 # 执行订单路由 - 需要先获取路由配置
-                from app.models.routing_rule import RoutingRule
                 from app.schemas.routing import OrderRoutingConfig
 
                 # 获取默认路由配置
@@ -141,89 +128,44 @@ async def process_new_shopify_orders(self, tenant_id: int, limit: int = 50):
 
 
 @celery_app.task(bind=True)
-async def sync_printify_orders_status(self, tenant_id: int, limit: int = 100):
+def sync_printify_orders_status(self, tenant_id: int, limit: int = 100):
     """
-    同步Printify订单状态到SCM
+    同步Printify订单状态到SCM (批量优化版本)
     """
     try:
-        logger.info("🔍 开始同步Printify订单状态", tenant_id=tenant_id, limit=limit)
+        logger.info("🔍 开始批量同步Printify订单状态", tenant_id=tenant_id, limit=limit)
 
         # 使用同步数据库会话
         from app.core.database import get_sync_db
+        from app.services.order_status_sync_service import OrderStatusSyncService
 
         db = next(get_sync_db())
 
-        # 获取有Printify订单ID的SCM订单
-        scm_orders = (
-            db.query(SCMOrder)
-            .filter(
-                and_(
-                    SCMOrder.tenant_id == tenant_id,
-                    SCMOrder.target_system_type == "PRINTIFY",
-                    SCMOrder.printify_order_id.isnot(None),
-                    SCMOrder.status.in_(["created", "processing"]),
-                )
-            )
-            .limit(limit)
-            .all()
-        )
+        # 创建状态同步服务
+        sync_service = OrderStatusSyncService(db)
 
-        if not scm_orders:
-            logger.info("ℹ️ 没有需要同步的Printify订单", tenant_id=tenant_id)
-            return {"success": True, "message": "没有需要同步的订单", "synced_count": 0}
-
-        synced_count = 0
-        errors = []
-
-        for scm_order in scm_orders:
-            try:
-                # 创建状态同步服务
-                sync_service = OrderStatusSyncService(db)
-
-                # 同步Printify状态到SCM
-                success = await sync_service.sync_printify_to_scm(
-                    scm_order.printify_order_id, tenant_id
-                )
-
-                if success:
-                    synced_count += 1
-                    logger.info(f"✅ SCM订单 {scm_order.id} 状态同步成功")
-                else:
-                    error_msg = f"SCM订单 {scm_order.id} 状态同步失败"
-                    errors.append(error_msg)
-                    logger.error(f"❌ {error_msg}")
-
-            except Exception as e:
-                error_msg = f"SCM订单 {scm_order.id} 状态同步异常: {str(e)}"
-                errors.append(error_msg)
-                logger.error(f"❌ {error_msg}")
-
-        result = {
-            "success": len(errors) == 0,
-            "synced_count": synced_count,
-            "total_orders": len(scm_orders),
-            "errors": errors,
-        }
+        # 使用批量同步方法
+        result = sync_service.batch_sync_printify_to_scm_sync(tenant_id, limit)
 
         logger.info(
-            "✅ Printify订单状态同步完成",
+            "✅ Printify订单状态批量同步完成",
             tenant_id=tenant_id,
-            synced_count=synced_count,
-            total_orders=len(scm_orders),
-            error_count=len(errors),
+            result=result,
         )
 
         return result
 
     except Exception as e:
-        logger.error("❌ 同步Printify订单状态失败", tenant_id=tenant_id, error=str(e))
+        logger.error(
+            "❌ 批量同步Printify订单状态失败", tenant_id=tenant_id, error=str(e)
+        )
         if self:
             self.update_state(state="FAILURE", meta={"error": str(e)})
         raise
 
 
 @celery_app.task(bind=True)
-async def sync_scm_to_shopify_fulfillment(self, tenant_id: int, limit: int = 100):
+def sync_scm_to_shopify_fulfillment(self, tenant_id: int, limit: int = 100):
     """
     同步SCM订单状态到Shopify履约
     """
@@ -232,6 +174,7 @@ async def sync_scm_to_shopify_fulfillment(self, tenant_id: int, limit: int = 100
 
         # 使用同步数据库会话
         from app.core.database import get_sync_db
+        from app.services.order_status_sync_service import OrderStatusSyncService
 
         db = next(get_sync_db())
 
@@ -239,10 +182,12 @@ async def sync_scm_to_shopify_fulfillment(self, tenant_id: int, limit: int = 100
         sync_service = OrderStatusSyncService(db)
 
         # 批量同步待处理的订单
-        result = await sync_service.batch_sync_pending_orders(tenant_id, limit)
+        result = sync_service.batch_sync_pending_orders_sync(tenant_id, limit)
 
         logger.info(
-            "✅ SCM订单到Shopify履约同步完成", tenant_id=tenant_id, result=result
+            "✅ SCM订单到Shopify履约同步完成",
+            tenant_id=tenant_id,
+            result=result,
         )
 
         return result
@@ -251,6 +196,9 @@ async def sync_scm_to_shopify_fulfillment(self, tenant_id: int, limit: int = 100
         logger.error(
             "❌ 同步SCM订单到Shopify履约失败", tenant_id=tenant_id, error=str(e)
         )
+        import traceback
+
+        logger.error(f"   异常堆栈: {traceback.format_exc()}")
         if self:
             self.update_state(state="FAILURE", meta={"error": str(e)})
         raise
@@ -308,7 +256,7 @@ async def _create_printify_order_for_scm(db, scm_order: SCMOrder, tenant_id: int
             shopify_order_id = scm_order.shopify_order_id
 
         order_data = {
-            "external_id": shopify_order_id or f"SCM-{scm_order.scm_order_number}",
+            "external_id": (shopify_order_id or f"SCM-{scm_order.scm_order_number}"),
             "line_items": scm_order.line_items,
             "shipping_method": 1,
             "send_shipping_notification": True,

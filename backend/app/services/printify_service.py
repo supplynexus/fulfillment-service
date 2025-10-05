@@ -156,18 +156,148 @@ class PrintifyService:
             logger.error(f"Failed to get Printify orders: {e}")
             return {"success": False, "message": f"Failed to get orders: {str(e)}"}
 
+    async def get_orders_batch(
+        self, shop_id: str, access_token: str, order_ids: List[str], limit: int = 100
+    ) -> Dict[str, Any]:
+        """
+        批量获取Printify订单状态
+
+        Args:
+            shop_id: Printify店铺ID
+            access_token: 访问令牌
+            order_ids: 订单ID列表
+            limit: 每页限制
+
+        Returns:
+            批量订单数据
+        """
+        try:
+            logger.info(
+                f"📦 开始批量获取Printify订单状态: shop_id={shop_id}, order_count={len(order_ids)}"
+            )
+
+            # 设置认证头
+            headers = {
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+            }
+
+            all_orders = []
+            page = 1
+            max_pages = 10  # 防止无限循环
+
+            async with httpx.AsyncClient() as client:
+                while page <= max_pages:
+                    try:
+                        # 获取订单列表
+                        response = await client.get(
+                            f"{self.base_url}/shops/{shop_id}/orders.json",
+                            headers=headers,
+                            params={"limit": limit, "page": page},
+                        )
+                        response.raise_for_status()
+
+                        orders_data = response.json()
+                        orders = orders_data.get("data", [])
+
+                        if not orders:
+                            break
+
+                        # 过滤出我们需要的订单
+                        target_orders = []
+                        for order in orders:
+                            order_id = str(order.get("id", ""))
+                            if order_id in order_ids:
+                                target_orders.append(order)
+
+                        all_orders.extend(target_orders)
+
+                        # 如果已经找到所有需要的订单，可以提前退出
+                        if len(all_orders) >= len(order_ids):
+                            break
+
+                        page += 1
+
+                    except httpx.HTTPStatusError as e:
+                        logger.error(
+                            f"❌ 批量获取Printify订单失败: {e.response.status_code} - {e.response.text}"
+                        )
+                        return {
+                            "success": False,
+                            "message": f"Printify API error: {e.response.status_code}",
+                            "orders": [],
+                        }
+                    except Exception as e:
+                        logger.error(f"❌ 批量获取Printify订单异常: {e}")
+                        return {
+                            "success": False,
+                            "message": f"Failed to get orders: {str(e)}",
+                            "orders": [],
+                        }
+
+            logger.info(f"✅ 批量获取Printify订单成功: 找到 {len(all_orders)} 个订单")
+
+            return {
+                "success": True,
+                "orders": all_orders,
+                "total_found": len(all_orders),
+                "requested_count": len(order_ids),
+            }
+
+        except Exception as e:
+            logger.error(f"❌ 批量获取Printify订单失败: {e}")
+            return {
+                "success": False,
+                "message": f"Failed to get orders: {str(e)}",
+                "orders": [],
+            }
+
     async def get_order(self, shop_id: str, order_id: str) -> Optional[Dict[str, Any]]:
         """Get order details from Printify"""
         try:
+            # 尝试不同的订单 ID 格式
+            # 1. 原始格式：21704929.46
+            # 2. 点号后部分：46
+            # 3. 点号前部分：21704929
+
+            order_id_formats = [
+                order_id,  # 原始格式
+                order_id.split(".")[-1] if "." in order_id else order_id,  # 点号后部分
+                order_id.split(".")[0] if "." in order_id else order_id,  # 点号前部分
+            ]
+
+            logger.info(
+                f"🔍 开始调用 Printify API 获取订单详情: shop_id={shop_id}, original_order_id={order_id}, trying_formats={order_id_formats}"
+            )
+
             async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    f"{self.base_url}/shops/{shop_id}/orders/{order_id}.json",
-                    headers=self.headers,
-                )
-                response.raise_for_status()
-                return response.json()
+                for i, test_order_id in enumerate(order_id_formats):
+                    try:
+                        logger.info(f"🔍 尝试格式 {i+1}: {test_order_id}")
+                        response = await client.get(
+                            f"{self.base_url}/shops/{shop_id}/orders/{test_order_id}.json",
+                            headers=self.headers,
+                        )
+                        response.raise_for_status()
+                        logger.info(
+                            f"✅ Printify 订单详情获取成功: order_id={test_order_id}"
+                        )
+                        return response.json()
+                    except httpx.HTTPStatusError as e:
+                        logger.info(
+                            f"❌ 格式 {i+1} 失败: {e.response.status_code} - {e.response.text}"
+                        )
+                        continue
+                    except Exception as e:
+                        logger.info(f"❌ 格式 {i+1} 异常: {e}")
+                        continue
+
+                # 所有格式都失败了
+                logger.error(f"❌ 所有订单 ID 格式都失败了: {order_id_formats}")
+                return None
+
         except Exception as e:
-            logger.error(f"Failed to get Printify order: {e}")
+            logger.error(f"❌ Printify 获取订单失败: {e}")
             return None
 
     async def create_shipping_label_from_shopify_order(

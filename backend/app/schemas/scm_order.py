@@ -49,6 +49,9 @@ class SCMOrderResponse(BaseModel):
     routing_metadata: Optional[Dict[str, Any]] = None
     tracking_number: Optional[str] = None
     tracking_url: Optional[str] = None
+    carrier: Optional[str] = None
+    shipped_at: Optional[datetime] = None
+    delivered_at: Optional[datetime] = None
     error_message: Optional[str] = None
     retry_count: int = 0
     shopify_fulfillment_order_id: Optional[str] = None
