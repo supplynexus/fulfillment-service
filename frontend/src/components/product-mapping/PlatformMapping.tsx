@@ -48,6 +48,7 @@ import {
 } from '@mui/icons-material';
 import { MappingDetailDialog } from './MappingDetailDialog';
 import { BatchMappingDialog } from './BatchMappingDialog';
+import { frontendApi } from '@/lib/api';
 
 interface CoreProduct {
   id_hashid: string;
@@ -112,69 +113,63 @@ export function PlatformMapping({ platform }: PlatformMappingProps) {
       setLoading(true);
       setError(null);
 
-      // 模拟数据 - 实际应该从 API 获取
-      const mockCoreProducts: CoreProduct[] = [
-        {
-          id_hashid: 'core1',
-          title: 'Unisex Oversized Boxy Tee',
-          vendor: 'Printify',
-          product_type: 'T-Shirt',
-          status: 'active',
-          is_active: true,
-          is_available: true,
-          created_at: '2025-09-23T10:01:16.802Z',
+      // 获取核心商品数据
+      const coreProductsResponse = await frontendApi.get('/api/products', {
+        params: {
+          page: 1,
+          limit: 100,
+          include_variants: false,
+          include_dimensions: false,
+          include_tags: false,
+          include_mappings: false,
         },
-        {
-          id_hashid: 'core2',
-          title: 'Basic T-Shirt',
-          vendor: 'Gildan',
-          product_type: 'T-Shirt',
-          status: 'active',
-          is_active: true,
-          is_available: true,
-          created_at: '2025-09-20T08:30:00.000Z',
-        },
-      ];
+      });
 
-      const mockExternalProducts: ExternalProduct[] = [
-        {
-          id_hashid: 'ext1',
-          title: 'Trump crying',
-          vendor: 'Printify',
-          product_type: 'T-Shirt',
-          status: 'active',
-          price: 29.99,
-          inventory_quantity: 100,
-          created_at: '2025-09-28T10:30:00Z',
-        },
-        {
-          id_hashid: 'ext2',
-          title: 'Basic White T-Shirt',
-          vendor: 'Gildan',
-          product_type: 'T-Shirt',
-          status: 'active',
-          price: 19.99,
-          inventory_quantity: 50,
-          created_at: '2025-09-28T09:15:00Z',
-        },
-      ];
+      const coreProductsData = coreProductsResponse.data.products || [];
+      const formattedCoreProducts: CoreProduct[] = coreProductsData.map((product: any) => ({
+        id_hashid: product.id_hashid,
+        title: product.title,
+        vendor: product.vendor || 'Unknown',
+        product_type: product.product_type || 'Unknown',
+        status: product.status,
+        is_active: product.is_active,
+        is_available: product.is_available,
+        created_at: product.created_at,
+      }));
 
-      const mockMappings: ProductMapping[] = [
-        {
-          id: 'mapping1',
-          core_product_id: 'core1',
-          external_product_id: 'ext1',
-          status: 'active',
-          created_at: '2025-09-28T10:30:00Z',
-        },
-      ];
+      // 获取外部商品数据（根据平台类型）
+      let externalProductsData: any[] = [];
+      if (platform === 'shopify') {
+        const externalProductsResponse = await frontendApi.get('/api/external-products', {
+          params: {
+            page: 1,
+            limit: 100,
+          },
+        });
+        externalProductsData = externalProductsResponse.data.products || [];
+      }
 
-      setCoreProducts(mockCoreProducts);
-      setExternalProducts(mockExternalProducts);
-      setMappings(mockMappings);
+      const formattedExternalProducts: ExternalProduct[] = externalProductsData.map((product: any) => ({
+        id_hashid: product.id,
+        title: product.title,
+        vendor: product.vendor || 'Unknown',
+        product_type: product.product_type || 'Unknown',
+        status: product.status,
+        price: product.price || 0,
+        inventory_quantity: product.inventory_quantity || 0,
+        created_at: product.created_at,
+      }));
+
+      // 获取现有映射关系
+      const mappings: ProductMapping[] = [];
+      // TODO: 实现获取映射关系的 API 调用
+
+      setCoreProducts(formattedCoreProducts);
+      setExternalProducts(formattedExternalProducts);
+      setMappings(mappings);
     } catch (err: any) {
       console.error('Failed to fetch data:', err);
-      setError(err.message || 'Failed to fetch data');
+      setError(err.response?.data?.detail || err.message || 'Failed to fetch data');
     } finally {
       setLoading(false);
     }
@@ -261,19 +256,29 @@ export function PlatformMapping({ platform }: PlatformMappingProps) {
     }
   };
 
-  const handleConfirmMapping = () => {
-    // 这里应该调用 API 创建映射
-    console.log('Creating mappings:', {
-      coreProducts: selectedCoreProducts,
-      externalProducts: selectedExternalProducts,
-      status: mappingStatus,
-    });
-    
-    setMappingDialogOpen(false);
-    setSelectedCoreProducts([]);
-    setSelectedExternalProducts([]);
-    // 刷新数据
-    fetchData();
+  const handleConfirmMapping = async () => {
+    try {
+      // 创建映射关系
+      for (const coreProductId of selectedCoreProducts) {
+        for (const externalProductId of selectedExternalProducts) {
+          // TODO: 调用 API 创建映射关系
+          console.log('Creating mapping:', {
+            core_product_id: coreProductId,
+            external_product_id: externalProductId,
+            status: mappingStatus,
+          });
+        }
+      }
+      
+      setMappingDialogOpen(false);
+      setSelectedCoreProducts([]);
+      setSelectedExternalProducts([]);
+      // 刷新数据
+      await fetchData();
+    } catch (err: any) {
+      console.error('Failed to create mapping:', err);
+      setError(err.response?.data?.detail || err.message || 'Failed to create mapping');
+    }
   };
 
   const handleRemoveMapping = (mappingId: string) => {

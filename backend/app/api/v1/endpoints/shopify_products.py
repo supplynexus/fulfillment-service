@@ -105,3 +105,5 @@ async def get_shopify_products(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get products: {str(e)}",
         )
+
+

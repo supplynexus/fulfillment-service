@@ -11,6 +11,7 @@ from sqlalchemy import select, func
 
 from app.models.external_system import ExternalSystem, ExternalSystemType
 from app.models.order import Order, OrderStatus
+from app.models.shopify_order import ShopifyOrder
 from app.models.customer import Customer
 from app.models.product_new import Product
 from app.core.logging import get_logger
@@ -948,6 +949,138 @@ class ShopifyService:
             logger.error(f"Error getting orders: {e}")
             return {"success": False, "error": f"获取订单失败：{str(e)}"}
 
+    async def sync_orders_to_shopify_table(
+        self,
+        shop_id: str,
+        access_token: str,
+        tenant_id: int,
+        external_system_id: int,
+        api_version: str = "2024-10",
+    ) -> Dict[str, Any]:
+        """Sync orders from Shopify to shopify_orders table (first step)"""
+        try:
+            logger.info(
+                f"🔍 开始同步订单到 Shopify 表 - shop_id: {shop_id}, tenant_id: {tenant_id}, external_system_id: {external_system_id}"
+            )
+
+            # First, get orders from Shopify
+            orders_result = await self.get_orders(shop_id, access_token, api_version)
+
+            if not orders_result["success"]:
+                logger.error(
+                    f"❌ 获取订单失败 - shop_id: {shop_id}, error: {orders_result.get('error')}"
+                )
+                return {
+                    "success": False,
+                    "error": orders_result.get(
+                        "error", "Failed to fetch orders from Shopify"
+                    ),
+                }
+
+            orders = orders_result.get("orders", [])
+            logger.info(f"✅ 从 Shopify 获取到 {len(orders)} 个订单")
+
+            if not orders:
+                return {
+                    "success": True,
+                    "orders_synced": 0,
+                    "orders_updated": 0,
+                    "total_processed": 0,
+                    "message": "No orders to sync",
+                }
+
+            # Process each order
+            orders_synced = 0
+            orders_updated = 0
+            total_processed = 0
+
+            for order_data in orders:
+                try:
+                    total_processed += 1
+                    shopify_order_id = order_data.get("id", "").split("/")[
+                        -1
+                    ]  # Remove "gid://shopify/Order/" prefix
+
+                    logger.info(
+                        f"🔍 处理订单 - shopify_order_id: {shopify_order_id}, name: {order_data.get('name')}"
+                    )
+
+                    # Check if order already exists in shopify_orders table
+                    existing_order = await self.db.execute(
+                        select(ShopifyOrder).where(
+                            ShopifyOrder.tenant_id == tenant_id,
+                            ShopifyOrder.shopify_order_id == f"gid://shopify/Order/{shopify_order_id}",
+                        )
+                    )
+                    existing_order = existing_order.scalar_one_or_none()
+
+                    if existing_order:
+                        # Update existing order
+                        logger.info(f"🔄 更新现有 Shopify 订单 - order_id: {existing_order.id}")
+
+                        # Prepare order data for ShopifyOrder table
+                        shopify_order_data = self._prepare_shopify_order_data(
+                            order_data, tenant_id
+                        )
+
+                        # Update existing order
+                        for key, value in shopify_order_data.items():
+                            if hasattr(existing_order, key):
+                                setattr(existing_order, key, value)
+
+                        existing_order.updated_at = func.now()
+                        existing_order.last_synced_at = func.now()
+                        orders_updated += 1
+                        logger.info(f"✅ Shopify 订单更新完成 - order_id: {existing_order.id}")
+                    else:
+                        # Create new Shopify order
+                        logger.info(
+                            f"➕ 创建新 Shopify 订单 - shopify_order_id: {shopify_order_id}"
+                        )
+
+                        # Prepare order data for ShopifyOrder table
+                        shopify_order_data = self._prepare_shopify_order_data(
+                            order_data, tenant_id
+                        )
+
+                        # Create new Shopify order
+                        new_shopify_order = ShopifyOrder(**shopify_order_data)
+                        self.db.add(new_shopify_order)
+                        orders_synced += 1
+                        logger.info(
+                            f"✅ 新 Shopify 订单创建完成 - shopify_order_id: {shopify_order_id}"
+                        )
+
+                    # Commit after each order to ensure data consistency
+                    await self.db.commit()
+
+                except Exception as e:
+                    logger.error(
+                        f"❌ 处理 Shopify 订单失败 - shopify_order_id: {shopify_order_id}, error: {str(e)}",
+                        exc_info=True,
+                    )
+                    await self.db.rollback()
+                    continue
+
+            logger.info(
+                f"✅ Shopify 订单同步完成 - 新增: {orders_synced}, 更新: {orders_updated}, 总处理: {total_processed}"
+            )
+
+            return {
+                "success": True,
+                "orders_synced": orders_synced,
+                "orders_updated": orders_updated,
+                "total_processed": total_processed,
+                "message": f"Successfully synced {orders_synced} new Shopify orders and updated {orders_updated} existing Shopify orders",
+            }
+
+        except Exception as e:
+            logger.error(
+                f"❌ Shopify 订单同步异常 - shop_id: {shop_id}, error: {str(e)}", exc_info=True
+            )
+            await self.db.rollback()
+            return {"success": False, "error": f"Shopify sync failed: {str(e)}"}
+
     async def sync_orders_to_database(
         self,
         shop_id: str,
@@ -1098,6 +1231,138 @@ class ShopifyService:
 
             logger.warning(f"⚠️ 订单日期解析失败，使用当前时间: {str(e)}")
             return datetime.now(timezone.utc)
+
+    def _prepare_shopify_order_data(
+        self, order_data: Dict[str, Any], tenant_id: int
+    ) -> Dict[str, Any]:
+        """Prepare order data for ShopifyOrder table insertion"""
+        try:
+            shopify_order_id = order_data.get("id", "")  # Keep full GraphQL ID
+            order_name = order_data.get("name", "")
+            
+            # Parse pricing
+            if "total_price" in order_data:
+                # Simplified structure from get_orders
+                total_price = order_data.get("total_price", "0")
+                currency = order_data.get("currency", "USD")
+            else:
+                # Full structure from GraphQL
+                total_price = (
+                    order_data.get("totalPriceSet", {})
+                    .get("shopMoney", {})
+                    .get("amount", "0")
+                )
+                currency = (
+                    order_data.get("totalPriceSet", {})
+                    .get("shopMoney", {})
+                    .get("currencyCode", "USD")
+                )
+
+            # Parse customer info
+            customer = order_data.get("customer", {})
+            customer_data = {}
+            if customer:
+                if isinstance(customer, dict):
+                    customer_data = {
+                        "id": customer.get("id", ""),
+                        "email": customer.get("email", ""),
+                        "firstName": customer.get("firstName", ""),
+                        "lastName": customer.get("lastName", ""),
+                        "phone": customer.get("phone", ""),
+                        "acceptsMarketing": customer.get("acceptsMarketing", False),
+                    }
+
+            # Parse addresses
+            if "shipping_address" in order_data:
+                # Simplified structure
+                shipping_address = order_data.get("shipping_address", {})
+                billing_address = order_data.get("billing_address", {})
+            else:
+                # Full structure
+                shipping_address = order_data.get("shippingAddress", {})
+                billing_address = order_data.get("billingAddress", {})
+
+            # Parse line items
+            line_items = []
+            if "line_items" in order_data and order_data.get("line_items"):
+                # New structure with detailed line items
+                for item in order_data.get("line_items", []):
+                    line_items.append({
+                        "id": item.get("id", ""),
+                        "title": item.get("title", ""),
+                        "quantity": item.get("quantity", 0),
+                        "sku": item.get("sku", ""),
+                        "variant_title": item.get("variant_title", ""),
+                        "vendor": item.get("vendor", ""),
+                        "price": item.get("price", "0"),
+                        "currency": item.get("currency", currency),
+                        "product": item.get("product", {}),
+                    })
+            elif "lineItems" in order_data:
+                # Full structure - parse line items
+                for edge in order_data.get("lineItems", {}).get("edges", []):
+                    item = edge["node"]
+                    line_items.append({
+                        "id": item.get("id", ""),
+                        "title": item.get("title", ""),
+                        "quantity": item.get("quantity", 0),
+                        "price": item.get("originalUnitPriceSet", {})
+                        .get("shopMoney", {})
+                        .get("amount", "0"),
+                        "currency": item.get("originalUnitPriceSet", {})
+                        .get("shopMoney", {})
+                        .get("currencyCode", "USD"),
+                    })
+
+            # Parse status
+            if "fulfillment_status" in order_data:
+                # Simplified structure
+                fulfillment_status = order_data.get("fulfillment_status", "")
+                financial_status = order_data.get("financial_status", "")
+            else:
+                # Full structure
+                fulfillment_status = order_data.get("displayFulfillmentStatus", "")
+                financial_status = order_data.get("displayFinancialStatus", "")
+
+            # Parse tags
+            tags = []
+            if "tags" in order_data and order_data.get("tags"):
+                if isinstance(order_data.get("tags"), list):
+                    tags = order_data.get("tags", [])
+                else:
+                    # If tags is a string, split by comma
+                    tags = [tag.strip() for tag in order_data.get("tags", "").split(",") if tag.strip()]
+
+            return {
+                "tenant_id": tenant_id,
+                "shopify_order_id": shopify_order_id,
+                "name": order_name,
+                "confirmation_number": order_data.get("confirmationNumber", ""),
+                "financial_status": financial_status,
+                "fulfillment_status": fulfillment_status,
+                "confirmed": order_data.get("confirmed", False),
+                "closed": order_data.get("closed", False),
+                "cancelled": order_data.get("cancelled", False),
+                "currency_code": currency,
+                "total_price": float(total_price) if total_price else 0.0,
+                "subtotal_price": float(order_data.get("subtotalPrice", 0)) if order_data.get("subtotalPrice") else None,
+                "total_tax": float(order_data.get("totalTax", 0)) if order_data.get("totalTax") else None,
+                "total_shipping": float(order_data.get("totalShippingPriceSet", {}).get("shopMoney", {}).get("amount", 0)) if order_data.get("totalShippingPriceSet") else None,
+                "tags": tags,
+                "note": order_data.get("note", ""),
+                "customer_data": customer_data,
+                "billing_address": billing_address,
+                "shipping_address": shipping_address,
+                "line_items": line_items,
+                "fulfillments": order_data.get("fulfillments", []),
+                "refunds": order_data.get("refunds", []),
+                "raw_data": order_data,
+                "last_synced_at": func.now(),
+            }
+
+        except Exception as e:
+            logger.error(f"❌ 准备 Shopify 订单数据失败 - error: {str(e)}", exc_info=True)
+            raise e
 
     def _prepare_order_for_database(
         self, order_data: Dict[str, Any], tenant_id: int, external_system_id: int

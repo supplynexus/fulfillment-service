@@ -949,8 +949,8 @@ async def sync_shopify_orders_by_shop_id(
         else:
             shop_domain = base_url.replace(".myshopify.com", "")
 
-        logger.info(f"🔍 开始同步 Shopify 订单: shop_domain={shop_domain}")
-        result = await shopify_service.sync_orders_to_database(
+        logger.info(f"🔍 开始同步 Shopify 订单到 Shopify 表: shop_domain={shop_domain}")
+        result = await shopify_service.sync_orders_to_shopify_table(
             shop_id=shop_domain,
             access_token=access_token,
             tenant_id=tenant.id,
@@ -1696,4 +1696,145 @@ async def get_shopify_order_json(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get order JSON: {str(e)}",
+        )
+
+
+@router.get("/shopify/{external_system_hashid}/products/{product_id}/check-mapping", response_model=dict)
+async def check_shopify_product_mapping(
+    external_system_hashid: str,
+    product_id: str,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
+) -> Any:
+    """Check if a Shopify product variants have been mapped to core product variants"""
+    logger = get_logger(__name__)
+    
+    try:
+        logger.info(f"🔍 检查Shopify商品变体映射: external_system_hashid={external_system_hashid}, product_id={product_id}")
+        tenant, user = auth
+        logger.info(f"✅ 认证成功: tenant_id={tenant.id}, user_id={user.id}")
+        
+        # Decode hashids to get external system ID
+        from app.core.hashids_utils import decode_id
+        
+        try:
+            external_system_id = decode_id(external_system_hashid)
+            logger.info(f"✅ Hashids 解码成功: {external_system_hashid} -> {external_system_id}")
+        except Exception as e:
+            logger.error(f"❌ Hashids 解码失败: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid external system ID",
+            )
+        
+        # Get external system
+        service = ExternalSystemService(db)
+        external_system = await service.get_external_system(
+            external_system_id, tenant.id
+        )
+        
+        if not external_system:
+            logger.error(f"❌ 未找到外部系统: external_system_id={external_system_id}")
+            raise HTTPException(status_code=404, detail="Store not found")
+        
+        logger.info(f"✅ 找到外部系统: external_system_id={external_system.id}")
+        
+        # Import here to avoid circular imports
+        from app.models.product_new import ProductMapping, Product, ProductVariant
+        from app.core.hashids_utils import encode_id
+        from sqlalchemy import select, or_
+        from sqlalchemy.orm import selectinload
+        
+        # Query product mapping for this product (both product-level and variant-level mappings)
+        stmt = select(ProductMapping).where(
+            ProductMapping.tenant_id == tenant.id,
+            ProductMapping.external_system_id == external_system.id,
+            or_(
+                ProductMapping.external_product_id == product_id,
+                ProductMapping.external_product_id.like(f"{product_id}%")  # For variant mappings
+            )
+        ).options(
+            selectinload(ProductMapping.core_product).selectinload(Product.variants),
+            selectinload(ProductMapping.core_variant)
+        )
+        
+        result = await db.execute(stmt)
+        mappings = result.scalars().all()
+        
+        logger.info(f"✅ 查询映射结果: 找到{len(mappings)}个映射")
+        
+        if not mappings:
+            return {
+                "is_mapped": False,
+                "message": "该Shopify商品及其变体尚未映射到核心商品",
+                "mappings": [],
+                "variant_mappings": []
+            }
+        
+        # Separate product-level and variant-level mappings
+        product_mappings = []
+        variant_mappings = []
+        
+        for mapping in mappings:
+            core_product = mapping.core_product
+            core_variant = mapping.core_variant
+            
+            mapping_info = {
+                "id_hashid": encode_id(mapping.id),
+                "external_product_id": mapping.external_product_id,
+                "external_variant_id": mapping.external_variant_id,
+                "mapping_type": mapping.mapping_type,
+                "sync_direction": mapping.sync_direction,
+                "sync_status": mapping.sync_status,
+                "last_synced_at": mapping.last_synced_at.isoformat() if mapping.last_synced_at else None,
+                "created_at": mapping.created_at.isoformat() if mapping.created_at else None,
+                "core_product": {
+                    "id_hashid": encode_id(core_product.id) if core_product else None,
+                    "title": core_product.title if core_product else None,
+                    "handle": core_product.handle if core_product else None,
+                    "product_type": core_product.product_type if core_product else None,
+                    "vendor": core_product.vendor if core_product else None,
+                    "status": core_product.status if core_product else None,
+                    "variant_count": len(core_product.variants) if core_product and core_product.variants else 0
+                } if core_product else None,
+                "core_variant": {
+                    "id_hashid": encode_id(core_variant.id) if core_variant else None,
+                    "title": core_variant.title if core_variant else None,
+                    "sku": core_variant.sku if core_variant else None,
+                    "price": str(core_variant.price) if core_variant and core_variant.price else None,
+                    "inventory_quantity": core_variant.inventory_quantity if core_variant else None,
+                    "weight": str(core_variant.weight) if core_variant and core_variant.weight else None,
+                    "weight_unit": core_variant.weight_unit if core_variant else None
+                } if core_variant else None
+            }
+            
+            # Categorize mappings
+            if mapping.external_variant_id:
+                variant_mappings.append(mapping_info)
+            else:
+                product_mappings.append(mapping_info)
+        
+        total_mappings = len(product_mappings) + len(variant_mappings)
+        
+        logger.info(f"✅ 成功检查商品映射: 商品映射={len(product_mappings)}, 变体映射={len(variant_mappings)}")
+        
+        return {
+            "is_mapped": total_mappings > 0,
+            "message": f"该Shopify商品已映射到{len(product_mappings)}个核心商品，{len(variant_mappings)}个变体已映射",
+            "mapping_count": total_mappings,
+            "product_mapping_count": len(product_mappings),
+            "variant_mapping_count": len(variant_mappings),
+            "mappings": product_mappings,
+            "variant_mappings": variant_mappings
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 检查商品映射失败: {str(e)}")
+        import traceback
+        logger.error(f"   异常堆栈: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to check product mapping: {str(e)}",
         )

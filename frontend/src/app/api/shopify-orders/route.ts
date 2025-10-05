@@ -103,7 +103,7 @@ export async function GET(request: NextRequest) {
     // 生成后端签名
     const timestamp = Math.floor(Date.now() / 1000);
     const nonce = Math.random().toString(36).substring(2, 15);
-    const backendPath = `/api/v1/shopify-orders/${queryString ? `?${queryString}` : ''}`;
+    const backendPath = `/api/v1/shopify-orders/`;
     const signatureString = `GET${backendPath}${timestamp}${nonce}${tenantName}`;
 
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);

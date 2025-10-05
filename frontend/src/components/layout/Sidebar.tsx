@@ -30,6 +30,7 @@ import {
   Link as LinkIcon,
   Public as YahooIcon,
   Storefront as RakutenIcon,
+  Storage as DatabaseIcon,
   ExpandLess,
   ExpandMore,
   Menu as MenuIcon,
@@ -156,9 +157,22 @@ const menuItems: MenuItem[] = [
           },
           {
             id: 'shopify-orders',
-            label: '订单列表',
+            label: '订单管理',
             icon: <OrdersIcon />,
-            path: '/external-systems/shopify/orders',
+            children: [
+              {
+                id: 'shopify-orders-realtime',
+                label: '实时订单',
+                icon: <OrdersIcon />,
+                path: '/external-systems/shopify/orders',
+              },
+              {
+                id: 'shopify-orders-synced',
+                label: '同步订单',
+                icon: <DatabaseIcon />,
+                path: '/external-systems/shopify/synced-orders',
+              },
+            ],
           },
         ],
       },
@@ -223,6 +237,7 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
     'product-mapping',
     'external-systems',
     'shopify',
+    'shopify-orders',
     'printify',
     'settings',
   ]);

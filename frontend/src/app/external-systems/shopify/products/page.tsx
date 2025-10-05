@@ -54,6 +54,7 @@ import {
   Edit as EditIcon,
   Delete as DeleteIcon,
   Sync as SyncIcon,
+  Link as LinkIcon,
 } from '@mui/icons-material';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -113,6 +114,8 @@ interface ShopifyVariant {
   position: number;
   createdAt: string;
   updatedAt: string;
+  weight?: number;
+  weightUnit?: string;
   image?: {
     id: string;
     url: string;
@@ -176,6 +179,8 @@ const ShopifyProductsPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [syncingToDatabase, setSyncingToDatabase] = useState(false);
   const [syncSuccess, setSyncSuccess] = useState(false);
+  const [checkingMapping, setCheckingMapping] = useState(false);
+  const [mappingResult, setMappingResult] = useState<any>(null);
 
   // 获取 Shopify 店铺列表
   const fetchStores = useCallback(async () => {
@@ -203,9 +208,8 @@ const ShopifyProductsPage: React.FC = () => {
       frontendLogger.info('🔄 获取 Shopify 商品完整 JSON 数据', { 
         originalId: productId,
         numericId: numericProductId,
-        storeId: selectedStore,
-        storeIdType: typeof selectedStore,
-        storeIdLength: selectedStore?.length
+        storeId: selectedStore.id_hashid,
+        storeName: selectedStore.name
       });
       
       const response = await frontendApi.get(
@@ -248,6 +252,55 @@ const ShopifyProductsPage: React.FC = () => {
       setLoadingJson(false);
     }
   }, [selectedStore]);
+
+  // 检查商品映射
+  const checkProductMapping = useCallback(async () => {
+    if (!selectedProduct || !selectedStore) return;
+
+    try {
+      setCheckingMapping(true);
+      setMappingResult(null);
+
+      frontendLogger.info('🔍 检查Shopify商品映射', {
+        productId: selectedProduct.id,
+        productName: selectedProduct.title,
+        storeId: selectedStore.id_hashid
+      });
+
+      // 从 GraphQL ID 中提取纯数字 ID
+      const numericProductId = selectedProduct.id.replace('gid://shopify/Product/', '');
+      
+      const response = await frontendApi.get(
+        `/api/external-systems/shopify/${selectedStore.id_hashid}/products/${numericProductId}/check-mapping`
+      );
+
+      frontendLogger.info('✅ 商品映射检查完成', {
+        productId: selectedProduct.id,
+        isMapped: response.data.is_mapped,
+        mappingCount: response.data.mapping_count,
+        fullResponse: response.data
+      });
+
+      setMappingResult(response.data);
+      setError(null);
+      
+      // 调试信息
+      frontendLogger.info('🔍 设置映射结果状态', {
+        mappingResult: response.data,
+        isMapped: response.data.is_mapped,
+        message: response.data.message
+      });
+
+    } catch (error: any) {
+      frontendLogger.error('❌ 检查商品映射失败', {
+        error: error.message,
+        productId: selectedProduct.id
+      });
+      setError(error.message || '检查商品映射失败');
+    } finally {
+      setCheckingMapping(false);
+    }
+  }, [selectedProduct, selectedStore]);
 
   // 同步商品到数据库
   const syncProductToDatabase = useCallback(async () => {
@@ -822,6 +875,86 @@ const ShopifyProductsPage: React.FC = () => {
                 </Box>
               )}
             </DialogContent>
+            
+            {/* 映射结果显示在按钮上方 */}
+            {mappingResult && (
+              <Box sx={{ px: 3, pb: 2 }}>
+                <Alert 
+                  severity={mappingResult.is_mapped ? 'success' : 'info'} 
+                  onClose={() => setMappingResult(null)}
+                >
+                  <Typography variant="subtitle2" gutterBottom>
+                    {mappingResult.message}
+                  </Typography>
+                  
+                  {/* 商品级映射 */}
+                  {mappingResult.is_mapped && mappingResult.mappings && mappingResult.mappings.length > 0 && (
+                    <Box sx={{ mt: 1 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}>
+                        商品级映射 ({mappingResult.product_mapping_count || 0}):
+                      </Typography>
+                      {mappingResult.mappings.map((mapping: any, index: number) => (
+                        <Box key={index} sx={{ mt: 1, p: 1, bgcolor: 'background.paper', borderRadius: 1 }}>
+                          <Typography variant="body2">
+                            <strong>核心商品:</strong> {mapping.core_product?.title || 'N/A'}
+                          </Typography>
+                          <Typography variant="body2">
+                            <strong>类型:</strong> {mapping.core_product?.product_type || 'N/A'}
+                          </Typography>
+                          <Typography variant="body2">
+                            <strong>供应商:</strong> {mapping.core_product?.vendor || 'N/A'}
+                          </Typography>
+                          <Typography variant="body2">
+                            <strong>映射类型:</strong> {mapping.mapping_type}
+                          </Typography>
+                          <Typography variant="body2">
+                            <strong>同步状态:</strong> {mapping.sync_status}
+                          </Typography>
+                        </Box>
+                      ))}
+                    </Box>
+                  )}
+                  
+                  {/* 变体级映射 */}
+                  {mappingResult.is_mapped && mappingResult.variant_mappings && mappingResult.variant_mappings.length > 0 && (
+                    <Box sx={{ mt: 2 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}>
+                        变体级映射 ({mappingResult.variant_mapping_count || 0}):
+                      </Typography>
+                      {mappingResult.variant_mappings.map((mapping: any, index: number) => (
+                        <Box key={index} sx={{ mt: 1, p: 1, bgcolor: 'background.paper', borderRadius: 1 }}>
+                          <Typography variant="body2">
+                            <strong>核心商品:</strong> {mapping.core_product?.title || 'N/A'}
+                          </Typography>
+                          <Typography variant="body2">
+                            <strong>核心变体:</strong> {mapping.core_variant?.title || 'N/A'}
+                          </Typography>
+                          <Typography variant="body2">
+                            <strong>SKU:</strong> {mapping.core_variant?.sku || 'N/A'}
+                          </Typography>
+                          <Typography variant="body2">
+                            <strong>价格:</strong> ${mapping.core_variant?.price || 'N/A'}
+                          </Typography>
+                          <Typography variant="body2">
+                            <strong>库存:</strong> {mapping.core_variant?.inventory_quantity || 'N/A'}
+                          </Typography>
+                          <Typography variant="body2">
+                            <strong>外部变体ID:</strong> {mapping.external_variant_id || 'N/A'}
+                          </Typography>
+                          <Typography variant="body2">
+                            <strong>映射类型:</strong> {mapping.mapping_type}
+                          </Typography>
+                          <Typography variant="body2">
+                            <strong>同步状态:</strong> {mapping.sync_status}
+                          </Typography>
+                        </Box>
+                      ))}
+                    </Box>
+                  )}
+                </Alert>
+              </Box>
+            )}
+            
             <DialogActions>
               <Button
                 variant="contained"
@@ -831,6 +964,15 @@ const ShopifyProductsPage: React.FC = () => {
                 disabled={!selectedProduct || syncingToDatabase}
               >
                 {syncingToDatabase ? <CircularProgress size={20} /> : '同步到数据库'}
+              </Button>
+              <Button
+                variant="outlined"
+                color="secondary"
+                startIcon={checkingMapping ? <CircularProgress size={16} /> : <LinkIcon />}
+                onClick={checkProductMapping}
+                disabled={!selectedProduct || checkingMapping}
+              >
+                {checkingMapping ? '检查中...' : '检查商品映射'}
               </Button>
               <Button onClick={() => setDetailsOpen(false)}>关闭</Button>
             </DialogActions>

@@ -35,6 +35,7 @@ import {
   Edit as EditIcon,
   Delete as DeleteIcon,
 } from '@mui/icons-material';
+import { frontendApi } from '@/lib/api';
 
 interface MappingStats {
   platform: string;
@@ -65,63 +66,99 @@ export function ProductMappingOverview() {
       setLoading(true);
       setError(null);
 
-      // 模拟数据 - 实际应该从 API 获取
-      const mockStats: MappingStats[] = [
-        {
-          platform: 'shopify',
-          totalMappings: 45,
-          activeMappings: 42,
-          pendingMappings: 3,
-          lastSync: '2025-09-28T10:30:00Z',
+      // 获取核心商品数据
+      const coreProductsResponse = await frontendApi.get('/api/products', {
+        params: {
+          page: 1,
+          limit: 100,
+          include_mappings: true,
         },
-        {
-          platform: 'yahoo',
-          totalMappings: 23,
-          activeMappings: 20,
-          pendingMappings: 3,
-          lastSync: '2025-09-28T09:15:00Z',
-        },
-        {
-          platform: 'rakuten',
-          totalMappings: 18,
-          activeMappings: 15,
-          pendingMappings: 3,
-          lastSync: '2025-09-28T08:45:00Z',
-        },
-      ];
+      });
 
-      const mockRecentMappings: RecentMapping[] = [
-        {
-          id: '1',
-          coreProduct: 'Unisex Oversized Boxy Tee',
-          externalProduct: 'Trump crying',
-          platform: 'shopify',
-          status: 'active',
-          createdAt: '2025-09-28T10:30:00Z',
+      // 获取外部商品数据
+      const externalProductsResponse = await frontendApi.get('/api/external-products', {
+        params: {
+          page: 1,
+          limit: 100,
         },
-        {
-          id: '2',
-          coreProduct: 'Basic T-Shirt',
-          externalProduct: 'Basic White T-Shirt',
-          platform: 'yahoo',
-          status: 'pending',
-          createdAt: '2025-09-28T09:15:00Z',
-        },
-        {
-          id: '3',
-          coreProduct: 'Hoodie',
-          externalProduct: 'Pullover Hoodie',
-          platform: 'rakuten',
-          status: 'active',
-          createdAt: '2025-09-28T08:45:00Z',
-        },
-      ];
+      });
 
-      setStats(mockStats);
-      setRecentMappings(mockRecentMappings);
+      const coreProducts = coreProductsResponse.data.products || [];
+      const externalProducts = externalProductsResponse.data.products || [];
+
+      // 计算映射统计
+      const platformStats: { [key: string]: { total: number; active: number; pending: number; lastSync: string } } = {};
+      
+      // 初始化平台统计
+      const platforms = ['shopify', 'yahoo', 'rakuten'];
+      platforms.forEach(platform => {
+        platformStats[platform] = {
+          total: 0,
+          active: 0,
+          pending: 0,
+          lastSync: new Date().toISOString(),
+        };
+      });
+
+      // 统计核心商品的映射
+      coreProducts.forEach((product: any) => {
+        if (product.mappings && product.mappings.length > 0) {
+          product.mappings.forEach((mapping: any) => {
+            const platform = mapping.external_system_name?.toLowerCase() || 'unknown';
+            if (platformStats[platform]) {
+              platformStats[platform].total++;
+              if (mapping.sync_status === 'active') {
+                platformStats[platform].active++;
+              } else if (mapping.sync_status === 'pending') {
+                platformStats[platform].pending++;
+              }
+            }
+          });
+        }
+      });
+
+      // 转换为组件需要的格式
+      const stats: MappingStats[] = Object.entries(platformStats).map(([platform, data]) => ({
+        platform,
+        totalMappings: data.total,
+        activeMappings: data.active,
+        pendingMappings: data.pending,
+        lastSync: data.lastSync,
+      }));
+
+      // 生成最近映射记录
+      const recentMappings: RecentMapping[] = [];
+      coreProducts.forEach((product: any) => {
+        if (product.mappings && product.mappings.length > 0) {
+          product.mappings.forEach((mapping: any) => {
+            const externalProduct = externalProducts.find((ep: any) => 
+              ep.external_product_id === mapping.external_product_id
+            );
+            
+            if (externalProduct) {
+              recentMappings.push({
+                id: mapping.id_hashid || mapping.id,
+                coreProduct: product.title,
+                externalProduct: externalProduct.title,
+                platform: mapping.external_system_name?.toLowerCase() || 'unknown',
+                status: mapping.sync_status === 'active' ? 'active' : 
+                       mapping.sync_status === 'pending' ? 'pending' : 'error',
+                createdAt: mapping.created_at || new Date().toISOString(),
+              });
+            }
+          });
+        }
+      });
+
+      // 按创建时间排序，取最近10条
+      recentMappings.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      const recentMappingsSlice = recentMappings.slice(0, 10);
+
+      setStats(stats);
+      setRecentMappings(recentMappingsSlice);
     } catch (err: any) {
       console.error('Failed to fetch mapping data:', err);
-      setError(err.message || 'Failed to fetch mapping data');
+      setError(err.response?.data?.detail || err.message || 'Failed to fetch mapping data');
     } finally {
       setLoading(false);
     }
@@ -182,6 +219,28 @@ export function ProductMappingOverview() {
 
   const handlePlatformClick = (platform: string) => {
     router.push(`/product-mapping/${platform}`);
+  };
+
+  const handleViewMapping = (mappingId: string) => {
+    // TODO: 实现查看映射详情的功能
+    console.log('View mapping:', mappingId);
+  };
+
+  const handleEditMapping = (mappingId: string) => {
+    // TODO: 实现编辑映射的功能
+    console.log('Edit mapping:', mappingId);
+  };
+
+  const handleDeleteMapping = async (mappingId: string) => {
+    try {
+      // TODO: 实现删除映射的 API 调用
+      console.log('Delete mapping:', mappingId);
+      // 刷新数据
+      await fetchMappingData();
+    } catch (err: any) {
+      console.error('Failed to delete mapping:', err);
+      setError(err.response?.data?.detail || err.message || 'Failed to delete mapping');
+    }
   };
 
   if (loading) {
@@ -354,17 +413,27 @@ export function ProductMappingOverview() {
                       <TableCell>
                         <Box display="flex" gap={1}>
                           <Tooltip title="查看详情">
-                            <IconButton size="small">
+                            <IconButton 
+                              size="small"
+                              onClick={() => handleViewMapping(mapping.id)}
+                            >
                               <ViewIcon />
                             </IconButton>
                           </Tooltip>
                           <Tooltip title="编辑">
-                            <IconButton size="small">
+                            <IconButton 
+                              size="small"
+                              onClick={() => handleEditMapping(mapping.id)}
+                            >
                               <EditIcon />
                             </IconButton>
                           </Tooltip>
                           <Tooltip title="删除">
-                            <IconButton size="small" color="error">
+                            <IconButton 
+                              size="small" 
+                              color="error"
+                              onClick={() => handleDeleteMapping(mapping.id)}
+                            >
                               <DeleteIcon />
                             </IconButton>
                           </Tooltip>

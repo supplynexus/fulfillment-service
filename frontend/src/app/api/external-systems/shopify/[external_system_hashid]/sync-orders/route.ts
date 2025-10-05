@@ -8,15 +8,17 @@ const logger = createLogger('api.external-systems.shopify.sync-orders');
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { external_system_hashid: string } }
+  { params }: { params: Promise<{ external_system_hashid: string }> }
 ) {
   const startTime = Date.now();
   
   try {
+    const { external_system_hashid } = await params;
+    
     logger.info('Request started', { 
       method: request.method, 
       url: request.url,
-      external_system_hashid: params.external_system_hashid
+      external_system_hashid
     });
 
     const authorization = request.headers.get('authorization');
@@ -39,7 +41,7 @@ export async function POST(
     const timestamp = Math.floor(Date.now() / 1000);
     const nonce = Math.random().toString(36).substring(2, 15);
     const bodyString = '';
-    const backendPath = `/api/v1/external-systems/shopify/${params.external_system_hashid}/sync-orders`;
+    const backendPath = `/api/v1/external-systems/shopify/${external_system_hashid}/sync-orders`;
     const signatureString = `POST${backendPath}${timestamp}${nonce}${tenantName}${bodyString}`;
 
     logger.info('🔍 前端签名生成调试信息', {

@@ -4,7 +4,7 @@ Product management endpoints - 新的商品系统API
 
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, delete
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
 from pydantic import BaseModel
@@ -674,14 +674,53 @@ async def delete_product(
         
         logger.info(f"✅ 找到商品: {product.title} (ID: {product.id})")
         
-        # 软删除
-        product.is_active = False
-        product.status = "archived"
+        # 硬删除：删除所有相关数据
+        logger.info(f"🔍 开始删除商品相关数据...")
+        
+        # 1. 删除商品映射关系
+        mapping_stmt = delete(ProductMapping).where(
+            ProductMapping.core_product_id == product_id,
+            ProductMapping.tenant_id == tenant.id
+        )
+        mapping_result = await db.execute(mapping_stmt)
+        logger.info(f"✅ 删除映射关系: {mapping_result.rowcount} 条")
+        
+        # 2. 删除商品变体
+        variant_stmt = delete(ProductVariant).where(
+            ProductVariant.product_id == product_id,
+            ProductVariant.tenant_id == tenant.id
+        )
+        variant_result = await db.execute(variant_stmt)
+        logger.info(f"✅ 删除商品变体: {variant_result.rowcount} 条")
+        
+        # 3. 删除商品维度
+        dimension_stmt = delete(ProductDimension).where(
+            ProductDimension.product_id == product_id,
+            ProductDimension.tenant_id == tenant.id
+        )
+        dimension_result = await db.execute(dimension_stmt)
+        logger.info(f"✅ 删除商品维度: {dimension_result.rowcount} 条")
+        
+        # 4. 删除商品标签关联
+        tag_stmt = delete(ProductTag).where(
+            ProductTag.product_id == product_id,
+            ProductTag.tenant_id == tenant.id
+        )
+        tag_result = await db.execute(tag_stmt)
+        logger.info(f"✅ 删除商品标签关联: {tag_result.rowcount} 条")
+        
+        # 5. 删除商品本身
+        product_stmt = delete(Product).where(
+            Product.id == product_id,
+            Product.tenant_id == tenant.id
+        )
+        product_result = await db.execute(product_stmt)
+        logger.info(f"✅ 删除商品: {product_result.rowcount} 条")
         
         # 提交事务
         await db.commit()
         
-        logger.info(f"✅ 商品删除成功: {product.title} (ID: {product.id})")
+        logger.info(f"✅ 商品硬删除成功: {product.title} (ID: {product.id})")
         
         return {"message": "Product deleted successfully", "product_id": product_hashid}
         
@@ -934,6 +973,7 @@ async def get_external_products(
     try:
         logger.info("🔍 获取外部商品列表", 
                    tenant_id=tenant.id, 
+                   user_id=user.id,
                    skip=skip, 
                    limit=limit)
         
@@ -961,21 +1001,73 @@ async def get_external_products(
         result = await db.execute(query)
         products = result.scalars().all()
         
+        # 获取所有外部系统信息
+        external_systems = {}
+        if products:
+            system_ids = list(set(p.external_system_id for p in products if p.external_system_id))
+            if system_ids:
+                systems_query = select(ExternalSystem).where(ExternalSystem.id.in_(system_ids))
+                systems_result = await db.execute(systems_query)
+                systems = systems_result.scalars().all()
+                for system in systems:
+                    external_systems[system.id] = system
+        
         # 转换为响应格式
         product_list = []
         for product in products:
+            # 获取外部系统信息
+            external_system_name = "Unknown"
+            shop_name = "Unknown"
+            
+            logger.info(f"🔍 处理外部商品: {product.title}, external_system_id={product.external_system_id}")
+            
+            if product.external_system_id in external_systems:
+                system = external_systems[product.external_system_id]
+                external_system_name = system.system_type.value
+                logger.info(f"   外部系统类型: {external_system_name}")
+                
+                # 从credentials中获取店铺名称
+                if system.credentials and 'store_url' in system.credentials:
+                    store_url = system.credentials['store_url']
+                    # 从store_url中提取店铺名称，例如：https://shop1.myshopify.com -> shop1
+                    if store_url:
+                        shop_name = store_url.replace('https://', '').replace('http://', '').split('.')[0]
+                elif system.name:
+                    shop_name = system.name
+                else:
+                    # 使用外部系统名称作为店铺名称
+                    shop_name = system.name or "Unknown"
+                
+                logger.info(f"   店铺名称: {shop_name}")
+            else:
+                logger.warning(f"   ⚠️ 外部系统未找到: external_system_id={product.external_system_id}")
+            
             product_list.append({
                 "id": encode_id(product.id),
                 "external_system_id": product.external_system_id,
+                "external_system_name": external_system_name,
+                "shop_name": shop_name,
                 "external_product_id": product.external_product_id,
                 "external_variant_id": product.external_variant_id,
-                "product_name": product.product_name,
+                "title": product.title,
+                "description": product.description,
+                "handle": product.handle,
                 "product_type": product.product_type,
                 "vendor": product.vendor,
                 "status": product.status,
-                "published_at": product.published_at,
+                "is_active": product.is_active,
+                "is_available": product.is_available,
+                "price": float(product.price) if product.price else None,
+                "compare_at_price": float(product.compare_at_price) if product.compare_at_price else None,
+                "cost_price": float(product.cost_price) if product.cost_price else None,
+                "inventory_quantity": product.inventory_quantity,
+                "inventory_policy": product.inventory_policy,
                 "tags": product.tags,
+                "images": product.images,
+                "variants": product.variants,
+                "external_data": product.external_data,
                 "sync_status": product.sync_status,
+                "sync_error": product.sync_error,
                 "last_synced_at": product.last_synced_at,
                 "created_at": product.created_at,
                 "updated_at": product.updated_at
@@ -1000,3 +1092,418 @@ async def get_external_products(
         import traceback
         logger.error("   异常堆栈", stack=traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"获取外部商品列表失败: {str(e)}")
+
+
+# 从外部商品创建核心商品的API端点
+@router.post("/create-from-external", response_model=ProductResponse)
+async def create_product_from_external(
+    request_data: dict,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
+):
+    """
+    从外部商品创建核心商品
+    
+    基于外部商品数据创建核心系统的商品，并建立映射关系
+    """
+    tenant, user = auth
+    
+    try:
+        # 从请求体中获取external_product_id
+        external_product_id = request_data.get('external_product_id')
+        if not external_product_id:
+            logger.error("❌ 缺少external_product_id参数")
+            raise HTTPException(status_code=400, detail="Missing external_product_id")
+        
+        logger.info(f"🔍 开始从外部商品创建核心商品: external_product_id={external_product_id}, tenant_id={tenant.id}, user_id={user.id}")
+        
+        # 解码外部商品ID
+        try:
+            external_product_id_decoded = decode_id(external_product_id)
+            logger.info(f"✅ 外部商品ID解码成功: {external_product_id} -> {external_product_id_decoded}")
+        except Exception as e:
+            logger.error(f"❌ 外部商品ID解码失败: {external_product_id}, 错误: {str(e)}")
+            raise HTTPException(status_code=400, detail="Invalid external product ID")
+        
+        # 查询外部商品
+        external_product_stmt = select(ExternalProduct).where(
+            ExternalProduct.id == external_product_id_decoded,
+            ExternalProduct.tenant_id == tenant.id
+        )
+        external_product_result = await db.execute(external_product_stmt)
+        external_product = external_product_result.scalar_one_or_none()
+        
+        if not external_product:
+            logger.error(f"❌ 外部商品不存在: external_product_id={external_product_id_decoded}, tenant_id={tenant.id}")
+            raise HTTPException(status_code=404, detail="External product not found")
+        
+        logger.info(f"✅ 找到外部商品: {external_product.title} (ID: {external_product.id})")
+        
+        # 检查是否已经存在映射的核心商品
+        existing_mapping_stmt = select(ProductMapping).where(
+            ProductMapping.tenant_id == tenant.id,
+            ProductMapping.external_system_id == external_product.external_system_id,
+            ProductMapping.external_product_id == external_product.external_product_id,
+            ProductMapping.mapping_type == "product"
+        )
+        existing_mapping_result = await db.execute(existing_mapping_stmt)
+        existing_mapping = existing_mapping_result.scalar_one_or_none()
+        
+        if existing_mapping:
+            logger.warning(f"⚠️ 外部商品已存在映射: external_product_id={external_product.external_product_id}")
+            logger.info(f"🔄 开始更新现有商品和变体...")
+            
+            # 获取现有的核心商品
+            core_product = await db.get(Product, existing_mapping.core_product_id)
+            if not core_product:
+                raise HTTPException(status_code=404, detail="Core product not found")
+            
+            # 检查是否需要同步变体
+            if external_product.variants and len(external_product.variants) > 0:
+                logger.info(f"🔍 开始同步变体数据: 发现 {len(external_product.variants)} 个变体")
+                
+                # 获取现有的变体映射
+                existing_variant_mappings = await db.execute(
+                    select(ProductMapping).where(
+                        ProductMapping.core_product_id == core_product.id,
+                        ProductMapping.mapping_type == "variant",
+                        ProductMapping.tenant_id == tenant.id
+                    )
+                )
+                existing_variant_mappings = existing_variant_mappings.scalars().all()
+                existing_variant_ids = {m.external_variant_id for m in existing_variant_mappings}
+                
+                for variant_data in external_product.variants:
+                    external_variant_id = variant_data.get('external_variant_id')
+                    
+                    # 检查变体是否已存在
+                    if external_variant_id in existing_variant_ids:
+                        logger.info(f"ℹ️ 变体已存在，跳过: {variant_data.get('sku')}")
+                        continue
+                    
+                    try:
+                        # 创建新的核心变体
+                        core_variant = ProductVariant(
+                            tenant_id=tenant.id,
+                            product_id=core_product.id,
+                            sku=variant_data.get('sku'),
+                            barcode=variant_data.get('barcode'),
+                            attributes=_extract_variant_attributes(variant_data),
+                            price=variant_data.get('price'),
+                            compare_at_price=variant_data.get('compare_at_price'),
+                            cost_price=variant_data.get('cost_price'),
+                            inventory_quantity=variant_data.get('inventory_quantity', 0),
+                            inventory_policy=variant_data.get('inventory_policy', 'DENY'),
+                            tracks_inventory=True,
+                            is_active=True,
+                            is_available=variant_data.get('inventory_quantity', 0) > 0,
+                            weight=variant_data.get('weight', 0),
+                            external_variant_id=external_variant_id
+                        )
+                        
+                        db.add(core_variant)
+                        await db.flush()  # 获取变体ID
+                        
+                        # 创建变体映射关系
+                        variant_mapping = ProductMapping(
+                            tenant_id=tenant.id,
+                            core_product_id=core_product.id,
+                            core_variant_id=core_variant.id,
+                            external_system_id=external_product.external_system_id,
+                            external_product_id=external_product.external_product_id,
+                            external_variant_id=external_variant_id,
+                            mapping_type="variant",
+                            sync_direction="bidirectional",
+                            sync_status="active"
+                        )
+                        
+                        db.add(variant_mapping)
+                        
+                        logger.info(f"✅ 新变体创建成功: SKU={core_variant.sku}, 外部变体ID={external_variant_id}")
+                        
+                    except Exception as e:
+                        logger.error(f"❌ 创建变体失败: {variant_data.get('sku')}, 错误: {str(e)}")
+                        # 继续处理其他变体，不中断整个流程
+            
+            await db.commit()
+            await db.refresh(core_product)
+            
+            # 重新查询变体和映射关系
+            variants_result = await db.execute(
+                select(ProductVariant).where(
+                    ProductVariant.product_id == core_product.id,
+                    ProductVariant.tenant_id == tenant.id
+                )
+            )
+            variants = variants_result.scalars().all()
+            
+            mappings_result = await db.execute(
+                select(ProductMapping).where(
+                    ProductMapping.core_product_id == core_product.id,
+                    ProductMapping.tenant_id == tenant.id
+                )
+            )
+            mappings = mappings_result.scalars().all()
+            
+            # 构建变体响应
+            variant_responses = []
+            for variant in variants:
+                variant_responses.append(ProductVariantResponse(
+                    id_hashid=encode_id(variant.id),
+                    sku=variant.sku,
+                    barcode=variant.barcode,
+                    attributes=variant.attributes,
+                    price=variant.price,
+                    compare_at_price=variant.compare_at_price,
+                    cost_price=variant.cost_price,
+                    inventory_quantity=variant.inventory_quantity,
+                    inventory_policy=variant.inventory_policy,
+                    tracks_inventory=variant.tracks_inventory,
+                    is_active=variant.is_active,
+                    is_available=variant.is_available,
+                    image_url=variant.image_url,
+                    weight=variant.weight,
+                    external_variant_id=variant.external_variant_id,
+                    created_at=variant.created_at,
+                    updated_at=variant.updated_at
+                ))
+            
+            # 构建映射响应
+            mapping_responses = []
+            for mapping in mappings:
+                # 获取外部系统名称 - 避免懒加载问题
+                external_system_name = "Unknown"
+                if mapping.external_system_id:
+                    # 直接通过ID查询，避免访问关系属性
+                    external_system = await db.get(ExternalSystem, mapping.external_system_id)
+                    if external_system:
+                        external_system_name = external_system.name
+                
+                mapping_responses.append(ProductMappingResponse(
+                    id_hashid=encode_id(mapping.id),
+                    external_system_name=external_system_name,
+                    external_product_id=mapping.external_product_id,
+                    external_variant_id=mapping.external_variant_id,
+                    mapping_type=mapping.mapping_type,
+                    sync_direction=mapping.sync_direction,
+                    sync_status=mapping.sync_status,
+                    last_synced_at=mapping.last_synced_at
+                ))
+            
+            return ProductResponse(
+                id_hashid=encode_id(core_product.id),
+                title=core_product.title,
+                description=core_product.description,
+                handle=core_product.handle,
+                product_type=core_product.product_type,
+                vendor=core_product.vendor,
+                status=core_product.status,
+                is_active=core_product.is_active,
+                is_available=core_product.is_available,
+                images=core_product.images,
+                seo=core_product.seo,
+                variants=variant_responses,
+                mappings=mapping_responses,
+                created_at=core_product.created_at,
+                updated_at=core_product.updated_at
+            )
+        
+        # 创建核心商品
+        core_product = Product(
+            tenant_id=tenant.id,
+            title=external_product.title,
+            description=external_product.description,
+            handle=external_product.handle,
+            product_type=external_product.product_type,
+            vendor=external_product.vendor,
+            status=external_product.status,
+            is_active=external_product.is_active,
+            is_available=external_product.is_available,
+            images=external_product.images,
+            seo=external_product.external_data.get("seo") if external_product.external_data else None
+        )
+        
+        db.add(core_product)
+        await db.flush()  # 获取ID
+        
+        logger.info(f"✅ 核心商品创建成功: {core_product.title} (ID: {core_product.id})")
+        
+        # 创建映射关系
+        product_mapping = ProductMapping(
+            tenant_id=tenant.id,
+            core_product_id=core_product.id,
+            external_system_id=external_product.external_system_id,
+            external_product_id=external_product.external_product_id,
+            mapping_type="product",
+            sync_direction="bidirectional",
+            sync_status="active"
+        )
+        
+        db.add(product_mapping)
+        await db.flush()
+        
+        logger.info(f"✅ 映射关系创建成功: core_product_id={core_product.id}, external_product_id={external_product.external_product_id}")
+        
+        # 处理外部商品的变体数据
+        if external_product.variants and len(external_product.variants) > 0:
+            logger.info(f"🔍 开始同步变体数据: 发现 {len(external_product.variants)} 个变体")
+            
+            for variant_data in external_product.variants:
+                try:
+                    # 创建核心变体
+                    core_variant = ProductVariant(
+                        tenant_id=tenant.id,
+                        product_id=core_product.id,
+                        sku=variant_data.get('sku'),
+                        barcode=variant_data.get('barcode'),
+                        attributes=_extract_variant_attributes(variant_data),
+                        price=variant_data.get('price'),
+                        compare_at_price=variant_data.get('compare_at_price'),
+                        cost_price=variant_data.get('cost_price'),
+                        inventory_quantity=variant_data.get('inventory_quantity', 0),
+                        inventory_policy=variant_data.get('inventory_policy', 'DENY'),
+                        tracks_inventory=True,
+                        is_active=True,
+                        is_available=variant_data.get('inventory_quantity', 0) > 0,
+                        weight=variant_data.get('weight', 0),
+                        external_variant_id=variant_data.get('external_variant_id')
+                    )
+                    
+                    db.add(core_variant)
+                    await db.flush()  # 获取变体ID
+                    
+                    # 创建变体映射关系
+                    variant_mapping = ProductMapping(
+                        tenant_id=tenant.id,
+                        core_product_id=core_product.id,
+                        core_variant_id=core_variant.id,
+                        external_system_id=external_product.external_system_id,
+                        external_product_id=external_product.external_product_id,
+                        external_variant_id=variant_data.get('external_variant_id'),
+                        mapping_type="variant",
+                        sync_direction="bidirectional",
+                        sync_status="active"
+                    )
+                    
+                    db.add(variant_mapping)
+                    
+                    logger.info(f"✅ 变体创建成功: SKU={core_variant.sku}, 外部变体ID={variant_data.get('external_variant_id')}")
+                    
+                except Exception as e:
+                    logger.error(f"❌ 创建变体失败: {variant_data.get('sku')}, 错误: {str(e)}")
+                    # 继续处理其他变体，不中断整个流程
+        
+        # 提交事务
+        await db.commit()
+        
+        logger.info(f"✅ 从外部商品创建核心商品完成: {core_product.title}")
+        
+        # 重新查询商品以获取完整的变体和映射数据
+        await db.refresh(core_product)
+        
+        # 查询变体数据
+        variants_stmt = select(ProductVariant).where(
+            ProductVariant.product_id == core_product.id,
+            ProductVariant.tenant_id == tenant.id
+        )
+        variants_result = await db.execute(variants_stmt)
+        variants = variants_result.scalars().all()
+        
+        # 查询映射数据
+        mappings_stmt = select(ProductMapping).where(
+            ProductMapping.core_product_id == core_product.id,
+            ProductMapping.tenant_id == tenant.id
+        )
+        mappings_result = await db.execute(mappings_stmt)
+        mappings = mappings_result.scalars().all()
+        
+        # 构建变体响应
+        variant_responses = []
+        for variant in variants:
+            variant_responses.append(ProductVariantResponse(
+                id_hashid=encode_id(variant.id),
+                sku=variant.sku,
+                barcode=variant.barcode,
+                attributes=variant.attributes,
+                price=variant.price,
+                compare_at_price=variant.compare_at_price,
+                cost_price=variant.cost_price,
+                inventory_quantity=variant.inventory_quantity,
+                inventory_policy=variant.inventory_policy,
+                tracks_inventory=variant.tracks_inventory,
+                is_active=variant.is_active,
+                is_available=variant.is_available,
+                weight=variant.weight,
+                external_variant_id=variant.external_variant_id,
+                created_at=variant.created_at,
+                updated_at=variant.updated_at
+            ))
+        
+        # 构建映射响应
+        mapping_responses = []
+        for mapping in mappings:
+            # 获取外部系统名称 - 避免懒加载问题
+            external_system_name = "Unknown"
+            if mapping.external_system_id:
+                # 直接通过ID查询，避免访问关系属性
+                external_system = await db.get(ExternalSystem, mapping.external_system_id)
+                if external_system:
+                    external_system_name = external_system.name
+            
+            mapping_responses.append(ProductMappingResponse(
+                id_hashid=encode_id(mapping.id),
+                external_system_name=external_system_name,
+                external_product_id=mapping.external_product_id,
+                external_variant_id=mapping.external_variant_id,
+                mapping_type=mapping.mapping_type,
+                sync_direction=mapping.sync_direction,
+                sync_status=mapping.sync_status,
+                last_synced_at=mapping.last_synced_at
+            ))
+        
+        return ProductResponse(
+            id_hashid=encode_id(core_product.id),
+            title=core_product.title,
+            description=core_product.description,
+            handle=core_product.handle,
+            product_type=core_product.product_type,
+            vendor=core_product.vendor,
+            status=core_product.status,
+            is_active=core_product.is_active,
+            is_available=core_product.is_available,
+            images=core_product.images,
+            seo=core_product.seo,
+            created_at=core_product.created_at,
+            updated_at=core_product.updated_at,
+            dimensions=[],
+            variants=variant_responses,
+            tags=[],
+            mappings=mapping_responses
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 从外部商品创建核心商品失败: {str(e)}")
+        import traceback
+        logger.error(f"   异常堆栈: {traceback.format_exc()}")
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to create product from external: {str(e)}")
+
+def _extract_variant_attributes(variant_data: dict) -> dict:
+    """
+    从外部变体数据中提取属性信息
+    """
+    attributes = {}
+    
+    # 处理 selected_options (Shopify 格式)
+    if 'selected_options' in variant_data:
+        for option in variant_data['selected_options']:
+            if isinstance(option, dict) and 'name' in option and 'value' in option:
+                attributes[option['name']] = option['value']
+    
+    # 处理其他可能的属性字段
+    if 'title' in variant_data:
+        attributes['title'] = variant_data['title']
+    
+    return attributes

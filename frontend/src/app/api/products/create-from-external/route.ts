@@ -4,9 +4,9 @@ import { jwtUtilsServer } from '@/lib/jwt-utils-server';
 import { keyLoader } from '@/lib/key-loader';
 import { generateBackendSignature } from '@/lib/signature';
 
-const logger = createLogger('api.external-products');
+const logger = createLogger('api.create-from-external');
 
-export async function GET(request: NextRequest) {
+export async function POST(request: NextRequest) {
   const startTime = Date.now();
 
   try {
@@ -26,36 +26,35 @@ export async function GET(request: NextRequest) {
     try {
       decodedToken = jwtUtilsServer.verifyToken(frontendToken);
     } catch (error) {
-      logger.error('Invalid frontend token', { error: String(error) });
+      logger.error('❌ JWT token 验证失败', { error: String(error) });
       return NextResponse.json({ detail: 'Invalid token' }, { status: 401 });
     }
+
     const { tenant_name: tenantName, sub: userId } = decodedToken;
 
-    logger.info('✅ 前端认证成功', { tenantName, userId });
-    
     if (!tenantName || !userId) {
-      logger.error('❌ JWT token 缺少 tenant_name 或 user_id');
+      logger.warn('❌ JWT token 缺少 tenant_name 或 user_id');
       return NextResponse.json({ detail: 'Invalid token' }, { status: 401 });
     }
 
-    // 获取查询参数
-    const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '10');
-    const skip = (page - 1) * limit;
+    // 获取请求体
+    const requestBody = await request.json();
+    const { external_product_id } = requestBody;
 
-    // 生成后端签名
+    if (!external_product_id) {
+      logger.error('❌ 缺少外部商品ID');
+      return NextResponse.json({ error: 'External product ID is required' }, { status: 400 });
+    }
+
+    // 构建后端请求URL
+    const backendPath = `/api/v1/products/create-from-external`;
+    const bodyString = JSON.stringify(requestBody);
     const timestamp = Math.floor(Date.now() / 1000);
     const nonce = Math.random().toString(36).substring(2, 15);
-    const backendPath = `/api/v1/products/external-products/`;
-    const queryString = `skip=${skip}&limit=${limit}`;
-    const fullPath = `${backendPath}?${queryString}`;
-    // 签名字符串不包含查询参数，只包含路径
-    const signatureString = `GET${backendPath}${timestamp}${nonce}${tenantName}`;
+    const signatureString = `POST${backendPath}${timestamp}${nonce}${tenantName}${bodyString}`;
 
-    // 🔍 调试：打印签名生成信息
     logger.info('🔍 前端签名生成调试信息', {
-      method: 'GET',
+      method: 'POST',
       path: backendPath,
       timestamp,
       nonce,
@@ -65,7 +64,13 @@ export async function GET(request: NextRequest) {
     });
 
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
-    const signature = generateBackendSignature(privateKey, signatureString, timestamp, nonce, tenantName);
+    const signature = generateBackendSignature(
+      privateKey,
+      signatureString,
+      timestamp,
+      nonce,
+      tenantName
+    );
 
     logger.info('🔍 前端签名生成完成', {
       signatureLength: signature.length,
@@ -73,50 +78,40 @@ export async function GET(request: NextRequest) {
       tenantName,
     });
 
-    // 调用后端 API
-    const backendUrl = `${process.env.BACKEND_API_URL}${fullPath}`;
+    const backendUrl = `${process.env.BACKEND_API_URL}${backendPath}`;
+
     const backendResponse = await fetch(backendUrl, {
-      method: 'GET',
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-Tenant-Name': tenantName,
-        'X-User-ID': userId,
+        'X-User-ID': userId.toString(),
         'X-Timestamp': timestamp.toString(),
         'X-Nonce': nonce,
         'X-Signature': signature,
       },
+      body: bodyString,
     });
 
-    const duration = Date.now() - startTime;
-
     if (!backendResponse.ok) {
-      const errorText = await backendResponse.text();
-      logger.error('❌ 后端API调用失败', {
+      const errorData = await backendResponse.json();
+      logger.error('❌ 后端 API 调用失败', {
         status: backendResponse.status,
         statusText: backendResponse.statusText,
-        error: errorText,
-        duration,
+        error: errorData,
       });
-      return NextResponse.json(
-        { error: `Backend API error: ${backendResponse.status}` },
-        { status: backendResponse.status }
-      );
+      return NextResponse.json(errorData, { status: backendResponse.status });
     }
 
     const data = await backendResponse.json();
-    logger.requestComplete(request.method, request.url, backendResponse.status, duration);
-
-    return NextResponse.json(data);
-
-  } catch (error: any) {
-    const duration = Date.now() - startTime;
-    logger.error('❌ 外部商品API调用失败', {
-      error: error.message,
-      duration,
+    logger.info('✅ 从外部商品创建核心商品成功', {
+      external_product_id,
+      core_product_id: data.id_hashid,
+      duration: Date.now() - startTime,
     });
-    return NextResponse.json(
-      { error: 'Failed to fetch external products' },
-      { status: 500 }
-    );
+    return NextResponse.json(data);
+  } catch (error: any) {
+    logger.error('❌ 处理请求失败', { error: error.message, stack: error.stack });
+    return NextResponse.json({ detail: error.message }, { status: 500 });
   }
 }
