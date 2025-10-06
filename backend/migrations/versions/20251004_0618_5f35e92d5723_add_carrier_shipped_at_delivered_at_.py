@@ -33,11 +33,6 @@ def upgrade() -> None:
         )
     except Exception:
         pass  # Constraint doesn't exist, continue
-    op.create_unique_constraint(
-        "uq_product_mappings_tenant_core_external",
-        "product_mappings",
-        ["tenant_id", "core_product_id", "external_system_id"],
-    )
     op.add_column("scm_orders", sa.Column("carrier", sa.String(), nullable=True))
     op.add_column(
         "scm_orders",
