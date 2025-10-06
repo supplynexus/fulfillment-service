@@ -64,8 +64,8 @@ class Order(Base):
     shipping_address = Column(JSON, nullable=False)
     billing_address = Column(JSON, nullable=True)
 
-    # Order items and details
-    line_items = Column(JSON, nullable=False)
+    # Order items relationship (moved to order_items table)
+    items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
 
     # Shopify specific data (mixed model approach)
     shopify_raw_data = Column(JSON, nullable=True)  # Raw Shopify API response
@@ -102,3 +102,43 @@ class Order(Base):
     tenant = relationship("Tenant", back_populates="orders")
     external_system = relationship("ExternalSystem")
     scm_orders = relationship("SCMOrder", back_populates="source_order")
+
+
+class OrderItem(Base):
+    """Order line items - individual SKUs in an order"""
+    __tablename__ = "order_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Tenant and order reference
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
+    order_id = Column(Integer, ForeignKey("orders.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # Core system SKU mapping (nullable for unmatched items)
+    core_product_id = Column(Integer, ForeignKey("products.id"), nullable=True, index=True)
+    core_variant_id = Column(Integer, ForeignKey("product_variants.id"), nullable=True, index=True)
+    
+    # External system SKU tracking
+    external_product_id = Column(String(100), nullable=True, index=True)
+    external_variant_id = Column(String(100), nullable=True, index=True)
+    
+    # Item details
+    sku = Column(String(100), nullable=True, index=True)
+    title = Column(String(255), nullable=True)
+    variant_title = Column(String(255), nullable=True)
+    quantity = Column(Integer, nullable=False, default=1)
+    unit_price = Column(Numeric(10, 2), nullable=True)
+    total_price = Column(Numeric(10, 2), nullable=True)
+    discount = Column(Numeric(10, 2), nullable=True)
+    tax = Column(Numeric(10, 2), nullable=True)
+    fulfillment_status = Column(String(50), nullable=True)
+    item_metadata = Column(JSON, nullable=True)  # Additional item attributes
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    # Relationships
+    order = relationship("Order", back_populates="items")
+    core_product = relationship("Product")
+    core_variant = relationship("ProductVariant")
