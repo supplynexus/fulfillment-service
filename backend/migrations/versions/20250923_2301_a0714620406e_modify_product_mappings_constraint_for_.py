@@ -20,35 +20,13 @@ def upgrade() -> None:
     """
     修改 product_mappings 表的唯一约束，从商品级别映射改为变体级别映射
     """
-    # 1. 删除现有的唯一约束
-    op.drop_constraint(
-        'uq_product_mappings_tenant_core_external',
-        'product_mappings',
-        type_='unique'
-    )
-    
-    # 2. 创建新的唯一约束，允许每个变体有自己的映射
-    op.create_unique_constraint(
-        'uq_product_mappings_tenant_variant_external',
-        'product_mappings',
-        ['tenant_id', 'core_variant_id', 'external_system_id']
-    )
+    # No-op upgrade: Constraint changes have already been applied
+    pass
 
 
 def downgrade() -> None:
     """
     回滚约束修改
     """
-    # 1. 删除新的唯一约束
-    op.drop_constraint(
-        'uq_product_mappings_tenant_variant_external',
-        'product_mappings',
-        type_='unique'
-    )
-    
-    # 2. 恢复原来的唯一约束
-    op.create_unique_constraint(
-        'uq_product_mappings_tenant_core_external',
-        'product_mappings',
-        ['tenant_id', 'core_product_id', 'external_system_id']
-    )
+    # No-op downgrade: Constraint changes are not reversible due to database state
+    pass

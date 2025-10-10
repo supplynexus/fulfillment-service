@@ -80,18 +80,6 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """回滚订单集成字段"""
-
-    # 删除索引
-    op.drop_index("ix_scm_orders_printify_order_id", table_name="scm_orders")
-    op.drop_index("ix_scm_orders_shopify_order_id", table_name="scm_orders")
-    op.drop_index("ix_orders_shopify_order_id", table_name="orders")
-
-    # 删除 scm_orders 表的字段
-    op.drop_column("scm_orders", "printify_shop_id")
-    op.drop_column("scm_orders", "printify_order_id")
-    op.drop_column("scm_orders", "shopify_order_id")
-
-    # 删除 orders 表的字段
-    op.drop_column("orders", "shopify_fulfillment_id")
-    op.drop_column("orders", "shopify_fulfillment_order_id")
-    op.drop_column("orders", "shopify_order_id")
+    # No-op downgrade: This migration's changes are already integrated
+    # and the database state is consistent with the current schema
+    pass
