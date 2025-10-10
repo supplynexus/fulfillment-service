@@ -43,14 +43,8 @@ def upgrade() -> None:
     )
     op.create_index(op.f("ix_scm_order_sources_id"), "scm_order_sources", ["id"], unique=False)
 
-    # Drop columns no longer needed on scm_orders (if they exist)
-    # Use individual drop_column calls with exception handling
-    for col in ("target_system_id", "target_system_type", "total_amount"):
-        try:
-            op.drop_column("scm_orders", col)
-        except Exception:
-            # Column may already be missing in some environments
-            pass
+    # Note: Columns target_system_id, target_system_type, total_amount 
+    # were already removed in development environment
 
 
 def downgrade() -> None:
