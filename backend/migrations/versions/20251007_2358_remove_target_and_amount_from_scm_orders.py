@@ -1,6 +1,6 @@
 """remove target columns and total_amount from scm_orders
 
-Revision ID: 2358_remove_target_amount
+Revision ID: 2e9bd7c4a6f1
 Revises: 8f284a9794d6
 Create Date: 2025-10-07 23:58:00
 
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = "2358_remove_target_amount"
+revision = "2e9bd7c4a6f1"
 down_revision = "8f284a9794d6"
 branch_labels = None
 depends_on = None
