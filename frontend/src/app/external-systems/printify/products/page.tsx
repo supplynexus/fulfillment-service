@@ -41,11 +41,13 @@ import {
   Category as CategoryIcon,
   FilterList as FilterIcon,
   Sort as SortIcon,
+  Link as LinkIcon,
 } from '@mui/icons-material';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { frontendApi } from '@/lib/api';
 import { frontendLogger } from '@/lib/frontend-logger';
+import { ProductMappingDialog } from '@/components/printify/ProductMappingDialog';
 
 interface PrintifyProduct {
   id: string;
@@ -134,6 +136,7 @@ function PrintifyProductsPage() {
   const [selectedProduct, setSelectedProduct] =
     useState<PrintifyProduct | null>(null);
   const [openProductDialog, setOpenProductDialog] = useState(false);
+  const [openMappingDialog, setOpenMappingDialog] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   // 获取 Printify 店铺列表
@@ -673,9 +676,28 @@ function PrintifyProductsPage() {
               )}
             </DialogContent>
             <DialogActions>
+              <Button 
+                variant="outlined" 
+                startIcon={<LinkIcon />}
+                onClick={() => setOpenMappingDialog(true)}
+                sx={{ mr: 1 }}
+              >
+                映射到核心商品
+              </Button>
               <Button onClick={() => setOpenProductDialog(false)}>关闭</Button>
             </DialogActions>
           </Dialog>
+
+          {/* 商品映射对话框 */}
+          <ProductMappingDialog
+            open={openMappingDialog}
+            onClose={() => setOpenMappingDialog(false)}
+            printifyProduct={selectedProduct}
+            onMappingCreated={(mapping) => {
+              frontendLogger.info('✅ 商品映射创建成功', mapping);
+              setOpenMappingDialog(false);
+            }}
+          />
         </Box>
       </DashboardLayout>
     </ProtectedRoute>

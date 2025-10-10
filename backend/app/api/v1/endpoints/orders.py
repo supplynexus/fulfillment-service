@@ -85,7 +85,13 @@ async def get_orders(
         try:
             order_responses = []
             for order in orders:
-                order_responses.append(OrderResponse.from_orm(order))
+                # 兼容新结构：orders 表不再有 line_items JSON，行项目在 order_items 表
+                # 使用 from_orm 生成基础字段，line_items 留空或由前端二次查询 order_items 获取
+                data = OrderResponse.from_orm(order).model_dump()
+                if 'line_items' in data and data['line_items'] is None:
+                    # 显式设置为空数组，避免前端必填校验
+                    data['line_items'] = []
+                order_responses.append(data)
             logger.info(f"✅ 订单响应格式转换成功: {len(order_responses)} 个订单")
         except Exception as e:
             logger.error(f"❌ 转换订单响应格式失败: {str(e)}")
@@ -133,6 +139,9 @@ async def get_order(
     """
     获取单个订单详情
     """
+    from app.models.order import OrderItem
+    from sqlalchemy import select
+
     tenant, user = auth
 
     logger.info(f"🔍 开始处理订单详情请求: order_id={order_id}, tenant_id={tenant.id}")
@@ -149,11 +158,43 @@ async def get_order(
             logger.warning(f"⚠️ 订单不存在: order_id={order_id}, tenant_id={tenant.id}")
             raise HTTPException(status_code=404, detail="Order not found")
 
-        # 转换为响应格式
-        order_response = OrderResponse.from_orm(order)
+        # 获取订单行项目
+        logger.info(f"🔍 查询订单行项目: order_id={order_id}")
+        items_query = select(OrderItem).where(
+            OrderItem.order_id == order_id,
+            OrderItem.tenant_id == tenant.id
+        )
+        items_result = await db.execute(items_query)
+        order_items = items_result.scalars().all()
+        
+        logger.info(f"✅ 找到 {len(order_items)} 个订单行项目")
 
-        logger.info(f"✅ 订单详情请求处理成功: order_id={order_id}")
-        return order_response
+        # 构建 line_items 数组
+        line_items = []
+        for item in order_items:
+            line_item = {
+                "id": item.id,
+                "title": item.title or "未知商品",
+                "sku": item.sku,
+                "variant_title": item.variant_title,
+                "quantity": item.quantity,
+                "unit_price": float(item.unit_price) if item.unit_price else 0.0,
+                "total_price": float(item.total_price) if item.total_price else 0.0,
+                "core_product_id": item.core_product_id,
+                "core_variant_id": item.core_variant_id,
+                "external_product_id": item.external_product_id,
+                "external_variant_id": item.external_variant_id,
+                "fulfillment_status": item.fulfillment_status,
+                "item_metadata": item.item_metadata or {}
+            }
+            line_items.append(line_item)
+
+        # 转换为响应格式并添加 line_items
+        order_data = OrderResponse.from_orm(order).model_dump()
+        order_data["line_items"] = line_items
+
+        logger.info(f"✅ 订单详情请求处理成功: order_id={order_id}, line_items_count={len(line_items)}")
+        return order_data
 
     except HTTPException:
         raise

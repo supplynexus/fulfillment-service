@@ -1,7 +1,7 @@
 import { Metadata } from 'next';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
-import { ProductMappingOverview } from '@/components/product-mapping/ProductMappingOverview';
+import { ProductMappingManager } from '@/components/product-mapping/ProductMappingManager';
 
 export const metadata: Metadata = {
   title: '商品映射总览 - SupplyNexus Fulfillment Service',
@@ -12,7 +12,7 @@ export default function ProductMappingPage() {
   return (
     <ProtectedRoute>
       <DashboardLayout>
-        <ProductMappingOverview />
+        <ProductMappingManager />
       </DashboardLayout>
     </ProtectedRoute>
   );

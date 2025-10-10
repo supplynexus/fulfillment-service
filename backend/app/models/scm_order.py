@@ -11,7 +11,6 @@ from sqlalchemy import (
     ForeignKey,
     Text,
     JSON,
-    Numeric,
 )
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
@@ -37,14 +36,10 @@ class SCMOrder(Base):
     # Tenant identification
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
 
-    # Source order reference
+    # Source order reference (legacy single reference; kept for compatibility)
     source_order_id = Column(Integer, ForeignKey("orders.id"), nullable=True)
 
-    # SCM system information
-    target_system_type = Column(
-        String, nullable=False
-    )  # printify, custom_fulfillment, warehouse
-    target_system_id = Column(String, nullable=True)  # Order ID in target system
+    # 核心SCM订单不直接绑定外部系统；仅保留内部编号
     scm_order_number = Column(String, unique=True, nullable=True)
 
     # Order status
@@ -55,9 +50,8 @@ class SCMOrder(Base):
     routing_metadata = Column(JSON, nullable=True)  # Routing decision metadata
     routing_strategy = Column(String, nullable=True)  # auto, manual, hybrid
 
-    # Order items and details
+    # Order items and details（不记录金额）
     line_items = Column(JSON, nullable=False)  # Items routed to this SCM
-    total_amount = Column(Numeric(10, 2), nullable=False)
     currency = Column(String(3), default="USD")
 
     # Customer information (copied from source order)
@@ -99,6 +93,21 @@ class SCMOrder(Base):
     # Relationships
     tenant = relationship("Tenant", back_populates="scm_orders")
     source_order = relationship("Order", back_populates="scm_orders")
+
+
+class ScmOrderSource(Base):
+    """Association table for many-to-many relation between orders and SCM orders.
+
+    This enables an SCM order to be created from multiple source orders.
+    """
+
+    __tablename__ = "scm_order_sources"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    scm_order_id = Column(Integer, ForeignKey("scm_orders.id"), nullable=False)
+    source_order_id = Column(Integer, ForeignKey("orders.id"), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
 class RoutingRule(Base):

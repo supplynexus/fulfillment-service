@@ -40,14 +40,11 @@ interface ScmOrder {
   id: number;
   tenant_id: number;
   source_order_id?: number;
-  target_system_type: string;
-  target_system_id?: string;
   scm_order_number?: string;
   status: string;
   fulfillment_status?: string;
   routing_strategy?: string;
   line_items: any[];
-  total_amount: number;
   currency: string;
   customer_email: string;
   customer_name?: string;
@@ -314,12 +311,12 @@ export function ScmOrdersList() {
                       </TableCell>
                       <TableCell>
                         <Typography variant='body2' fontWeight='medium'>
-                          {order.target_system_type}
+                          CORE
                         </Typography>
                       </TableCell>
                       <TableCell>
                         <Typography variant='body2' fontWeight='medium' fontFamily="monospace">
-                          {order.target_system_id || 'N/A'}
+                          N/A
                         </Typography>
                         {order.routing_metadata?.printify_order_id && (
                           <Typography variant='caption' color='text.secondary'>
@@ -364,7 +361,7 @@ export function ScmOrdersList() {
                       </TableCell>
                       <TableCell>
                         <Typography variant='body2' fontWeight='medium'>
-                          {order.currency} {order.total_amount.toFixed(2)}
+                          {order.currency} N/A
                         </Typography>
                       </TableCell>
                       <TableCell>

@@ -10,7 +10,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
 
 from app.models.order import Order
-from app.models.scm_order import SCMOrder, SCMOrderStatus, RoutingRule, RoutingStatus
+from app.models.scm_order import SCMOrder, SCMOrderStatus, RoutingRule, RoutingStatus, ScmOrderSource
 from app.schemas.scm_order import SCMOrderCreate, OrderRoutingConfig
 from app.core.hashids_utils import encode_id
 
@@ -232,7 +232,6 @@ class OrderRoutingService:
         # 创建SCM订单
         scm_order = SCMOrder(
             tenant_id=tenant_id,
-            source_order_id=order.id,
             target_system_type=decision["target_system_type"],
             target_system_id=decision["target_system_id"],
             scm_order_number=scm_order_number,
@@ -253,6 +252,15 @@ class OrderRoutingService:
         )
 
         self.db.add(scm_order)
+        await self.db.flush()
+        # 写入多来源关联
+        self.db.add(
+            ScmOrderSource(
+                tenant_id=tenant_id,
+                scm_order_id=scm_order.id,
+                source_order_id=order.id,
+            )
+        )
         await self.db.commit()
         await self.db.refresh(scm_order)
 
@@ -341,8 +349,12 @@ class OrderRoutingService:
     ) -> List[SCMOrder]:
         """根据订单ID获取SCM订单"""
         result = await self.db.execute(
-            select(SCMOrder).where(
-                SCMOrder.source_order_id == order_id, SCMOrder.tenant_id == tenant_id
+            select(SCMOrder)
+            .join(ScmOrderSource, ScmOrderSource.scm_order_id == SCMOrder.id)
+            .where(
+                ScmOrderSource.source_order_id == order_id,
+                SCMOrder.tenant_id == tenant_id,
+                ScmOrderSource.tenant_id == tenant_id,
             )
         )
         return result.scalars().all()

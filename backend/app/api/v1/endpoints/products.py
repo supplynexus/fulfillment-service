@@ -1507,3 +1507,326 @@ def _extract_variant_attributes(variant_data: dict) -> dict:
         attributes['title'] = variant_data['title']
     
     return attributes
+
+
+# 商品映射相关API端点
+class ProductMappingCreateRequest(BaseModel):
+    """创建商品映射的请求"""
+    core_product_id_hashid: str
+    core_variant_id_hashid: Optional[str] = None
+    external_system_id_hashid: str
+    external_product_id: str
+    external_variant_id: Optional[str] = None
+    mapping_type: str = "manual"
+    sync_direction: str = "bidirectional"
+    sync_status: str = "active"
+
+
+@router.post("/mappings/", response_model=ProductMappingResponse)
+async def create_product_mapping(
+    mapping_data: ProductMappingCreateRequest,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
+):
+    """
+    创建商品映射关系
+    """
+    tenant, user = auth
+    
+    try:
+        logger.info("🔍 开始创建商品映射", 
+                   core_product_id=mapping_data.core_product_id_hashid,
+                   external_system_id=mapping_data.external_system_id_hashid,
+                   tenant_id=tenant.id)
+        
+        # 解码核心商品ID
+        try:
+            core_product_id = decode_id(mapping_data.core_product_id_hashid)
+            logger.info(f"✅ 核心商品ID解码成功: {mapping_data.core_product_id_hashid} -> {core_product_id}")
+        except Exception as e:
+            logger.error(f"❌ 核心商品ID解码失败: {str(e)}")
+            raise HTTPException(status_code=400, detail="Invalid core product ID")
+        
+        # 解码核心变体ID（如果提供）
+        core_variant_id = None
+        if mapping_data.core_variant_id_hashid:
+            try:
+                core_variant_id = decode_id(mapping_data.core_variant_id_hashid)
+                logger.info(f"✅ 核心变体ID解码成功: {mapping_data.core_variant_id_hashid} -> {core_variant_id}")
+            except Exception as e:
+                logger.error(f"❌ 核心变体ID解码失败: {str(e)}")
+                raise HTTPException(status_code=400, detail="Invalid core variant ID")
+        
+        # 解码外部系统ID
+        try:
+            external_system_id = decode_id(mapping_data.external_system_id_hashid)
+            logger.info(f"✅ 外部系统ID解码成功: {mapping_data.external_system_id_hashid} -> {external_system_id}")
+        except Exception as e:
+            logger.error(f"❌ 外部系统ID解码失败: {str(e)}")
+            raise HTTPException(status_code=400, detail="Invalid external system ID")
+        
+        # 验证核心商品是否存在
+        core_product_stmt = select(Product).where(
+            Product.id == core_product_id,
+            Product.tenant_id == tenant.id
+        )
+        core_product_result = await db.execute(core_product_stmt)
+        core_product = core_product_result.scalar_one_or_none()
+        
+        if not core_product:
+            logger.error(f"❌ 核心商品不存在: core_product_id={core_product_id}")
+            raise HTTPException(status_code=404, detail="Core product not found")
+        
+        logger.info(f"✅ 找到核心商品: {core_product.title}")
+        
+        # 验证核心变体是否存在（如果提供）
+        if core_variant_id:
+            core_variant_stmt = select(ProductVariant).where(
+                ProductVariant.id == core_variant_id,
+                ProductVariant.product_id == core_product_id,
+                ProductVariant.tenant_id == tenant.id
+            )
+            core_variant_result = await db.execute(core_variant_stmt)
+            core_variant = core_variant_result.scalar_one_or_none()
+            
+            if not core_variant:
+                logger.error(f"❌ 核心变体不存在: core_variant_id={core_variant_id}")
+                raise HTTPException(status_code=404, detail="Core variant not found")
+            
+            logger.info(f"✅ 找到核心变体: {core_variant.sku}")
+        
+        # 验证外部系统是否存在
+        external_system_stmt = select(ExternalSystem).where(
+            ExternalSystem.id == external_system_id,
+            ExternalSystem.tenant_id == tenant.id
+        )
+        external_system_result = await db.execute(external_system_stmt)
+        external_system = external_system_result.scalar_one_or_none()
+        
+        if not external_system:
+            logger.error(f"❌ 外部系统不存在: external_system_id={external_system_id}")
+            raise HTTPException(status_code=404, detail="External system not found")
+        
+        logger.info(f"✅ 找到外部系统: {external_system.name}")
+        
+        # 检查是否已存在相同的映射
+        existing_mapping_stmt = select(ProductMapping).where(
+            ProductMapping.tenant_id == tenant.id,
+            ProductMapping.core_product_id == core_product_id,
+            ProductMapping.core_variant_id == core_variant_id,
+            ProductMapping.external_system_id == external_system_id,
+            ProductMapping.external_product_id == mapping_data.external_product_id,
+            ProductMapping.external_variant_id == mapping_data.external_variant_id
+        )
+        existing_mapping_result = await db.execute(existing_mapping_stmt)
+        existing_mapping = existing_mapping_result.scalar_one_or_none()
+        
+        if existing_mapping:
+            logger.warning(f"⚠️ 映射已存在: mapping_id={existing_mapping.id}")
+            raise HTTPException(status_code=409, detail="Product mapping already exists")
+        
+        # 创建新的映射
+        product_mapping = ProductMapping(
+            tenant_id=tenant.id,
+            core_product_id=core_product_id,
+            core_variant_id=core_variant_id,
+            external_system_id=external_system_id,
+            external_product_id=mapping_data.external_product_id,
+            external_variant_id=mapping_data.external_variant_id,
+            mapping_type=mapping_data.mapping_type,
+            sync_direction=mapping_data.sync_direction,
+            sync_status=mapping_data.sync_status,
+            sync_config={"manual_mapping": True},
+            field_mappings={
+                "title": "title",
+                "sku": "sku",
+                "price": "price"
+            }
+        )
+        
+        db.add(product_mapping)
+        await db.commit()
+        await db.refresh(product_mapping)
+        
+        logger.info(f"✅ 商品映射创建成功: mapping_id={product_mapping.id}")
+        
+        # 构建响应
+        return ProductMappingResponse(
+            id_hashid=encode_id(product_mapping.id),
+            external_system_name=external_system.name,
+            external_product_id=product_mapping.external_product_id,
+            external_variant_id=product_mapping.external_variant_id,
+            mapping_type=product_mapping.mapping_type,
+            sync_direction=product_mapping.sync_direction,
+            sync_status=product_mapping.sync_status,
+            last_synced_at=product_mapping.last_synced_at
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 创建商品映射失败: {str(e)}")
+        import traceback
+        logger.error(f"   异常堆栈: {traceback.format_exc()}")
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to create product mapping: {str(e)}")
+
+
+@router.get("/mappings/", response_model=dict)
+async def get_product_mappings(
+    page: int = Query(1, ge=1, description="页码"),
+    limit: int = Query(50, ge=1, le=100, description="每页数量"),
+    core_product_id: Optional[int] = Query(None, description="核心商品ID"),
+    external_system_id: Optional[int] = Query(None, description="外部系统ID"),
+    sync_status: Optional[str] = Query(None, description="同步状态"),
+    mapping_type: Optional[str] = Query(None, description="映射类型"),
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
+):
+    """
+    获取商品映射列表
+    """
+    tenant, user = auth
+    
+    try:
+        logger.info("🔍 开始获取商品映射列表", 
+                   page=page, limit=limit, tenant_id=tenant.id)
+        
+        # 构建查询条件
+        stmt = select(ProductMapping).where(ProductMapping.tenant_id == tenant.id)
+        
+        if core_product_id:
+            stmt = stmt.where(ProductMapping.core_product_id == core_product_id)
+        
+        if external_system_id:
+            stmt = stmt.where(ProductMapping.external_system_id == external_system_id)
+        
+        if sync_status:
+            stmt = stmt.where(ProductMapping.sync_status == sync_status)
+        
+        if mapping_type:
+            stmt = stmt.where(ProductMapping.mapping_type == mapping_type)
+        
+        # 添加排序
+        stmt = stmt.order_by(ProductMapping.created_at.desc())
+        
+        # 添加分页
+        offset = (page - 1) * limit
+        stmt = stmt.offset(offset).limit(limit)
+        
+        # 执行查询
+        result = await db.execute(stmt)
+        mappings = result.scalars().all()
+        
+        logger.info(f"✅ 查询到 {len(mappings)} 条商品映射记录")
+        
+        # 构建响应数据
+        mapping_responses = []
+        for mapping in mappings:
+            # 获取核心商品信息
+            core_product_stmt = select(Product).where(Product.id == mapping.core_product_id)
+            core_product_result = await db.execute(core_product_stmt)
+            core_product = core_product_result.scalar_one_or_none()
+            
+            # 获取核心变体信息（如果存在）
+            core_variant = None
+            if mapping.core_variant_id:
+                core_variant_stmt = select(ProductVariant).where(ProductVariant.id == mapping.core_variant_id)
+                core_variant_result = await db.execute(core_variant_stmt)
+                core_variant = core_variant_result.scalar_one_or_none()
+            
+            # 获取外部系统信息
+            external_system_stmt = select(ExternalSystem).where(ExternalSystem.id == mapping.external_system_id)
+            external_system_result = await db.execute(external_system_stmt)
+            external_system = external_system_result.scalar_one_or_none()
+            
+            mapping_responses.append({
+                "id": mapping.id,
+                "id_hashid": encode_id(mapping.id),
+                "core_product_id": mapping.core_product_id,
+                "core_variant_id": mapping.core_variant_id,
+                "external_system_id": mapping.external_system_id,
+                "external_product_id": mapping.external_product_id,
+                "external_variant_id": mapping.external_variant_id,
+                "mapping_type": mapping.mapping_type,
+                "sync_direction": mapping.sync_direction,
+                "sync_status": mapping.sync_status,
+                "created_at": mapping.created_at.isoformat() if mapping.created_at else None,
+                "core_product_title": core_product.title if core_product else "未知商品",
+                "core_variant_sku": core_variant.sku if core_variant else None,
+                "external_system_name": external_system.name if external_system else "未知系统",
+                "system_type": external_system.system_type.value if external_system else "UNKNOWN"
+            })
+        
+        logger.info(f"✅ 商品映射列表获取成功: 共 {len(mapping_responses)} 条记录")
+        
+        return {
+            "mappings": mapping_responses,
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total": len(mapping_responses),
+                "pages": (len(mapping_responses) + limit - 1) // limit
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ 获取商品映射列表失败: {str(e)}")
+        import traceback
+        logger.error(f"   异常堆栈: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Failed to get product mappings: {str(e)}")
+
+
+@router.delete("/mappings/{mapping_id_hashid}")
+async def delete_product_mapping(
+    mapping_id_hashid: str,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
+):
+    """
+    删除商品映射
+    """
+    tenant, user = auth
+    
+    try:
+        logger.info("🗑️ 开始删除商品映射", 
+                   mapping_id_hashid=mapping_id_hashid, tenant_id=tenant.id)
+        
+        # 解码映射ID
+        try:
+            mapping_id = decode_id(mapping_id_hashid)
+            logger.info(f"✅ 映射ID解码成功: {mapping_id_hashid} -> {mapping_id}")
+        except Exception as e:
+            logger.error(f"❌ 映射ID解码失败: {str(e)}")
+            raise HTTPException(status_code=400, detail="Invalid mapping ID")
+        
+        # 查找映射记录
+        mapping_stmt = select(ProductMapping).where(
+            ProductMapping.id == mapping_id,
+            ProductMapping.tenant_id == tenant.id
+        )
+        mapping_result = await db.execute(mapping_stmt)
+        mapping = mapping_result.scalar_one_or_none()
+        
+        if not mapping:
+            logger.error(f"❌ 商品映射不存在: mapping_id={mapping_id}")
+            raise HTTPException(status_code=404, detail="Product mapping not found")
+        
+        logger.info(f"✅ 找到商品映射: {mapping.id}")
+        
+        # 删除映射记录
+        await db.delete(mapping)
+        await db.commit()
+        
+        logger.info(f"✅ 商品映射删除成功: mapping_id={mapping.id}")
+        
+        return {"message": "Product mapping deleted successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 删除商品映射失败: {str(e)}")
+        import traceback
+        logger.error(f"   异常堆栈: {traceback.format_exc()}")
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete product mapping: {str(e)}")

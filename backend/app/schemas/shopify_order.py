@@ -66,6 +66,7 @@ class ShopifyOrderUpdate(BaseModel):
 class ShopifyOrderResponse(ShopifyOrderBase):
     """Shopify 订单响应"""
     id: int
+    id_hashid: str  # 添加 hashid 字段
     tenant_id: int
     created_at: datetime
     updated_at: Optional[datetime] = None

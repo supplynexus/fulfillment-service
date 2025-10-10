@@ -36,6 +36,7 @@ import {
   Badge,
   Avatar,
 } from '@mui/material';
+import Checkbox from '@mui/material/Checkbox';
 import {
   Search as SearchIcon,
   Refresh as RefreshIcon,
@@ -46,15 +47,17 @@ import {
   AttachMoney as MoneyIcon,
   CalendarToday as CalendarIcon,
   FilterList as FilterIcon,
-  Sync as SyncIcon,
+  Sync as SyncIcon
 } from '@mui/icons-material';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { frontendApi } from '@/lib/api';
 import { frontendLogger } from '@/lib/frontend-logger';
+import toast from 'react-hot-toast';
 
 interface SyncedShopifyOrder {
   id: number;
+  id_hashid: string;  // 添加 hashid 字段
   shopify_order_id: string;
   name: string;
   confirmation_number?: string;
@@ -99,6 +102,8 @@ const SyncedShopifyOrdersPage: React.FC = () => {
   const [jsonModalOpen, setJsonModalOpen] = useState(false);
   const [orderJson, setOrderJson] = useState<any>(null);
   const [syncingOrders, setSyncingOrders] = useState<Set<number>>(new Set());
+  const [selectedOrders, setSelectedOrders] = useState<Set<number>>(new Set()); // Selected orders for bulk sync
+  const [bulkSyncing, setBulkSyncing] = useState(false); // Bulk sync status
 
   // 获取同步的Shopify订单列表
   const fetchOrders = useCallback(async (pageNum: number = 1) => {
@@ -169,25 +174,86 @@ const SyncedShopifyOrdersPage: React.FC = () => {
       setSyncingOrders(prev => new Set(prev).add(order.id));
       frontendLogger.info('🔄 开始同步到核心订单', { orderId: order.id, orderName: order.name });
 
-      const response = await frontendApi.post(`/api/shopify-orders/${order.id}/sync-to-core`);
+      const response = await frontendApi.post(`/api/shopify-orders/${order.id_hashid}/sync-to-core`);
       
       if (response.data.success) {
         frontendLogger.info('✅ 同步到核心订单成功', { orderId: order.id });
-        // 可以显示成功消息
-        alert(`订单 ${order.name} 已成功同步到核心订单系统！`);
+        toast.success(`订单 ${order.name} 已成功同步到核心订单系统！`);
       } else {
         frontendLogger.error('❌ 同步到核心订单失败', { orderId: order.id, error: response.data.message });
-        alert(`同步失败：${response.data.message || '未知错误'}`);
+        toast.error(`同步失败：${response.data.message || '未知错误'}`);
       }
     } catch (error: any) {
       frontendLogger.error('❌ 同步到核心订单异常', { orderId: order.id, error: error.message });
-      alert(`同步失败：${error.message || '网络错误'}`);
+      toast.error(`同步失败：${error.message || '网络错误'}`);
     } finally {
       setSyncingOrders(prev => {
         const newSet = new Set(prev);
         newSet.delete(order.id);
         return newSet;
       });
+    }
+  };
+
+  // 处理单个订单选择
+  const handleOrderSelect = (orderId: number, selected: boolean) => {
+    setSelectedOrders(prev => {
+      const newSet = new Set(prev);
+      if (selected) {
+        newSet.add(orderId);
+      } else {
+        newSet.delete(orderId);
+      }
+      return newSet;
+    });
+  };
+
+  // 处理全选
+  const handleSelectAll = (selected: boolean) => {
+    if (selected) {
+      setSelectedOrders(new Set(orders.map(order => order.id)));
+    } else {
+      setSelectedOrders(new Set());
+    }
+  };
+
+  // 批量同步到核心订单
+  const handleBulkSyncToCore = async () => {
+    if (selectedOrders.size === 0) {
+      toast.error('请先选择要同步的订单');
+      return;
+    }
+
+    setBulkSyncing(true);
+    frontendLogger.info('🔄 开始批量同步到核心订单', { selectedCount: selectedOrders.size });
+
+    try {
+      const syncPromises = Array.from(selectedOrders).map(async (orderId) => {
+        const order = orders.find(o => o.id === orderId);
+        if (!order) return null;
+
+        try {
+          const response = await frontendApi.post(`/api/shopify-orders/${order.id_hashid}/sync-to-core`);
+          return { orderId, success: response.data.success, orderName: order.name };
+        } catch (error: any) {
+          return { orderId, success: false, error: error.message, orderName: order.name };
+        }
+      });
+
+      const results = await Promise.all(syncPromises);
+      const successful = results.filter(r => r?.success).length;
+      const failed = results.filter(r => r && !r.success).length;
+
+      frontendLogger.info('✅ 批量同步完成', { successful, failed });
+      toast.success(`批量同步完成：成功 ${successful} 个，失败 ${failed} 个`);
+
+      // 清空选择
+      setSelectedOrders(new Set());
+    } catch (error: any) {
+      frontendLogger.error('❌ 批量同步异常', { error: error.message });
+      toast.error(`批量同步失败：${error.message || '网络错误'}`);
+    } finally {
+      setBulkSyncing(false);
     }
   };
 
@@ -350,13 +416,48 @@ const SyncedShopifyOrdersPage: React.FC = () => {
                     color="info"
                     variant="outlined"
                   />
+                  {selectedOrders.size > 0 && (
+                    <Chip
+                      label={`已选择 ${selectedOrders.size} 个订单`}
+                      color="primary"
+                      variant="filled"
+                    />
+                  )}
                 </Stack>
               </Box>
+
+              {/* 批量操作按钮 */}
+              {selectedOrders.size > 0 && (
+                <Box sx={{ mb: 2, display: 'flex', gap: 1 }}>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    startIcon={bulkSyncing ? <CircularProgress size={16} /> : <SyncIcon />}
+                    onClick={handleBulkSyncToCore}
+                    disabled={bulkSyncing}
+                  >
+                    {bulkSyncing ? '批量同步中...' : `同步到核心订单 (${selectedOrders.size})`}
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    onClick={() => setSelectedOrders(new Set())}
+                  >
+                    取消选择
+                  </Button>
+                </Box>
+              )}
 
               <TableContainer component={Paper}>
                 <Table>
                   <TableHead>
                     <TableRow>
+                      <TableCell padding="checkbox">
+                        <Checkbox
+                          indeterminate={selectedOrders.size > 0 && selectedOrders.size < orders.length}
+                          checked={orders.length > 0 && selectedOrders.size === orders.length}
+                          onChange={(e) => handleSelectAll(e.target.checked)}
+                        />
+                      </TableCell>
                       <TableCell>订单信息</TableCell>
                       <TableCell>客户</TableCell>
                       <TableCell>状态</TableCell>
@@ -369,6 +470,12 @@ const SyncedShopifyOrdersPage: React.FC = () => {
                   <TableBody>
                     {orders.map((order) => (
                       <TableRow key={order.id} hover>
+                        <TableCell padding="checkbox">
+                          <Checkbox
+                            checked={selectedOrders.has(order.id)}
+                            onChange={(e) => handleOrderSelect(order.id, e.target.checked)}
+                          />
+                        </TableCell>
                         <TableCell>
                           <Box>
                             <Typography variant="subtitle2" fontWeight="bold">

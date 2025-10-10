@@ -20,6 +20,8 @@ import {
   IconButton,
   Tooltip,
   Stack,
+  Checkbox,
+  TextField,
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -41,6 +43,10 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<number>>(new Set());
+  const [quantityByItemId, setQuantityByItemId] = useState<Record<number, number>>({});
+  const [creatingScm, setCreatingScm] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const fetchOrderDetails = async () => {
     try {
@@ -67,6 +73,68 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
 
   const handleRefresh = () => {
     fetchOrderDetails();
+  };
+
+  const toggleSelectItem = (id: number, defaultQty: number) => {
+    setSelectedItemIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    setQuantityByItemId(prev => ({ ...prev, [id]: prev[id] ?? defaultQty ?? 1 }));
+  };
+
+  const updateQty = (id: number, value: number) => {
+    setQuantityByItemId(prev => ({ ...prev, [id]: Math.max(1, Number(value) || 1) }));
+  };
+
+  const handleCreateScmOrder = async () => {
+    if (!order) return;
+    if (selectedItemIds.size === 0) {
+      setCreateError('请先选择要发送的商品');
+      return;
+    }
+    try {
+      setCreatingScm(true);
+      setCreateError(null);
+      const items = (order.line_items || [])
+        .filter(it => selectedItemIds.has(it.id))
+        .map(it => ({
+          core_product_id: it.core_product_id ?? null,
+          core_variant_id: it.core_variant_id ?? null,
+          quantity: quantityByItemId[it.id] ?? it.quantity ?? 1,
+          item_metadata: {
+            source_line_item_id: it.id,
+            sku: it.sku || null,
+            title: it.title || null,
+            variant_title: it.variant_title || null,
+          },
+        }));
+
+      const body = {
+        source_order_ids: [Number(order.id)],
+        routing_strategy: 'manual',
+        line_items: items,
+        currency: order.currency || 'USD',
+        customer_email: order.customer_email || 'no-email@example.com',
+        customer_name: order.customer_name || undefined,
+        customer_phone: order.customer_phone || undefined,
+        shipping_address: order.shipping_address,
+        billing_address: order.billing_address || undefined,
+        routing_metadata: { from_ui: 'orders/[id]', created_via: 'manual_select' },
+        shopify_order_id: order.shopify_order_id || undefined,
+      };
+
+      const resp = await frontendApi.post('/api/scm-orders', body);
+      const scm = resp.data;
+      router.push(`/scm-orders/${scm.id}`);
+    } catch (e: any) {
+      console.error('创建SCM订单失败', e);
+      setCreateError(e?.response?.data?.detail || '创建SCM订单失败');
+    } finally {
+      setCreatingScm(false);
+    }
   };
 
   const getStatusColor = (status: OrderStatus) => {
@@ -441,26 +509,48 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
           )}
         </Stack>
 
-        {/* Line Items */}
+          {/* Line Items */}
         <Card>
           <CardContent>
             <Typography variant='h6' gutterBottom>
               商品清单
             </Typography>
+            {createError && (
+              <Alert severity='error' sx={{ mb: 2 }}>
+                {createError}
+              </Alert>
+            )}
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} mb={2}>
+                <Button
+                  variant='contained'
+                  onClick={handleCreateScmOrder}
+                  disabled={creatingScm || selectedItemIds.size === 0}
+                >
+                  {creatingScm ? '创建中...' : `创建核心SCM订单（已选 ${selectedItemIds.size} 项）`}
+                </Button>
+              </Stack>
             <TableContainer component={Paper} variant='outlined'>
               <Table>
                 <TableHead>
                   <TableRow>
+                      <TableCell padding='checkbox'>选择</TableCell>
                     <TableCell>商品</TableCell>
                     <TableCell>SKU</TableCell>
-                    <TableCell align='right'>数量</TableCell>
-                    <TableCell align='right'>单价</TableCell>
-                    <TableCell align='right'>小计</TableCell>
+                      <TableCell align='right'>数量</TableCell>
+                      <TableCell align='right'>单价</TableCell>
+                      <TableCell align='right'>小计</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {order.line_items.map(item => (
+                  {(order.line_items || []).map(item => (
                     <TableRow key={item.id}>
+                        <TableCell padding='checkbox'>
+                          <Checkbox
+                            color='primary'
+                            checked={selectedItemIds.has(item.id)}
+                            onChange={() => toggleSelectItem(item.id, item.quantity)}
+                          />
+                        </TableCell>
                       <TableCell>
                         <Box>
                           <Typography variant='body2' fontWeight='medium'>
@@ -482,7 +572,17 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
                         </Typography>
                       </TableCell>
                       <TableCell align='right'>
-                        <Typography variant='body2'>{item.quantity}</Typography>
+                          {selectedItemIds.has(item.id) ? (
+                            <TextField
+                              type='number'
+                              size='small'
+                              inputProps={{ min: 1, style: { textAlign: 'right', width: 72 } }}
+                              value={quantityByItemId[item.id] ?? item.quantity ?? 1}
+                              onChange={e => updateQty(item.id, Number(e.target.value))}
+                            />
+                          ) : (
+                            <Typography variant='body2'>{item.quantity}</Typography>
+                          )}
                       </TableCell>
                       <TableCell align='right'>
                         <Typography variant='body2'>

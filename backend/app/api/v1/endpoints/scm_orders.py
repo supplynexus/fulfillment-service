@@ -13,7 +13,8 @@ from app.core.tenant_auth_dependency import verify_tenant_auth
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.models.order import Order
-from app.models.scm_order import SCMOrder
+from app.models.product_new import Product, ProductVariant
+from app.models.scm_order import SCMOrder, ScmOrderSource
 from app.schemas.scm_order import SCMOrderResponse, SCMOrderListResponse, SCMOrderCreate
 from app.services.order_routing_service import OrderRoutingService
 
@@ -192,26 +193,93 @@ async def create_scm_order(
     """
     tenant, user = auth
 
-    # 验证原始订单存在
+    # 验证原始订单存在（支持多个来源）
+    source_ids = list(dict.fromkeys(scm_order_data.source_order_ids))
+    if not source_ids:
+        raise HTTPException(status_code=400, detail="source_order_ids is required")
+
     result = await db.execute(
-        select(Order).where(
-            Order.id == scm_order_data.source_order_id, Order.tenant_id == tenant.id
+        select(Order.id).where(
+            Order.id.in_(source_ids), Order.tenant_id == tenant.id
         )
     )
-    order = result.scalar_one_or_none()
+    found_ids = {row[0] for row in result.fetchall()}
+    missing = [oid for oid in source_ids if oid not in found_ids]
+    if missing:
+        raise HTTPException(status_code=404, detail=f"Source orders not found: {missing}")
 
-    if not order:
-        raise HTTPException(status_code=404, detail="Source order not found")
+    # 规范化行项目：基于 core_product_id/core_variant_id 生成展示元数据
+    normalized_items = []
+    for raw in scm_order_data.line_items:
+        try:
+            core_product_id = raw.get("core_product_id") if isinstance(raw, dict) else None
+            core_variant_id = raw.get("core_variant_id") if isinstance(raw, dict) else None
+            quantity = int(raw.get("quantity", 1)) if isinstance(raw, dict) else 1
+
+            display_title = None
+            display_sku = None
+            variant_label = None
+            image_url = None
+
+            if core_variant_id:
+                v_res = await db.execute(
+                    select(ProductVariant).where(
+                        ProductVariant.id == core_variant_id,
+                        ProductVariant.tenant_id == tenant.id,
+                    )
+                )
+                variant = v_res.scalar_one_or_none()
+                if variant:
+                    display_sku = variant.sku
+                    image_url = variant.image_url
+                    core_product_id = core_product_id or variant.product_id
+            if core_product_id:
+                p_res = await db.execute(
+                    select(Product).where(
+                        Product.id == core_product_id,
+                        Product.tenant_id == tenant.id,
+                    )
+                )
+                product = p_res.scalar_one_or_none()
+                if product:
+                    display_title = product.title
+
+            normalized_items.append(
+                {
+                    "core_product_id": core_product_id,
+                    "core_variant_id": core_variant_id,
+                    "quantity": max(1, quantity),
+                    "metadata": {
+                        "sku": display_sku,
+                        "title": display_title,
+                        "variant_label": raw.get("item_metadata", {}).get("variant_title")
+                        if isinstance(raw, dict)
+                        else None,
+                        "image_url": image_url,
+                        "source_line_item_id": raw.get("item_metadata", {}).get("source_line_item_id")
+                        if isinstance(raw, dict)
+                        else None,
+                    },
+                }
+            )
+        except Exception:
+            # 回退为最小结构，确保不会阻塞创建
+            normalized_items.append(
+                {
+                    "core_product_id": raw.get("core_product_id") if isinstance(raw, dict) else None,
+                    "core_variant_id": raw.get("core_variant_id") if isinstance(raw, dict) else None,
+                    "quantity": int(raw.get("quantity", 1)) if isinstance(raw, dict) else 1,
+                    "metadata": raw.get("item_metadata") if isinstance(raw, dict) else {},
+                }
+            )
 
     # 创建SCM订单
     scm_order = SCMOrder(
         tenant_id=tenant.id,
-        source_order_id=scm_order_data.source_order_id,
-        target_system_type=scm_order_data.target_system_type,
-        target_system_id=scm_order_data.target_system_id,
+        # 核心SCM订单不直接绑定外部系统
         routing_strategy=scm_order_data.routing_strategy,
-        line_items=scm_order_data.line_items,
-        total_amount=scm_order_data.total_amount,
+        line_items=normalized_items,
+        # 不记录金额
         currency=scm_order_data.currency,
         customer_email=scm_order_data.customer_email,
         customer_name=scm_order_data.customer_name,
@@ -223,6 +291,18 @@ async def create_scm_order(
     )
 
     db.add(scm_order)
+    await db.flush()
+
+    # 写入多来源关联表
+    for oid in source_ids:
+        db.add(
+            ScmOrderSource(
+                tenant_id=tenant.id,
+                scm_order_id=scm_order.id,
+                source_order_id=oid,
+            )
+        )
+
     await db.commit()
     await db.refresh(scm_order)
 

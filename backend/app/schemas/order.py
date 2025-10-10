@@ -21,7 +21,7 @@ class OrderCreate(BaseModel):
     customer_phone: Optional[str] = None
     shipping_address: Optional[Dict[str, Any]] = None
     billing_address: Optional[Dict[str, Any]] = None
-    line_items: List[Dict[str, Any]]
+    line_items: Optional[List[Dict[str, Any]]] = None
     order_date: datetime
     fulfillment_status: Optional[str] = None
     external_data: Optional[Dict[str, Any]] = None
@@ -43,7 +43,7 @@ class OrderResponse(BaseModel):
     customer_phone: Optional[str] = None
     shipping_address: Optional[Dict[str, Any]] = None
     billing_address: Optional[Dict[str, Any]] = None
-    line_items: List[Dict[str, Any]]
+    line_items: Optional[List[Dict[str, Any]]] = None
     order_date: datetime
     fulfillment_status: Optional[str] = None
     tracking_number: Optional[str] = None

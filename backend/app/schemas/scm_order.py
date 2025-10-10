@@ -7,15 +7,23 @@ from datetime import datetime
 from pydantic import BaseModel
 
 
-class SCMOrderCreate(BaseModel):
-    """创建SCM订单的 schema"""
+class SCMOrderItem(BaseModel):
+    """精简的履约行项目（不含价格与外部ID）"""
 
-    source_order_id: int
-    target_system_type: str
-    target_system_id: Optional[str] = None
+    core_product_id: Optional[int] = None
+    core_variant_id: Optional[int] = None
+    quantity: int
+    item_metadata: Optional[Dict[str, Any]] = None
+
+
+class SCMOrderCreate(BaseModel):
+    """创建SCM订单的 schema（支持多来源订单）"""
+
+    source_order_ids: List[int]
+    # 核心SCM订单不直接绑定目标系统
     routing_strategy: Optional[str] = "auto"
-    line_items: List[Dict[str, Any]]
-    total_amount: float
+    line_items: List[Dict[str, Any]] | List[SCMOrderItem]
+    # 核心SCM订单不记录金额
     currency: str = "USD"
     customer_email: str
     customer_name: Optional[str] = None
@@ -32,14 +40,13 @@ class SCMOrderResponse(BaseModel):
     id: int
     tenant_id: int
     source_order_id: Optional[int] = None
-    target_system_type: str
-    target_system_id: Optional[str] = None
+    # 核心SCM订单不直接绑定目标系统
     scm_order_number: Optional[str] = None
     status: str
     fulfillment_status: Optional[str] = None
     routing_strategy: Optional[str] = None
     line_items: List[Dict[str, Any]]
-    total_amount: float
+    # 核心SCM订单不记录金额
     currency: str
     customer_email: str
     customer_name: Optional[str] = None

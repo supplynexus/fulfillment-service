@@ -16,6 +16,8 @@ from app.core.hashids_utils import encode_id, decode_id
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.models.shopify_order import ShopifyOrder
+from app.models.order import Order, OrderItem  # core order models
+from app.models.product_new import ProductVariant
 from app.schemas.shopify_order import (
     ShopifyOrderCreate,
     ShopifyOrderUpdate,
@@ -114,6 +116,7 @@ async def get_shopify_orders(
         for order in orders:
             order_responses.append(ShopifyOrderResponse(
                 id=order.id,
+                id_hashid=encode_id(order.id),  # 添加 hashid
                 tenant_id=order.tenant_id,
                 shopify_order_id=order.shopify_order_id,
                 name=order.name,
@@ -172,13 +175,21 @@ async def get_shopify_order(
     try:
         logger.info(f"🔍 开始获取 Shopify 订单详情: order_hashid={order_hashid}, tenant_id={tenant.id}")
         
-        # 解码 hashid
+        # 解码 hashid 或回退为数字 ID
+        order_id = None
         try:
             order_id = decode_id(order_hashid)
+            if order_id is None:
+                raise ValueError("decode_id returned None")
             logger.info(f"✅ Hashid 解码成功: {order_hashid} -> {order_id}")
-        except Exception as e:
-            logger.error(f"❌ Hashid 解码失败: {order_hashid}, 错误: {str(e)}")
-            raise HTTPException(status_code=400, detail="Invalid order ID")
+        except Exception:
+            # 回退为数字 ID
+            try:
+                order_id = int(order_hashid)
+                logger.info(f"ℹ️ 使用数字ID: {order_hashid} -> {order_id}")
+            except Exception as e2:
+                logger.error(f"❌ 订单ID无效: {order_hashid}, 错误: {str(e2)}")
+                raise HTTPException(status_code=400, detail="Invalid order ID")
         
         # 查询订单
         query = select(ShopifyOrder).where(
@@ -198,6 +209,7 @@ async def get_shopify_order(
         
         return ShopifyOrderResponse(
             id=order.id,
+            id_hashid=encode_id(order.id),  # 添加 hashid
             tenant_id=order.tenant_id,
             shopify_order_id=order.shopify_order_id,
             name=order.name,
@@ -299,6 +311,7 @@ async def create_shopify_order(
         
         return ShopifyOrderResponse(
             id=order.id,
+            id_hashid=encode_id(order.id),  # 添加 hashid
             tenant_id=order.tenant_id,
             shopify_order_id=order.shopify_order_id,
             name=order.name,
@@ -386,6 +399,7 @@ async def update_shopify_order(
         
         return ShopifyOrderResponse(
             id=order.id,
+            id_hashid=encode_id(order.id),  # 添加 hashid
             tenant_id=order.tenant_id,
             shopify_order_id=order.shopify_order_id,
             name=order.name,
@@ -553,3 +567,169 @@ async def get_shopify_order_statistics(
         import traceback
         logger.error(f"   异常堆栈: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Failed to get Shopify order statistics: {str(e)}")
+
+
+@router.post("/{order_hashid}/sync-to-core", response_model=dict)
+async def sync_shopify_order_to_core(
+    order_hashid: str,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
+):
+    """
+    将 Shopify 订单同步到核心订单系统
+    """
+    tenant, user = auth
+    
+    try:
+        logger.info(f"🔍 开始同步 Shopify 订单到核心系统: order_hashid={order_hashid}, tenant_id={tenant.id}")
+        
+        # 解码 hashid
+        try:
+            order_id = decode_id(order_hashid)
+            logger.info(f"✅ Hashid 解码成功: {order_hashid} -> {order_id}")
+        except Exception as e:
+            logger.error(f"❌ Hashid 解码失败: {order_hashid}, 错误: {str(e)}")
+            raise HTTPException(status_code=400, detail="Invalid order ID")
+        
+        # 查询 Shopify 订单
+        query = select(ShopifyOrder).where(
+            and_(
+                ShopifyOrder.id == order_id,
+                ShopifyOrder.tenant_id == tenant.id
+            )
+        )
+        result = await db.execute(query)
+        shopify_order = result.scalar_one_or_none()
+        
+        if not shopify_order:
+            logger.error(f"❌ Shopify 订单不存在: order_id={order_id}, tenant_id={tenant.id}")
+            raise HTTPException(status_code=404, detail="Shopify order not found")
+        
+        logger.info(f"✅ 找到 Shopify 订单: {shopify_order.name}")
+        
+        # 检查是否已经同步过
+        existing_core_order_query = select(Order).where(
+            and_(
+                Order.tenant_id == tenant.id,
+                Order.external_order_id == shopify_order.shopify_order_id
+            )
+        )
+        existing_result = await db.execute(existing_core_order_query)
+        existing_core_order = existing_result.scalar_one_or_none()
+        
+        if existing_core_order:
+            logger.info(f"ℹ️ 核心订单已存在，更新现有订单: {existing_core_order.id}")
+            core_order = existing_core_order
+        else:
+            # 创建核心订单
+            logger.info(f"➕ 创建新的核心订单")
+            core_order = Order(
+                tenant_id=tenant.id,
+                external_system_id=None,  # 暂时不关联外部系统
+                external_order_id=shopify_order.shopify_order_id,
+                external_order_number=shopify_order.name,
+                external_order_name=shopify_order.name,
+                order_number=shopify_order.name,
+                status="pending",
+                total_amount=float(shopify_order.total_price) if shopify_order.total_price else 0.0,
+                subtotal_amount=float(shopify_order.subtotal_price) if shopify_order.subtotal_price else None,
+                tax_amount=float(shopify_order.total_tax) if shopify_order.total_tax else None,
+                currency=shopify_order.currency_code or "USD",
+                customer_email=shopify_order.customer_data.get("email", "") if shopify_order.customer_data else "",
+                customer_name=shopify_order.customer_data.get("name", "") if shopify_order.customer_data else "",
+                customer_phone=None,
+                shipping_address=shopify_order.shipping_address or {},
+                billing_address=shopify_order.billing_address or {},
+                shopify_raw_data=shopify_order.raw_data,
+                external_data=shopify_order.raw_data,
+                order_date=shopify_order.created_at
+            )
+            db.add(core_order)
+            await db.flush()  # 获取 ID
+            logger.info(f"✅ 核心订单创建成功: ID={core_order.id}")
+        
+        # 处理订单行项目
+        if shopify_order.line_items:
+            logger.info(f"🔍 开始处理订单行项目: {len(shopify_order.line_items)} 个")
+            
+            # 删除现有的订单行项目（如果存在）
+            if existing_core_order:
+                delete_items_query = select(OrderItem).where(OrderItem.order_id == core_order.id)
+                existing_items_result = await db.execute(delete_items_query)
+                existing_items = existing_items_result.scalars().all()
+                for item in existing_items:
+                    await db.delete(item)
+                logger.info(f"🗑️ 删除现有订单行项目: {len(existing_items)} 个")
+            
+            for line_item in shopify_order.line_items:
+                try:
+                    # 尝试匹配核心 SKU
+                    core_variant_id = None
+                    core_product_id = None
+                    
+                    if line_item.get("sku"):
+                        # 通过 SKU 查找核心变体
+                        variant_query = select(ProductVariant).where(
+                            and_(
+                                ProductVariant.tenant_id == tenant.id,
+                                ProductVariant.sku == line_item["sku"]
+                            )
+                        )
+                        variant_result = await db.execute(variant_query)
+                        core_variant = variant_result.scalar_one_or_none()
+                        
+                        if core_variant:
+                            core_variant_id = core_variant.id
+                            core_product_id = core_variant.product_id
+                            logger.info(f"✅ SKU 匹配成功: {line_item['sku']} -> core_variant_id={core_variant_id}")
+                        else:
+                            logger.warning(f"⚠️ SKU 未匹配: {line_item['sku']}")
+                    
+                    # 创建订单行项目
+                    order_item = OrderItem(
+                        tenant_id=tenant.id,
+                        order_id=core_order.id,
+                        core_product_id=core_product_id,
+                        core_variant_id=core_variant_id,
+                        external_product_id=line_item.get("product", {}).get("id") if line_item.get("product") else None,
+                        external_variant_id=line_item.get("id"),
+                        sku=line_item.get("sku"),
+                        title=line_item.get("title"),
+                        variant_title=line_item.get("variant_title"),
+                        quantity=int(line_item.get("quantity", 1)),
+                        unit_price=float(line_item.get("price", 0)) if line_item.get("price") else None,
+                        total_price=float(line_item.get("price", 0)) * int(line_item.get("quantity", 1)) if line_item.get("price") else None,
+                        discount=None,
+                        tax=None,
+                        fulfillment_status=shopify_order.fulfillment_status,
+                        item_metadata={
+                            "vendor": line_item.get("vendor"),
+                            "currency": line_item.get("currency"),
+                            "product_handle": line_item.get("product", {}).get("handle") if line_item.get("product") else None
+                        }
+                    )
+                    db.add(order_item)
+                    logger.info(f"✅ 订单行项目创建: SKU={line_item.get('sku')}, 数量={line_item.get('quantity')}")
+                    
+                except Exception as e:
+                    logger.error(f"❌ 处理订单行项目失败: {str(e)}")
+                    continue
+        
+        await db.commit()
+        logger.info(f"✅ Shopify 订单同步到核心系统成功: {shopify_order.name}")
+        
+        return {
+            "success": True,
+            "message": f"订单 {shopify_order.name} 已成功同步到核心系统",
+            "core_order_id": core_order.id,
+            "items_count": len(shopify_order.line_items) if shopify_order.line_items else 0
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"❌ 同步 Shopify 订单到核心系统失败: {str(e)}")
+        import traceback
+        logger.error(f"   异常堆栈: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Failed to sync Shopify order to core: {str(e)}")

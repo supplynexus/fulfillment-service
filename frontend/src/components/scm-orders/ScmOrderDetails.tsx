@@ -40,14 +40,13 @@ interface ScmOrder {
   id: number;
   tenant_id: number;
   source_order_id?: number;
-  target_system_type: string;
-  target_system_id?: string;
+  // 核心SCM订单不直接绑定外部系统
   scm_order_number?: string;
   status: string;
   fulfillment_status?: string;
   routing_strategy?: string;
   line_items: any[];
-  total_amount: number;
+  // 不展示金额
   currency: string;
   customer_email: string;
   customer_name?: string;
@@ -229,14 +228,7 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
                   size="medium"
                 />
               </Box>
-              <Box flex={1}>
-                <Typography variant="h6" gutterBottom>
-                  订单金额
-                </Typography>
-                <Typography variant="h5" color="primary" fontWeight="bold">
-                  {formatCurrency(order.total_amount, order.currency)}
-                </Typography>
-              </Box>
+              {/* 核心SCM订单不展示金额 */}
             </Stack>
           </CardContent>
         </Card>
