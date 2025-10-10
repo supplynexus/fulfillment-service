@@ -49,6 +49,7 @@ def upgrade() -> None:
             try:
                 batch_op.drop_column(col)
             except Exception:
+                # Column may already be missing in some environments
                 pass
 
 
