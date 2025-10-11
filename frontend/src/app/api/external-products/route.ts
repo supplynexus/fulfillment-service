@@ -120,3 +120,127 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+
+  try {
+    logger.requestStart(request.method, request.url, {
+      userAgent: request.headers.get('user-agent'),
+    });
+
+    // 验证前端 JWT token
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      logger.error('❌ 缺少认证头');
+      return NextResponse.json({ error: 'Missing authorization header' }, { status: 401 });
+    }
+
+    const frontendToken = authHeader.substring(7);
+    let decodedToken;
+    try {
+      decodedToken = jwtUtilsServer.verifyToken(frontendToken);
+    } catch (error) {
+      logger.error('❌ JWT token 验证失败', { error: String(error) });
+      return NextResponse.json({ detail: 'Invalid token' }, { status: 401 });
+    }
+
+    const { tenant_name: tenantName, sub: userId } = decodedToken;
+
+    if (!tenantName || !userId) {
+      logger.error('❌ JWT token 缺少 tenant_name 或 user_id');
+      return NextResponse.json({ detail: 'Invalid token' }, { status: 401 });
+    }
+
+    // 获取请求体
+    const requestBody = await request.json();
+    logger.info('🔍 开始处理外部商品同步请求', { 
+      tenantName, 
+      userId,
+      externalProductId: requestBody.external_product_id 
+    });
+
+    // 构建后端请求URL
+    const backendPath = `/api/v1/products/external-products/`;
+    const bodyString = JSON.stringify(requestBody);
+    const timestamp = Math.floor(Date.now() / 1000);
+    const nonce = Math.random().toString(36).substring(2, 15);
+    const signatureString = `POST${backendPath}${timestamp}${nonce}${tenantName}${bodyString}`;
+
+    logger.info('🔍 前端签名生成调试信息', {
+      method: 'POST',
+      path: backendPath,
+      timestamp,
+      nonce,
+      tenantName,
+      signatureString,
+      signatureStringLength: signatureString.length,
+    });
+
+    const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
+    const signature = generateBackendSignature(
+      privateKey,
+      signatureString,
+      timestamp,
+      nonce,
+      tenantName
+    );
+
+    logger.info('🔍 前端签名生成完成', {
+      signatureLength: signature.length,
+      signature: signature.substring(0, 50) + '...',
+      tenantName,
+    });
+
+    const backendUrl = `${process.env.BACKEND_API_URL}${backendPath}`;
+    
+    logger.info('Forwarding request to backend', { backendUrl });
+
+    const backendResponse = await fetch(backendUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Tenant-Name': tenantName,
+        'X-User-ID': userId,
+        'X-Timestamp': timestamp.toString(),
+        'X-Nonce': nonce,
+        'X-Signature': signature,
+      },
+      body: bodyString,
+    });
+
+    const responseData = await backendResponse.json();
+
+    if (!backendResponse.ok) {
+      logger.error('❌ 后端 API 调用失败', {
+        status: backendResponse.status,
+        statusText: backendResponse.statusText,
+        error: responseData
+      });
+      
+      return NextResponse.json(
+        { error: responseData.detail || 'Backend request failed' },
+        { status: backendResponse.status }
+      );
+    }
+
+    const duration = Date.now() - startTime;
+    logger.info('✅ 外部商品同步成功', {
+      externalProductId: requestBody.external_product_id,
+      duration: `${duration}ms`
+    });
+    
+    return NextResponse.json(responseData);
+
+  } catch (error: any) {
+    const duration = Date.now() - startTime;
+    logger.error('❌ 处理外部商品同步请求失败', { 
+      error: error.message,
+      duration: `${duration}ms`
+    });
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
