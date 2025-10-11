@@ -301,5 +301,12 @@ deployment/docker/redis/data-*/
 
 # Mac specific (additional)
 .AppleDouble
-.LSOverride# Virtual environment
+.LSOverride
+
+# AI Assistant directories (personal configurations and caches)
+.cursor/
+.serena/
+.specify/
+
+# Virtual environment
 .venv/

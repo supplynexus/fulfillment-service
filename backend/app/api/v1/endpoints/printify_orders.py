@@ -17,6 +17,7 @@ from app.core.security import decrypt_data
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.models.external_system import ExternalSystem, ExternalSystemType
+from app.services.printify_error_handler import execute_printify_operation
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -261,75 +262,46 @@ async def create_printify_order(
             variant_id=printify_config["default_variant_id"],
         )
 
-        # 调用Printify API
-        api_url = f"{printify_config['api_base_url']}/shops/{printify_config['shop_id']}/orders.json"
-        headers = {
-            "Authorization": f"Bearer {printify_config['access_token']}",
-            "Content-Type": "application/json",
-            "User-Agent": "SupplyNexus/1.0",
-        }
+        # 使用错误处理器执行Printify API调用
+        async def _create_order_operation():
+            api_url = f"{printify_config['api_base_url']}/shops/{printify_config['shop_id']}/orders.json"
+            headers = {
+                "Authorization": f"Bearer {printify_config['access_token']}",
+                "Content-Type": "application/json",
+                "User-Agent": "SupplyNexus/1.0",
+            }
 
-        logger.info("📡 发送请求到Printify API", api_url=api_url)
+            logger.info("📡 发送请求到Printify API", api_url=api_url)
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(api_url, headers=headers, json=order_data)
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(api_url, headers=headers, json=order_data)
+                response.raise_for_status()
+                return response.json()
 
-            if response.status_code in [200, 201]:
-                result = response.json()
-                logger.info(
-                    "✅ Printify订单创建成功",
-                    printify_order_id=result.get("id"),
-                    external_id=result.get("external_id"),
-                )
+        result = await execute_printify_operation(
+            _create_order_operation,
+            "创建Printify订单"
+        )
 
-                return PrintifyOrderResponse(
-                    success=True,
-                    printify_order_id=result.get("id"),
-                    external_id=result.get("external_id"),
-                    status=result.get("status"),
-                    total_price=(
-                        result.get("total_price", 0) / 100
-                        if result.get("total_price")
-                        else 0
-                    ),
-                    message="Printify订单创建成功",
-                )
-            else:
-                error_detail = response.text
-                logger.error(
-                    "❌ Printify API调用失败",
-                    status_code=response.status_code,
-                    error_detail=error_detail,
-                )
+        logger.info(
+            "✅ Printify订单创建成功",
+            printify_order_id=result.get("id"),
+            external_id=result.get("external_id"),
+        )
 
-                # 根据不同的状态码返回不同的错误信息
-                logger.info(
-                    f"🔍 处理Printify API错误响应: status_code={response.status_code}"
-                )
+        return PrintifyOrderResponse(
+            success=True,
+            printify_order_id=result.get("id"),
+            external_id=result.get("external_id"),
+            status=result.get("status"),
+            total_price=(
+                result.get("total_price", 0) / 100
+                if result.get("total_price")
+                else 0
+            ),
+            message="Printify订单创建成功",
+        )
 
-                if response.status_code == 404:
-                    error_message = (
-                        "Printify商店不存在或访问令牌无效，请检查Printify配置"
-                    )
-                elif response.status_code == 401:
-                    error_message = "Printify访问令牌无效或已过期，请重新配置"
-                elif response.status_code == 403:
-                    error_message = "没有权限访问此Printify商店，请检查商店权限"
-                else:
-                    error_message = f"Printify API调用失败: {response.status_code}"
-
-                logger.info(f"🔍 准备抛出HTTPException: {error_message}")
-                raise HTTPException(
-                    status_code=400,
-                    detail=error_message,
-                )
-
-    except httpx.TimeoutException:
-        logger.error("❌ Printify API调用超时")
-        raise HTTPException(status_code=408, detail="Printify API调用超时，请稍后重试")
-    except httpx.RequestError as e:
-        logger.error("❌ Printify API请求错误", error=str(e))
-        raise HTTPException(status_code=500, detail=f"Printify API请求失败: {str(e)}")
     except HTTPException:
         # 重新抛出HTTPException，不要被通用异常处理捕获
         raise

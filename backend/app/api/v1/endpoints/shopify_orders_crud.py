@@ -35,6 +35,7 @@ logger = get_logger(__name__)
 async def get_shopify_orders(
     skip: int = Query(0, ge=0, description="跳过的记录数"),
     limit: int = Query(10, ge=1, le=100, description="每页记录数"),
+    page: int = Query(1, ge=1, description="页码"),
     financial_status: Optional[str] = Query(None, description="财务状态过滤"),
     fulfillment_status: Optional[str] = Query(None, description="履行状态过滤"),
     confirmed: Optional[bool] = Query(None, description="是否确认过滤"),
@@ -53,10 +54,14 @@ async def get_shopify_orders(
     """
     tenant, user = auth
     
+    # 如果提供了 page 参数，计算 skip
+    if page > 1:
+        skip = (page - 1) * limit
+    
     try:
         logger.info(f"🔍 开始获取 Shopify 订单列表: tenant_id={tenant.id}, user_id={user.id}")
         logger.info(f"   过滤条件: financial_status={financial_status}, fulfillment_status={fulfillment_status}")
-        logger.info(f"   分页: skip={skip}, limit={limit}")
+        logger.info(f"   分页: page={page}, skip={skip}, limit={limit}")
         
         # 构建基础查询
         query = select(ShopifyOrder).where(ShopifyOrder.tenant_id == tenant.id)
@@ -145,13 +150,19 @@ async def get_shopify_orders(
                 last_synced_at=order.last_synced_at
             ))
         
-        logger.info(f"✅ 获取 Shopify 订单列表成功: 总数={total}, 返回={len(order_responses)}")
+        # 计算分页信息
+        total_pages = (total + limit - 1) // limit  # 向上取整
+        current_page = (skip // limit) + 1
+        
+        logger.info(f"✅ 获取 Shopify 订单列表成功: 总数={total}, 返回={len(order_responses)}, 总页数={total_pages}, 当前页={current_page}")
         
         return ShopifyOrderListResponse(
             orders=order_responses,
             total=total,
             skip=skip,
-            limit=limit
+            limit=limit,
+            total_pages=total_pages,
+            current_page=current_page
         )
         
     except Exception as e:
@@ -623,13 +634,19 @@ async def sync_shopify_order_to_core(
         else:
             # 创建核心订单
             logger.info(f"➕ 创建新的核心订单")
+            
+            # 生成人类可读的订单编号
+            from app.services.order_number_service import OrderNumberService
+            order_number = await OrderNumberService.generate_order_number(db, tenant.id, "ORD")
+            logger.info(f"📝 生成订单编号: {order_number}")
+            
             core_order = Order(
                 tenant_id=tenant.id,
                 external_system_id=None,  # 暂时不关联外部系统
                 external_order_id=shopify_order.shopify_order_id,
                 external_order_number=shopify_order.name,
                 external_order_name=shopify_order.name,
-                order_number=shopify_order.name,
+                order_number=order_number,  # 使用生成的订单编号
                 status="pending",
                 total_amount=float(shopify_order.total_price) if shopify_order.total_price else 0.0,
                 subtotal_amount=float(shopify_order.subtotal_price) if shopify_order.subtotal_price else None,

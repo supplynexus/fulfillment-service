@@ -146,8 +146,8 @@ export function OrdersList() {
           );
 
           if (syncResponse.data.success) {
-            totalSynced += syncResponse.data.synced_count || 0;
-            console.log(`✅ 店铺 ${store.name} 同步成功: ${syncResponse.data.synced_count || 0} 个订单`);
+            totalSynced += syncResponse.data.orders_synced || 0;
+            console.log(`✅ 店铺 ${store.name} 同步成功: ${syncResponse.data.orders_synced || 0} 个订单`);
           }
         } catch (storeError: any) {
           console.error(`❌ 店铺 ${store.name} 同步失败:`, storeError);
@@ -355,10 +355,10 @@ export function OrdersList() {
                   </TableRow>
                 ) : (
                   orders.map(order => (
-                    <TableRow key={order.id} hover>
+                    <TableRow key={order.id_hashid} hover>
                       <TableCell>
                         <Typography variant='body2' fontWeight='medium'>
-                          #{order.id}
+                          {order.order_number || order.id_hashid}
                         </Typography>
                       </TableCell>
                       <TableCell>
@@ -404,7 +404,7 @@ export function OrdersList() {
                         <Tooltip title='查看详情'>
                           <IconButton
                             size='small'
-                            onClick={() => handleViewOrder(order.id)}
+                            onClick={() => handleViewOrder(order.id_hashid)}
                           >
                             <ViewIcon />
                           </IconButton>

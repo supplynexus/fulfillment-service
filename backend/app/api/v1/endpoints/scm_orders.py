@@ -198,13 +198,23 @@ async def create_scm_order(
     if not source_ids:
         raise HTTPException(status_code=400, detail="source_order_ids is required")
 
+    # 解码 hashids 为原始 ID
+    from app.core.hashids_utils import decode_id
+    decoded_source_ids = []
+    for source_id in source_ids:
+        try:
+            decoded_id = decode_id(source_id)
+            decoded_source_ids.append(decoded_id)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid source order ID: {source_id}")
+
     result = await db.execute(
         select(Order.id).where(
-            Order.id.in_(source_ids), Order.tenant_id == tenant.id
+            Order.id.in_(decoded_source_ids), Order.tenant_id == tenant.id
         )
     )
     found_ids = {row[0] for row in result.fetchall()}
-    missing = [oid for oid in source_ids if oid not in found_ids]
+    missing = [oid for oid in decoded_source_ids if oid not in found_ids]
     if missing:
         raise HTTPException(status_code=404, detail=f"Source orders not found: {missing}")
 
@@ -294,7 +304,7 @@ async def create_scm_order(
     await db.flush()
 
     # 写入多来源关联表
-    for oid in source_ids:
+    for oid in decoded_source_ids:
         db.add(
             ScmOrderSource(
                 tenant_id=tenant.id,

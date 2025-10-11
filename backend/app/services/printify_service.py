@@ -5,6 +5,7 @@ Printify API service for product and order management
 import logging
 from typing import List, Dict, Any, Optional
 import httpx
+from .printify_error_handler import execute_printify_operation
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,7 @@ class PrintifyService:
 
     async def test_connection(self) -> Dict[str, Any]:
         """Test Printify API connection by fetching shops"""
-        try:
+        async def _test_connection_operation():
             async with httpx.AsyncClient() as client:
                 response = await client.get(
                     f"{self.base_url}/shops.json", headers=self.headers, timeout=10.0
@@ -41,34 +42,23 @@ class PrintifyService:
                     "api_version": "v1",
                     "base_url": self.base_url,
                 }
-        except httpx.HTTPStatusError as e:
-            logger.error(
-                f"Printify API HTTP error: {e.response.status_code} - {e.response.text}"
+        
+        try:
+            return await execute_printify_operation(
+                _test_connection_operation,
+                "Printify连接测试"
             )
-            return {
-                "success": False,
-                "message": f"Printify API error: {e.response.status_code}",
-                "error_code": e.response.status_code,
-                "error_details": e.response.text,
-            }
-        except httpx.TimeoutException:
-            logger.error("Printify API connection timeout")
-            return {
-                "success": False,
-                "message": "Printify API connection timeout",
-                "error_code": "TIMEOUT",
-            }
         except Exception as e:
-            logger.error(f"Printify API connection failed: {e}")
+            logger.error(f"❌ Printify连接测试失败: {str(e)}")
             return {
                 "success": False,
-                "message": f"Printify API connection failed: {str(e)}",
+                "message": f"Printify连接测试失败: {str(e)}",
                 "error_code": "CONNECTION_ERROR",
             }
 
     async def get_shops(self) -> List[Dict[str, Any]]:
         """Get all Printify shops"""
-        try:
+        async def _get_shops_operation():
             logger.info("🔍 开始调用 Printify API 获取店铺列表")
             async with httpx.AsyncClient() as client:
                 response = await client.get(
@@ -80,13 +70,14 @@ class PrintifyService:
                     f"✅ Printify API 店铺列表获取成功: {len(shops_data) if shops_data else 0} 个店铺"
                 )
                 return shops_data
-        except httpx.HTTPStatusError as e:
-            logger.error(
-                f"❌ Printify API HTTP 错误获取店铺: {e.response.status_code} - {e.response.text}"
+        
+        try:
+            return await execute_printify_operation(
+                _get_shops_operation,
+                "获取Printify店铺列表"
             )
-            return []
         except Exception as e:
-            logger.error(f"❌ Printify 获取店铺失败: {e}")
+            logger.error(f"❌ 获取Printify店铺列表失败: {str(e)}")
             return []
 
     async def get_products(self, shop_id: str) -> List[Dict[str, Any]]:

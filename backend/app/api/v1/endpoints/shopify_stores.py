@@ -12,7 +12,7 @@ from app.core.jwt_auth_dependency import verify_jwt_auth
 router = APIRouter()
 
 
-@router.get("/stores", response_model=dict)
+@router.get("", response_model=dict)
 async def get_shopify_stores(
     db: AsyncSession = Depends(get_async_db), auth: tuple = Depends(verify_jwt_auth)
 ) -> Any:

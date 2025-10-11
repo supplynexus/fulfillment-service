@@ -19,7 +19,7 @@ class SCMOrderItem(BaseModel):
 class SCMOrderCreate(BaseModel):
     """创建SCM订单的 schema（支持多来源订单）"""
 
-    source_order_ids: List[int]
+    source_order_ids: List[str]  # 接受 hashids 字符串
     # 核心SCM订单不直接绑定目标系统
     routing_strategy: Optional[str] = "auto"
     line_items: List[Dict[str, Any]] | List[SCMOrderItem]

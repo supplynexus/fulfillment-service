@@ -113,7 +113,7 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
         }));
 
       const body = {
-        source_order_ids: [Number(order.id)],
+        source_order_ids: [order.id_hashid],
         routing_strategy: 'manual',
         line_items: items,
         currency: order.currency || 'USD',
@@ -123,7 +123,7 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
         shipping_address: order.shipping_address,
         billing_address: order.billing_address || undefined,
         routing_metadata: { from_ui: 'orders/[id]', created_via: 'manual_select' },
-        shopify_order_id: order.shopify_order_id || undefined,
+        shopify_order_id: order.external_order_id || undefined,
       };
 
       const resp = await frontendApi.post('/api/scm-orders', body);
@@ -242,7 +242,7 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
             </IconButton>
           </Tooltip>
           <CreatePrintifyOrderButton
-            orderId={order.id.toString()}
+            orderId={order.id_hashid}
             orderData={{
               customer_name: order.customer_name,
               customer_email: order.customer_email,

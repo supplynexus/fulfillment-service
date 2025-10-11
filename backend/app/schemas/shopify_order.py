@@ -82,6 +82,8 @@ class ShopifyOrderListResponse(BaseModel):
     total: int
     skip: int
     limit: int
+    total_pages: int = 1
+    current_page: int = 1
     
     class Config:
         from_attributes = True

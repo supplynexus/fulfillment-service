@@ -83,15 +83,34 @@ async def get_orders(
         # 转换为响应格式
         logger.info(f"🔍 转换订单响应格式...")
         try:
+            from app.core.hashids_utils import encode_id
+            
             order_responses = []
             for order in orders:
-                # 兼容新结构：orders 表不再有 line_items JSON，行项目在 order_items 表
-                # 使用 from_orm 生成基础字段，line_items 留空或由前端二次查询 order_items 获取
-                data = OrderResponse.from_orm(order).model_dump()
-                if 'line_items' in data and data['line_items'] is None:
-                    # 显式设置为空数组，避免前端必填校验
-                    data['line_items'] = []
-                order_responses.append(data)
+                # 使用 hashids 替代原始 ID
+                order_data = {
+                    "id_hashid": encode_id(order.id),
+                    "order_number": order.order_number,
+                    "external_order_id": order.external_order_id,
+                    "external_order_number": order.external_order_number,
+                    "external_order_name": order.external_order_name,
+                    "status": order.status,
+                    "total_amount": float(order.total_amount) if order.total_amount else 0.0,
+                    "currency": order.currency,
+                    "customer_email": order.customer_email,
+                    "customer_name": order.customer_name,
+                    "customer_phone": order.customer_phone,
+                    "shipping_address": order.shipping_address,
+                    "billing_address": order.billing_address,
+                    "line_items": [],  # 前端需要时二次查询
+                    "order_date": order.order_date,
+                    "fulfillment_status": order.fulfillment_status,
+                    "tracking_number": order.tracking_number,
+                    "tracking_url": order.tracking_url,
+                    "created_at": order.created_at,
+                    "updated_at": order.updated_at,
+                }
+                order_responses.append(order_data)
             logger.info(f"✅ 订单响应格式转换成功: {len(order_responses)} 个订单")
         except Exception as e:
             logger.error(f"❌ 转换订单响应格式失败: {str(e)}")
@@ -130,9 +149,9 @@ async def get_orders(
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
-@router.get("/{order_id}", response_model=OrderResponse)
+@router.get("/{order_hashid}", response_model=OrderResponse)
 async def get_order(
-    order_id: int,
+    order_hashid: str,
     db: AsyncSession = Depends(get_async_db),
     auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
 ) -> OrderResponse:
@@ -143,6 +162,15 @@ async def get_order(
     from sqlalchemy import select
 
     tenant, user = auth
+
+    # 解码 hashid 为原始 ID
+    from app.core.hashids_utils import decode_id
+    try:
+        order_id = decode_id(order_hashid)
+        logger.info(f"✅ Hashid 解码成功: {order_hashid} -> {order_id}")
+    except Exception as e:
+        logger.error(f"❌ Hashid 解码失败: {order_hashid}, 错误: {str(e)}")
+        raise HTTPException(status_code=400, detail="Invalid order ID")
 
     logger.info(f"🔍 开始处理订单详情请求: order_id={order_id}, tenant_id={tenant.id}")
 
@@ -189,9 +217,31 @@ async def get_order(
             }
             line_items.append(line_item)
 
-        # 转换为响应格式并添加 line_items
-        order_data = OrderResponse.from_orm(order).model_dump()
-        order_data["line_items"] = line_items
+        # 转换为响应格式并添加 line_items，使用 hashids
+        from app.core.hashids_utils import encode_id
+        
+        order_data = {
+            "id_hashid": encode_id(order.id),
+            "order_number": order.order_number,
+            "external_order_id": order.external_order_id,
+            "external_order_number": order.external_order_number,
+            "external_order_name": order.external_order_name,
+            "status": order.status,
+            "total_amount": float(order.total_amount) if order.total_amount else 0.0,
+            "currency": order.currency,
+            "customer_email": order.customer_email,
+            "customer_name": order.customer_name,
+            "customer_phone": order.customer_phone,
+            "shipping_address": order.shipping_address,
+            "billing_address": order.billing_address,
+            "line_items": line_items,
+            "order_date": order.order_date,
+            "fulfillment_status": order.fulfillment_status,
+            "tracking_number": order.tracking_number,
+            "tracking_url": order.tracking_url,
+            "created_at": order.created_at,
+            "updated_at": order.updated_at,
+        }
 
         logger.info(f"✅ 订单详情请求处理成功: order_id={order_id}, line_items_count={len(line_items)}")
         return order_data

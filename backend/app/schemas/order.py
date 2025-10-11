@@ -30,8 +30,9 @@ class OrderCreate(BaseModel):
 class OrderResponse(BaseModel):
     """订单响应 schema"""
 
-    id: int
-    tenant_id: int
+    id_hashid: str  # 使用 hashids 替代原始 ID
+    # 移除 tenant_id，前端不需要
+    order_number: str  # 人类可读的订单编号，如 ORD-2025-001
     external_order_id: Optional[str] = None
     external_order_number: Optional[str] = None
     external_order_name: Optional[str] = None

@@ -125,13 +125,13 @@ const SyncedShopifyOrdersPage: React.FC = () => {
       });
       
       setOrders(response.data.orders || []);
-      setTotalPages(response.data.pagination?.total_pages || 1);
-      setTotalCount(response.data.pagination?.total_count || 0);
+      setTotalPages(response.data.total_pages || 1);
+      setTotalCount(response.data.total || 0);
       setPage(pageNum);
       
       frontendLogger.info('✅ 同步的Shopify订单列表获取成功', { 
         count: response.data.orders?.length || 0,
-        totalPages: response.data.pagination?.total_pages || 1
+        totalPages: response.data.total_pages || 1
       });
     } catch (error: any) {
       frontendLogger.error('❌ 获取同步的Shopify订单列表失败', { error: error.message });
