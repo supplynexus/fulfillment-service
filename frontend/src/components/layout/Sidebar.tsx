@@ -131,6 +131,12 @@ const menuItems: MenuItem[] = [
         icon: <RakutenIcon />,
         path: '/product-mapping/rakuten',
       },
+      {
+        id: 'printify-mapping',
+        label: 'Printify 映射',
+        icon: <PrintifyIcon />,
+        path: '/product-mapping/printify',
+      },
     ],
   },
   {

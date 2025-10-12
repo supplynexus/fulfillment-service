@@ -2,7 +2,7 @@
 Product management endpoints - 新的商品系统API
 """
 
-from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, Query
+from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, delete
 from sqlalchemy.orm import selectinload
@@ -1524,7 +1524,7 @@ class ProductMappingCreateRequest(BaseModel):
 
 @router.post("/mappings/", response_model=ProductMappingResponse)
 async def create_product_mapping(
-    mapping_data: ProductMappingCreateRequest,
+    request: Request,
     db: AsyncSession = Depends(get_async_db),
     auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
 ):
@@ -1534,9 +1534,33 @@ async def create_product_mapping(
     tenant, user = auth
     
     try:
+        # 手动解析请求体
+        body = await request.body()
+        logger.info("📦 接收到的原始请求体", body=body.decode('utf-8'))
+        
+        try:
+            import json
+            request_data = json.loads(body)
+            logger.info("📦 解析后的请求数据", request_data=request_data)
+        except Exception as e:
+            logger.error(f"❌ 解析请求体失败: {str(e)}")
+            raise HTTPException(status_code=400, detail="Invalid JSON in request body")
+        
+        # 手动验证数据
+        try:
+            mapping_data = ProductMappingCreateRequest(**request_data)
+            logger.info("✅ Pydantic 验证成功")
+        except Exception as e:
+            logger.error(f"❌ Pydantic 验证失败: {str(e)}")
+            logger.error(f"   请求数据: {request_data}")
+            raise HTTPException(status_code=400, detail=f"Validation error: {str(e)}")
+        
         logger.info("🔍 开始创建商品映射", 
                    core_product_id=mapping_data.core_product_id_hashid,
+                   core_variant_id=mapping_data.core_variant_id_hashid,
                    external_system_id=mapping_data.external_system_id_hashid,
+                   external_product_id=mapping_data.external_product_id,
+                   external_variant_id=mapping_data.external_variant_id,
                    tenant_id=tenant.id)
         
         # 解码核心商品ID
@@ -1560,9 +1584,9 @@ async def create_product_mapping(
         # 解码外部系统ID
         try:
             external_system_id = decode_id(mapping_data.external_system_id_hashid)
-            logger.info(f"✅ 外部系统ID解码成功: {mapping_data.external_system_id_hashid} -> {external_system_id}")
+            logger.info(f"外部系统ID解码成功: {mapping_data.external_system_id_hashid} -> {external_system_id}")
         except Exception as e:
-            logger.error(f"❌ 外部系统ID解码失败: {str(e)}")
+            logger.error(f"外部系统ID解码失败: {str(e)}")
             raise HTTPException(status_code=400, detail="Invalid external system ID")
         
         # 验证核心商品是否存在
@@ -1581,6 +1605,7 @@ async def create_product_mapping(
         
         # 验证核心变体是否存在（如果提供）
         if core_variant_id:
+            logger.info(f"🔍 查找核心变体: core_variant_id={core_variant_id}, product_id={core_product_id}")
             core_variant_stmt = select(ProductVariant).where(
                 ProductVariant.id == core_variant_id,
                 ProductVariant.product_id == core_product_id,
@@ -1590,7 +1615,15 @@ async def create_product_mapping(
             core_variant = core_variant_result.scalar_one_or_none()
             
             if not core_variant:
-                logger.error(f"❌ 核心变体不存在: core_variant_id={core_variant_id}")
+                logger.error(f"❌ 核心变体不存在: core_variant_id={core_variant_id}, product_id={core_product_id}")
+                # 查询该商品的所有变体
+                all_variants_stmt = select(ProductVariant).where(
+                    ProductVariant.product_id == core_product_id,
+                    ProductVariant.tenant_id == tenant.id
+                )
+                all_variants_result = await db.execute(all_variants_stmt)
+                all_variants = all_variants_result.scalars().all()
+                logger.error(f"❌ 该商品的所有变体: {[v.id for v in all_variants]}")
                 raise HTTPException(status_code=404, detail="Core variant not found")
             
             logger.info(f"✅ 找到核心变体: {core_variant.sku}")
@@ -1680,6 +1713,7 @@ async def get_product_mappings(
     external_system_id: Optional[int] = Query(None, description="外部系统ID"),
     sync_status: Optional[str] = Query(None, description="同步状态"),
     mapping_type: Optional[str] = Query(None, description="映射类型"),
+    system_type: Optional[str] = Query(None, description="外部系统类型"),
     db: AsyncSession = Depends(get_async_db),
     auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
 ):
@@ -1706,6 +1740,11 @@ async def get_product_mappings(
         
         if mapping_type:
             stmt = stmt.where(ProductMapping.mapping_type == mapping_type)
+        
+        # 如果指定了系统类型，需要关联外部系统表进行过滤
+        if system_type:
+            stmt = stmt.join(ExternalSystem, ProductMapping.external_system_id == ExternalSystem.id)
+            stmt = stmt.where(ExternalSystem.system_type == system_type)
         
         # 添加排序
         stmt = stmt.order_by(ProductMapping.created_at.desc())

@@ -24,6 +24,8 @@ from app.api.v1.endpoints import (
     order_routing,
     routing_rules,
     printify_orders,
+    printify_products,
+    printify_sync,
     order_automation,
     order_status_sync,
     order_lifecycle,
@@ -70,6 +72,8 @@ api_router.include_router(system.router, prefix="/system", tags=["system"])
 
 # Printify Integration
 api_router.include_router(printify_orders.router, prefix="/printify", tags=["printify"])
+api_router.include_router(printify_products.router, prefix="/printify-products", tags=["printify-products"])
+api_router.include_router(printify_sync.router, prefix="/printify-sync", tags=["printify-sync"])
 
 # Order Automation
 api_router.include_router(

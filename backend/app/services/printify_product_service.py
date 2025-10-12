@@ -1,0 +1,435 @@
+"""
+Printify Product Service
+管理 Printify 商品的本地数据库操作
+"""
+
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, update, delete, and_
+from sqlalchemy.orm import selectinload
+from typing import List, Optional, Dict, Any
+from datetime import datetime
+
+from app.models.printify_product import PrintifyProduct, PrintifyVariant
+from app.models.external_system import ExternalSystem
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
+
+
+class PrintifyProductService:
+    """Printify 商品服务类"""
+    
+    def __init__(self, db: AsyncSession):
+        self.db = db
+    
+    async def create_product(self, tenant_id: int, external_system_id: int, product_data: Dict[str, Any]) -> PrintifyProduct:
+        """创建 Printify 商品"""
+        try:
+            logger.info(" 开始创建 Printify 商品", 
+                       tenant_id=tenant_id, 
+                       external_system_id=external_system_id,
+                       printify_product_id=product_data.get('id'))
+            
+            # 创建商品记录
+            printify_product = PrintifyProduct(
+                tenant_id=tenant_id,
+                external_system_id=external_system_id,
+                printify_product_id=product_data['id'],
+                printify_shop_id=str(product_data.get('shop_id', '')),
+                title=product_data['title'],
+                description=product_data.get('description'),
+                tags=product_data.get('tags', []),
+                visible=product_data.get('visible', True),
+                is_locked=product_data.get('is_locked', False),
+                external=product_data.get('external'),
+                user_id=product_data.get('user_id'),
+                print_provider_id=product_data.get('print_provider_id'),
+                options=product_data.get('options', []),
+                variants=product_data.get('variants', []),
+                images=product_data.get('images', []),
+                print_areas=product_data.get('print_areas', []),
+                raw_data=product_data,
+                sync_status='synced',
+                last_synced_at=datetime.now()
+            )
+            
+            self.db.add(printify_product)
+            await self.db.flush()  # 获取 ID
+            
+            logger.info(" Printify 商品记录创建成功", 
+                       product_id=printify_product.id,
+                       printify_product_id=printify_product.printify_product_id)
+            
+            # 创建变体记录（如果失败，不影响商品创建）
+            if product_data.get('variants'):
+                try:
+                    # 过滤变体并更新商品记录
+                    valid_variants = self._filter_valid_variants(product_data['variants'])
+                    printify_product.variants = valid_variants
+                    
+                    await self._create_variants(printify_product.id, product_data['variants'], tenant_id)
+                    logger.info(" Printify 变体创建成功", 
+                               product_id=printify_product.id,
+                               variant_count=len(valid_variants))
+                except Exception as variant_error:
+                    logger.warning(" 变体创建失败，但商品已创建", 
+                                  error=str(variant_error),
+                                  product_id=printify_product.id)
+                    # 不重新抛出异常，让商品创建成功
+            
+            await self.db.commit()
+            
+            logger.info(" Printify 商品创建完成", 
+                       product_id=printify_product.id,
+                       printify_product_id=printify_product.printify_product_id)
+            
+            return printify_product
+            
+        except Exception as e:
+            logger.error(" 创建 Printify 商品失败", 
+                        error=str(e), 
+                        tenant_id=tenant_id,
+                        printify_product_id=product_data.get('id'))
+            import traceback
+            logger.error("   异常堆栈", stack=traceback.format_exc())
+            await self.db.rollback()
+            raise
+    
+    async def _create_variants(self, printify_product_id: int, variants_data: List[Dict[str, Any]], tenant_id: int) -> None:
+        """创建商品变体"""
+        try:
+            # 过滤有效的变体
+            valid_variants = self._filter_valid_variants(variants_data)
+            
+            logger.info(" 变体过滤结果", 
+                       product_id=printify_product_id,
+                       total_variants=len(variants_data),
+                       valid_variants=len(valid_variants))
+            
+            for variant_data in valid_variants:
+                printify_variant = PrintifyVariant(
+                    tenant_id=tenant_id,
+                    printify_product_id=printify_product_id,
+                    printify_variant_id=variant_data['id'],
+                    sku=variant_data.get('sku'),
+                    title=variant_data.get('title'),
+                    cost=variant_data.get('cost'),
+                    price=variant_data.get('price'),
+                    grams=variant_data.get('grams'),
+                    is_enabled=variant_data.get('is_enabled', True),
+                    is_default=variant_data.get('is_default', False),
+                    is_available=variant_data.get('is_available', True),
+                    options=variant_data.get('options', []),
+                    raw_data=variant_data
+                )
+                self.db.add(printify_variant)
+            
+            logger.info(" Printify 变体创建成功", 
+                       product_id=printify_product_id,
+                       variant_count=len(valid_variants))
+                       
+        except Exception as e:
+            logger.error(" 创建 Printify 变体失败", 
+                        error=str(e), 
+                        product_id=printify_product_id)
+            raise
+    
+    def _filter_valid_variants(self, variants_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """过滤有效的变体，只保留真正需要的变体"""
+        valid_variants = []
+        variant_keys = set()  # 用于去重
+        
+        for variant in variants_data:
+            # 基本有效性检查
+            if not variant.get('id'):
+                continue
+                
+            # 检查是否启用
+            if not variant.get('is_enabled', True):
+                continue
+                
+            # 检查是否有价格（免费商品可能价格为0，但应该保留）
+            if variant.get('price') is None:
+                continue
+                
+            # 检查是否有标题或SKU
+            if not variant.get('title') and not variant.get('sku'):
+                continue
+                
+            # 检查变体选项是否有效（避免重复的变体组合）
+            options = variant.get('options', [])
+            if options and isinstance(options, list):
+                # Printify 的选项格式是整数数组，如 [2766, 19]
+                # 检查是否有有效的选项值（非空数组）
+                if len(options) == 0:
+                    continue
+                    
+                # 检查是否是重复的变体组合（基于选项值）
+                # 对于整数数组，直接使用排序后的元组作为键
+                variant_key = tuple(sorted(options))
+                
+                if variant_key in variant_keys:
+                    continue
+                    
+                variant_keys.add(variant_key)
+            else:
+                # 没有选项的变体，使用 ID 作为唯一标识
+                variant_key = variant.get('id')
+                if variant_key in variant_keys:
+                    continue
+                variant_keys.add(variant_key)
+            
+            valid_variants.append(variant)
+        
+        return valid_variants
+    
+    async def get_product_by_printify_id(self, tenant_id: int, external_system_id: int, printify_product_id: str) -> Optional[PrintifyProduct]:
+        """根据 Printify 商品 ID 获取商品"""
+        try:
+            logger.info(" 开始获取 Printify 商品", 
+                       tenant_id=tenant_id,
+                       external_system_id=external_system_id,
+                       printify_product_id=printify_product_id)
+            
+            stmt = select(PrintifyProduct).where(
+                and_(
+                    PrintifyProduct.tenant_id == tenant_id,
+                    PrintifyProduct.external_system_id == external_system_id,
+                    PrintifyProduct.printify_product_id == printify_product_id
+                )
+            )
+            
+            result = await self.db.execute(stmt)
+            product = result.scalar_one_or_none()
+            
+            if product:
+                logger.info(" Printify 商品获取成功", 
+                           product_id=product.id,
+                           title=product.title)
+            else:
+                logger.info(" Printify 商品不存在", 
+                           printify_product_id=printify_product_id)
+            
+            return product
+            
+        except Exception as e:
+            logger.error(" 获取 Printify 商品失败", 
+                        error=str(e),
+                        tenant_id=tenant_id,
+                        printify_product_id=printify_product_id)
+            raise
+    
+    async def get_products_by_tenant(self, tenant_id: int, external_system_id: Optional[int] = None, 
+                                   limit: int = 100, offset: int = 0) -> List[PrintifyProduct]:
+        """获取租户的 Printify 商品列表"""
+        try:
+            logger.info(" 开始获取 Printify 商品列表", 
+                       tenant_id=tenant_id,
+                       external_system_id=external_system_id,
+                       limit=limit,
+                       offset=offset)
+            
+            stmt = select(PrintifyProduct).where(PrintifyProduct.tenant_id == tenant_id)
+            
+            if external_system_id:
+                stmt = stmt.where(PrintifyProduct.external_system_id == external_system_id)
+            
+            stmt = stmt.offset(offset).limit(limit).order_by(PrintifyProduct.created_at.desc())
+            
+            result = await self.db.execute(stmt)
+            products = result.scalars().all()
+            
+            logger.info(" Printify 商品列表获取成功", 
+                       count=len(products),
+                       tenant_id=tenant_id)
+            
+            return products
+            
+        except Exception as e:
+            logger.error(" 获取 Printify 商品列表失败", 
+                        error=str(e),
+                        tenant_id=tenant_id)
+            raise
+    
+    async def update_product(self, product_id: int, product_data: Dict[str, Any]) -> Optional[PrintifyProduct]:
+        """更新 Printify 商品"""
+        try:
+            logger.info(" 开始更新 Printify 商品", 
+                       product_id=product_id)
+            
+            # 获取现有商品
+            stmt = select(PrintifyProduct).where(PrintifyProduct.id == product_id)
+            result = await self.db.execute(stmt)
+            product = result.scalar_one_or_none()
+            
+            if not product:
+                logger.warning(" Printify 商品不存在", product_id=product_id)
+                return None
+            
+            # 更新商品信息
+            update_data = {
+                'title': product_data.get('title', product.title),
+                'description': product_data.get('description', product.description),
+                'tags': product_data.get('tags', product.tags),
+                'visible': product_data.get('visible', product.visible),
+                'is_locked': product_data.get('is_locked', product.is_locked),
+                'external': product_data.get('external', product.external),
+                'user_id': product_data.get('user_id', product.user_id),
+                'print_provider_id': product_data.get('print_provider_id', product.print_provider_id),
+                'options': product_data.get('options', product.options),
+                'images': product_data.get('images', product.images),
+                'print_areas': product_data.get('print_areas', product.print_areas),
+                'raw_data': product_data,
+                'sync_status': 'synced',
+                'last_synced_at': datetime.now(),
+                'updated_at': datetime.now()
+            }
+            
+            # 处理变体数据
+            if product_data.get('variants'):
+                valid_variants = self._filter_valid_variants(product_data['variants'])
+                update_data['variants'] = valid_variants
+            else:
+                update_data['variants'] = product.variants
+            
+            stmt = update(PrintifyProduct).where(PrintifyProduct.id == product_id).values(**update_data)
+            await self.db.execute(stmt)
+            
+            # 更新变体
+            if product_data.get('variants'):
+                await self._update_variants(product_id, product_data['variants'], product.tenant_id)
+            
+            await self.db.commit()
+            
+            logger.info(" Printify 商品更新成功", 
+                       product_id=product_id,
+                       title=update_data['title'])
+            
+            # 返回更新后的商品
+            return await self.get_product_by_id(product_id)
+            
+        except Exception as e:
+            logger.error(" 更新 Printify 商品失败", 
+                        error=str(e),
+                        product_id=product_id)
+            await self.db.rollback()
+            raise
+    
+    async def _update_variants(self, printify_product_id: int, variants_data: List[Dict[str, Any]], tenant_id: int) -> None:
+        """更新商品变体"""
+        try:
+            # 过滤有效的变体
+            valid_variants = self._filter_valid_variants(variants_data)
+            
+            # 删除现有变体
+            stmt = delete(PrintifyVariant).where(PrintifyVariant.printify_product_id == printify_product_id)
+            await self.db.execute(stmt)
+            
+            # 创建新变体
+            await self._create_variants(printify_product_id, valid_variants, tenant_id)
+            
+            logger.info(" Printify 变体更新成功", 
+                       product_id=printify_product_id,
+                       total_variants=len(variants_data),
+                       valid_variants=len(valid_variants))
+                       
+        except Exception as e:
+            logger.error(" 更新 Printify 变体失败", 
+                        error=str(e), 
+                        product_id=printify_product_id)
+            raise
+    
+    async def get_product_by_id(self, product_id: int) -> Optional[PrintifyProduct]:
+        """根据 ID 获取商品"""
+        try:
+            stmt = select(PrintifyProduct).where(PrintifyProduct.id == product_id)
+            result = await self.db.execute(stmt)
+            return result.scalar_one_or_none()
+        except Exception as e:
+            logger.error(" 获取 Printify 商品失败", 
+                        error=str(e),
+                        product_id=product_id)
+            raise
+    
+    async def delete_product(self, product_id: int) -> bool:
+        """删除 Printify 商品"""
+        try:
+            logger.info(" 开始删除 Printify 商品", product_id=product_id)
+            
+            # 删除变体
+            stmt = delete(PrintifyVariant).where(PrintifyVariant.printify_product_id == product_id)
+            await self.db.execute(stmt)
+            
+            # 删除商品
+            stmt = delete(PrintifyProduct).where(PrintifyProduct.id == product_id)
+            result = await self.db.execute(stmt)
+            
+            await self.db.commit()
+            
+            if result.rowcount > 0:
+                logger.info(" Printify 商品删除成功", product_id=product_id)
+                return True
+            else:
+                logger.warning(" Printify 商品不存在", product_id=product_id)
+                return False
+                
+        except Exception as e:
+            logger.error(" 删除 Printify 商品失败", 
+                        error=str(e),
+                        product_id=product_id)
+            await self.db.rollback()
+            raise
+    
+    async def sync_products_from_api(self, tenant_id: int, external_system_id: int, api_products: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """从 API 同步商品到本地数据库"""
+        try:
+            logger.info("开始同步 Printify 商品", 
+                       tenant_id=tenant_id,
+                       external_system_id=external_system_id,
+                       api_product_count=len(api_products))
+            
+            synced_count = 0
+            updated_count = 0
+            created_count = 0
+            error_count = 0
+            
+            for product_data in api_products:
+                try:
+                    # 检查商品是否已存在
+                    existing_product = await self.get_product_by_printify_id(
+                        tenant_id, external_system_id, product_data['id']
+                    )
+                    
+                    if existing_product:
+                        # 更新现有商品
+                        await self.update_product(existing_product.id, product_data)
+                        updated_count += 1
+                    else:
+                        # 创建新商品
+                        await self.create_product(tenant_id, external_system_id, product_data)
+                        created_count += 1
+                    
+                    synced_count += 1
+                    
+                except Exception as e:
+                    logger.error("同步单个商品失败", 
+                                error=str(e),
+                                printify_product_id=product_data.get('id'))
+                    error_count += 1
+            
+            result = {
+                'total': len(api_products),
+                'synced': synced_count,
+                'created': created_count,
+                'updated': updated_count,
+                'errors': error_count
+            }
+            
+            logger.info("Printify 商品同步完成", **result)
+            return result
+            
+        except Exception as e:
+            logger.error("同步 Printify 商品失败", 
+                        error=str(e),
+                        tenant_id=tenant_id)
+            raise
