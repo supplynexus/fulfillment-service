@@ -28,6 +28,7 @@ from .product_new import (
 )
 from .scm_order import SCMOrder, SCMOrderStatus, RoutingRule, RoutingStatus
 from .shopify_order import ShopifyOrder
+from .printify_product import PrintifyProduct, PrintifyVariant
 
 from .jwt_blacklist import JwtBlacklist
 
@@ -65,6 +66,8 @@ __all__ = [
     "RoutingRule",
     "RoutingStatus",
     "ShopifyOrder",
+    "PrintifyProduct",
+    "PrintifyVariant",
 
     "JwtBlacklist",
 

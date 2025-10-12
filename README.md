@@ -27,6 +27,23 @@
 
 ### 开发环境
 
+#### Windows 用户 - 依赖安装
+
+如果遇到 `pydantic-core` 编译错误，请使用以下方法：
+```cmd
+cd backend
+# 升级 pip
+python -m pip install --upgrade pip setuptools wheel
+
+# 安装预编译的 pydantic
+python -m pip install --only-binary=all pydantic>=2.8.0
+
+# 安装其他依赖
+python -m pip install -r requirements-minimal.txt
+```
+
+#### 启动服务
+
 1. **启动后端服务**
    ```bash
    cd backend

@@ -30,7 +30,9 @@ class HashidsEncoder:
     def decode_single(self, hashid: str) -> int:
         """Decode a hashid string to a single integer"""
         decoded = self.hashids.decode(hashid)
-        return decoded[0] if decoded else None
+        if not decoded:
+            raise ValueError(f"Invalid hashid: {hashid}")
+        return decoded[0]
 
 
 # Global instance
