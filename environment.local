@@ -7,7 +7,7 @@
 # =================================================================
 
 # 数据库配置
-DATABASE_URL=postgresql+asyncpg://supplynexus_admin:IVzrm2bKlWyxWzhU3KVJUOdwU6IEwG32@163.43.105.115:5433/supplynexus
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/supplynexus
 
 # Redis 配置
 REDIS_URL=redis://localhost:6379/0
