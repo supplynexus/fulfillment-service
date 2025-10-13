@@ -16,7 +16,7 @@ from app.core.hashids_utils import encode_id, decode_id
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.models.external_system import ExternalSystem, ExternalSystemType
-from app.models.product_new import (
+from app.models.product import (
     Product, ProductDimension, ProductVariant, VariantAttribute,
     ProductTag, Tag, ProductMapping, ExternalProduct
 )

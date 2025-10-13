@@ -4,6 +4,7 @@ Shopify Orders CRUD API endpoints
 """
 
 from typing import List, Optional, Dict, Any
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_
@@ -17,7 +18,7 @@ from app.models.tenant import Tenant
 from app.models.user import User
 from app.models.shopify_order import ShopifyOrder
 from app.models.order import Order, OrderItem  # core order models
-from app.models.product_new import ProductVariant
+from app.models.product import ProductVariant
 from app.schemas.shopify_order import (
     ShopifyOrderCreate,
     ShopifyOrderUpdate,
@@ -284,35 +285,74 @@ async def create_shopify_order(
         existing_order = existing_result.scalar_one_or_none()
         
         if existing_order:
-            logger.error(f"❌ Shopify 订单已存在: {order_data.shopify_order_id}")
-            raise HTTPException(status_code=400, detail="Shopify order already exists")
-        
-        # 创建订单
-        order = ShopifyOrder(
-            tenant_id=tenant.id,
-            shopify_order_id=order_data.shopify_order_id,
-            name=order_data.name,
-            confirmation_number=order_data.confirmation_number,
-            financial_status=order_data.financial_status,
-            fulfillment_status=order_data.fulfillment_status,
-            confirmed=order_data.confirmed,
-            closed=order_data.closed,
-            cancelled=order_data.cancelled,
-            currency_code=order_data.currency_code,
-            total_price=order_data.total_price,
-            subtotal_price=order_data.subtotal_price,
-            total_tax=order_data.total_tax,
-            total_shipping=order_data.total_shipping,
-            tags=order_data.tags,
-            note=order_data.note,
-            customer_data=order_data.customer_data,
-            billing_address=order_data.billing_address,
-            shipping_address=order_data.shipping_address,
-            line_items=order_data.line_items,
-            fulfillments=order_data.fulfillments,
-            refunds=order_data.refunds,
-            raw_data=order_data.raw_data
-        )
+            logger.info(f"🔄 Shopify 订单已存在，更新订单: {order_data.shopify_order_id}")
+            # 使用 update 语句更新现有订单
+            from sqlalchemy import update
+            
+            update_stmt = (
+                update(ShopifyOrder)
+                .where(ShopifyOrder.id == existing_order.id)
+                .values(
+                    name=order_data.name,
+                    confirmation_number=order_data.confirmation_number,
+                    financial_status=order_data.financial_status,
+                    fulfillment_status=order_data.fulfillment_status,
+                    confirmed=order_data.confirmed,
+                    closed=order_data.closed,
+                    cancelled=order_data.cancelled,
+                    currency_code=order_data.currency_code,
+                    total_price=order_data.total_price,
+                    subtotal_price=order_data.subtotal_price,
+                    total_tax=order_data.total_tax,
+                    total_shipping=order_data.total_shipping,
+                    tags=order_data.tags,
+                    note=order_data.note,
+                    customer_data=order_data.customer_data,
+                    billing_address=order_data.billing_address,
+                    shipping_address=order_data.shipping_address,
+                    line_items=order_data.line_items,
+                    fulfillments=order_data.fulfillments,
+                    refunds=order_data.refunds,
+                    raw_data=order_data.raw_data,
+                    last_synced_at=datetime.utcnow()
+                )
+            )
+            await db.execute(update_stmt)
+            await db.commit()
+            
+            # 重新查询更新后的订单
+            result = await db.execute(select(ShopifyOrder).where(ShopifyOrder.id == existing_order.id))
+            order = result.scalar_one()
+            
+            logger.info(f"✅ Shopify 订单更新成功: {order_data.shopify_order_id}")
+        else:
+            # 创建新订单
+            logger.info(f"➕ 创建新的 Shopify 订单: {order_data.shopify_order_id}")
+            order = ShopifyOrder(
+                tenant_id=tenant.id,
+                shopify_order_id=order_data.shopify_order_id,
+                name=order_data.name,
+                confirmation_number=order_data.confirmation_number,
+                financial_status=order_data.financial_status,
+                fulfillment_status=order_data.fulfillment_status,
+                confirmed=order_data.confirmed,
+                closed=order_data.closed,
+                cancelled=order_data.cancelled,
+                currency_code=order_data.currency_code,
+                total_price=order_data.total_price,
+                subtotal_price=order_data.subtotal_price,
+                total_tax=order_data.total_tax,
+                total_shipping=order_data.total_shipping,
+                tags=order_data.tags,
+                note=order_data.note,
+                customer_data=order_data.customer_data,
+                billing_address=order_data.billing_address,
+                shipping_address=order_data.shipping_address,
+                line_items=order_data.line_items,
+                fulfillments=order_data.fulfillments,
+                refunds=order_data.refunds,
+                raw_data=order_data.raw_data
+            )
         
         db.add(order)
         await db.flush()  # 获取 ID
@@ -750,3 +790,69 @@ async def sync_shopify_order_to_core(
         import traceback
         logger.error(f"   异常堆栈: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Failed to sync Shopify order to core: {str(e)}")
+
+
+@router.get("/{order_id}/json")
+async def get_shopify_order_json(
+    order_id: str,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
+):
+    """
+    获取 Shopify 订单的完整 JSON 数据
+    """
+    tenant, user = auth
+    
+    try:
+        logger.info(f"🔍 开始获取 Shopify 订单 JSON 数据: order_id={order_id}, tenant_id={tenant.id}")
+        
+        # 查询订单 - 支持纯数字ID和完整GraphQL ID
+        # 如果传入的是纯数字，构建完整的GraphQL ID进行查询
+        if order_id.isdigit():
+            full_order_id = f"gid://shopify/Order/{order_id}"
+            logger.info(f"🔍 使用完整GraphQL ID查询: {full_order_id}")
+            query = select(ShopifyOrder).where(
+                and_(
+                    ShopifyOrder.shopify_order_id == full_order_id,
+                    ShopifyOrder.tenant_id == tenant.id
+                )
+            )
+        else:
+            # 如果传入的是完整GraphQL ID，直接使用
+            logger.info(f"🔍 使用完整GraphQL ID查询: {order_id}")
+            query = select(ShopifyOrder).where(
+                and_(
+                    ShopifyOrder.shopify_order_id == order_id,
+                    ShopifyOrder.tenant_id == tenant.id
+                )
+            )
+        result = await db.execute(query)
+        order = result.scalar_one_or_none()
+        
+        if not order:
+            logger.error(f"❌ Shopify 订单不存在: order_id={order_id}, tenant_id={tenant.id}")
+            raise HTTPException(status_code=404, detail="Shopify order not found")
+        
+        # 返回原始 JSON 数据
+        if order.raw_data:
+            logger.info(f"✅ 成功获取 Shopify 订单 JSON 数据: {order.name}")
+            return {
+                "order_id": order.shopify_order_id,
+                "name": order.name,
+                "raw_data": order.raw_data,
+                "last_synced_at": order.last_synced_at
+            }
+        else:
+            logger.warning(f"⚠️ Shopify 订单没有原始数据: {order.name}")
+            return {
+                "order_id": order.shopify_order_id,
+                "name": order.name,
+                "raw_data": None,
+                "last_synced_at": order.last_synced_at
+            }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 获取 Shopify 订单 JSON 数据失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")

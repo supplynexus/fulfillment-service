@@ -13,7 +13,7 @@ from app.core.tenant_auth_dependency import verify_tenant_auth
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.models.order import Order
-from app.models.product_new import Product, ProductVariant
+from app.models.product import Product, ProductVariant
 from app.models.scm_order import SCMOrder, ScmOrderSource
 from app.schemas.scm_order import SCMOrderResponse, SCMOrderListResponse, SCMOrderCreate
 from app.services.order_routing_service import OrderRoutingService
@@ -98,9 +98,41 @@ async def get_scm_orders(
         # 转换为响应格式
         logger.info(f"🔍 转换SCM订单响应格式...")
         try:
-            scm_order_responses = [
-                SCMOrderResponse.from_orm(scm_order) for scm_order in scm_orders
-            ]
+            from app.core.hashids_utils import encode_id
+            
+            scm_order_responses = []
+            for scm_order in scm_orders:
+                # 手动构建响应对象，使用 hashids
+                response = SCMOrderResponse(
+                    id_hashid=encode_id(scm_order.id),
+                    source_order_id_hashid=encode_id(scm_order.source_order_id) if scm_order.source_order_id else None,
+                    scm_order_number=scm_order.scm_order_number,
+                    status=scm_order.status,
+                    fulfillment_status=scm_order.fulfillment_status,
+                    routing_strategy=scm_order.routing_strategy,
+                    line_items=scm_order.line_items,
+                    currency=scm_order.currency,
+                    customer_email=scm_order.customer_email,
+                    customer_name=scm_order.customer_name,
+                    customer_phone=scm_order.customer_phone,
+                    shipping_address=scm_order.shipping_address,
+                    billing_address=scm_order.billing_address,
+                    routing_metadata=scm_order.routing_metadata,
+                    tracking_number=scm_order.tracking_number,
+                    tracking_url=scm_order.tracking_url,
+                    carrier=scm_order.carrier,
+                    shipped_at=scm_order.shipped_at,
+                    delivered_at=scm_order.delivered_at,
+                    error_message=scm_order.error_message,
+                    retry_count=scm_order.retry_count,
+                    shopify_fulfillment_order_id=scm_order.shopify_fulfillment_order_id,
+                    shopify_fulfillment_id=scm_order.shopify_fulfillment_id,
+                    created_at=scm_order.created_at,
+                    updated_at=scm_order.updated_at,
+                    fulfilled_at=scm_order.fulfilled_at,
+                )
+                scm_order_responses.append(response)
+            
             logger.info(f"✅ 响应格式转换成功: {len(scm_order_responses)} 个SCM订单")
         except Exception as e:
             logger.error(f"❌ 转换响应格式失败: {str(e)}")
@@ -131,16 +163,28 @@ async def get_scm_orders(
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
-@router.get("/{scm_order_id}", response_model=SCMOrderResponse)
+@router.get("/{scm_order_hashid}", response_model=SCMOrderResponse)
 async def get_scm_order(
-    scm_order_id: int,
+    scm_order_hashid: str,
     db: AsyncSession = Depends(get_async_db),
     auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
 ) -> SCMOrderResponse:
     """
     获取SCM订单详情
     """
+    from app.core.hashids_utils import decode_id, encode_id
+    from app.core.logging import RequestLogger
+    
+    logger = RequestLogger("scm_orders.get_scm_order")
     tenant, user = auth
+
+    try:
+        # 解码 hashid
+        scm_order_id = decode_id(scm_order_hashid)
+        logger.info(f"✅ Hashid 解码成功: {scm_order_hashid} -> {scm_order_id}")
+    except Exception as e:
+        logger.error(f"❌ Hashid 解码失败: {scm_order_hashid}, 错误: {str(e)}")
+        raise HTTPException(status_code=400, detail="Invalid SCM order ID")
 
     result = await db.execute(
         select(SCMOrder).where(
@@ -150,9 +194,138 @@ async def get_scm_order(
     scm_order = result.scalar_one_or_none()
 
     if not scm_order:
+        logger.error(f"❌ SCM 订单不存在: scm_order_id={scm_order_id}, tenant_id={tenant.id}")
         raise HTTPException(status_code=404, detail="SCM order not found")
 
-    return SCMOrderResponse.from_orm(scm_order)
+    # 获取源订单信息
+    source_result = await db.execute(
+        select(ScmOrderSource.source_order_id).where(
+            ScmOrderSource.scm_order_id == scm_order.id,
+            ScmOrderSource.tenant_id == tenant.id
+        )
+    )
+    source_orders = source_result.fetchall()
+    source_order_id_hashid = None
+    if source_orders:
+        source_order_id_hashid = encode_id(source_orders[0][0])
+
+    # 构建响应对象，使用 hashids
+    return SCMOrderResponse(
+        id_hashid=encode_id(scm_order.id),
+        source_order_id_hashid=source_order_id_hashid,
+        scm_order_number=scm_order.scm_order_number,
+        status=scm_order.status,
+        fulfillment_status=scm_order.fulfillment_status,
+        routing_strategy=scm_order.routing_strategy,
+        line_items=scm_order.line_items,
+        currency=scm_order.currency,
+        customer_email=scm_order.customer_email,
+        customer_name=scm_order.customer_name,
+        customer_phone=scm_order.customer_phone,
+        shipping_address=scm_order.shipping_address,
+        billing_address=scm_order.billing_address,
+        routing_metadata=scm_order.routing_metadata,
+        tracking_number=scm_order.tracking_number,
+        tracking_url=scm_order.tracking_url,
+        carrier=scm_order.carrier,
+        shipped_at=scm_order.shipped_at,
+        delivered_at=scm_order.delivered_at,
+        error_message=scm_order.error_message,
+        retry_count=scm_order.retry_count,
+        shopify_fulfillment_order_id=scm_order.shopify_fulfillment_order_id,
+        shopify_fulfillment_id=scm_order.shopify_fulfillment_id,
+        created_at=scm_order.created_at,
+        updated_at=scm_order.updated_at,
+        fulfilled_at=scm_order.fulfilled_at,
+    )
+
+
+@router.post("/{scm_order_hashid}/fulfill", response_model=dict)
+async def fulfill_scm_order(
+    scm_order_hashid: str,
+    fulfillment_data: dict,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
+) -> dict:
+    """
+    发送SCM订单到发货渠道（如Printify）
+    """
+    from app.core.hashids_utils import decode_id, encode_id
+    from app.core.logging import RequestLogger
+    
+    logger = RequestLogger("scm_orders.fulfill_scm_order")
+    tenant, user = auth
+
+    try:
+        # 解码 hashid
+        scm_order_id = decode_id(scm_order_hashid)
+        logger.info(f"✅ Hashid 解码成功: {scm_order_hashid} -> {scm_order_id}")
+    except Exception as e:
+        logger.error(f"❌ Hashid 解码失败: {scm_order_hashid}, 错误: {str(e)}")
+        raise HTTPException(status_code=400, detail="Invalid SCM order ID")
+
+    # 查询SCM订单
+    result = await db.execute(
+        select(SCMOrder).where(
+            SCMOrder.id == scm_order_id, SCMOrder.tenant_id == tenant.id
+        )
+    )
+    scm_order = result.scalar_one_or_none()
+
+    if not scm_order:
+        logger.error(f"❌ SCM 订单不存在: scm_order_id={scm_order_id}, tenant_id={tenant.id}")
+        raise HTTPException(status_code=404, detail="SCM order not found")
+
+    # 检查订单状态
+    if scm_order.fulfillment_status == 'fulfilled':
+        logger.warning(f"⚠️ SCM 订单已发货: scm_order_id={scm_order_id}")
+        raise HTTPException(status_code=400, detail="SCM order already fulfilled")
+
+    # 获取发货渠道
+    fulfillment_channel = fulfillment_data.get('fulfillment_channel', 'printify')
+    
+    if fulfillment_channel == 'printify':
+        # 调用 Printify 发货服务
+        try:
+            from app.services.printify_fulfillment_service import PrintifyFulfillmentService
+            fulfillment_service = PrintifyFulfillmentService()
+            
+            # 发送到 Printify
+            fulfillment_result = await fulfillment_service.create_fulfillment_order(
+                scm_order=scm_order,
+                tenant=tenant
+            )
+            
+            # 更新SCM订单状态
+            scm_order.fulfillment_status = 'fulfilled'
+            scm_order.tracking_number = fulfillment_result.get('tracking_number')
+            scm_order.tracking_url = fulfillment_result.get('tracking_url')
+            scm_order.carrier = fulfillment_result.get('carrier')
+            scm_order.shipped_at = datetime.utcnow()
+            
+            await db.commit()
+            await db.refresh(scm_order)
+            
+            logger.info(f"✅ SCM 订单发货成功: scm_order_id={scm_order_id}, fulfillment_id={fulfillment_result.get('fulfillment_id')}")
+            
+            return {
+                "success": True,
+                "message": "Fulfillment order created successfully",
+                "fulfillment_id": fulfillment_result.get('fulfillment_id'),
+                "tracking_number": fulfillment_result.get('tracking_number'),
+                "tracking_url": fulfillment_result.get('tracking_url'),
+                "carrier": fulfillment_result.get('carrier')
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Printify 发货失败: {str(e)}")
+            import traceback
+            logger.error(f"   异常堆栈: {traceback.format_exc()}")
+            raise HTTPException(status_code=500, detail=f"Fulfillment failed: {str(e)}")
+    
+    else:
+        logger.error(f"❌ 不支持的发货渠道: {fulfillment_channel}")
+        raise HTTPException(status_code=400, detail=f"Unsupported fulfillment channel: {fulfillment_channel}")
 
 
 @router.get("/order/{order_id}", response_model=List[SCMOrderResponse])
@@ -316,7 +489,36 @@ async def create_scm_order(
     await db.commit()
     await db.refresh(scm_order)
 
-    return SCMOrderResponse.from_orm(scm_order)
+    # 构建响应对象，使用 hashids
+    from app.core.hashids_utils import encode_id
+    return SCMOrderResponse(
+        id_hashid=encode_id(scm_order.id),
+        source_order_id_hashid=encode_id(decoded_source_ids[0]) if decoded_source_ids else None,
+        scm_order_number=scm_order.scm_order_number,
+        status=scm_order.status,
+        fulfillment_status=scm_order.fulfillment_status,
+        routing_strategy=scm_order.routing_strategy,
+        line_items=scm_order.line_items,
+        currency=scm_order.currency,
+        customer_email=scm_order.customer_email,
+        customer_name=scm_order.customer_name,
+        customer_phone=scm_order.customer_phone,
+        shipping_address=scm_order.shipping_address,
+        billing_address=scm_order.billing_address,
+        routing_metadata=scm_order.routing_metadata,
+        tracking_number=scm_order.tracking_number,
+        tracking_url=scm_order.tracking_url,
+        carrier=scm_order.carrier,
+        shipped_at=scm_order.shipped_at,
+        delivered_at=scm_order.delivered_at,
+        error_message=scm_order.error_message,
+        retry_count=scm_order.retry_count,
+        shopify_fulfillment_order_id=scm_order.shopify_fulfillment_order_id,
+        shopify_fulfillment_id=scm_order.shopify_fulfillment_id,
+        created_at=scm_order.created_at,
+        updated_at=scm_order.updated_at,
+        fulfilled_at=scm_order.fulfilled_at,
+    )
 
 
 @router.put("/{scm_order_id}", response_model=SCMOrderResponse)
@@ -841,3 +1043,189 @@ async def sync_printify_orders(
             "error_count": 1,
             "errors": [str(e)],
         }
+
+
+@router.delete("/{scm_order_hashid}")
+async def delete_scm_order(
+    scm_order_hashid: str,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
+):
+    """
+    删除SCM订单
+    """
+    from app.core.logging import RequestLogger
+    from app.core.hashids_utils import decode_id
+    from app.models.scm_order import SCMOrder
+    from sqlalchemy import select, delete, and_
+
+    logger = RequestLogger("scm_orders.delete_scm_order")
+    tenant, user = auth
+
+    try:
+        logger.info(f"🔍 开始删除SCM订单: scm_order_hashid={scm_order_hashid}, tenant_id={tenant.id}")
+        
+        # 解码 hashid
+        try:
+            scm_order_id = decode_id(scm_order_hashid)
+            logger.info(f"✅ Hashid 解码成功: {scm_order_hashid} -> {scm_order_id}")
+        except Exception as e:
+            logger.error(f"❌ Hashid 解码失败: {scm_order_hashid}, 错误: {str(e)}")
+            raise HTTPException(status_code=400, detail="Invalid SCM order ID")
+        
+        # 查询SCM订单
+        query = select(SCMOrder).where(
+            and_(
+                SCMOrder.id == scm_order_id,
+                SCMOrder.tenant_id == tenant.id
+            )
+        )
+        result = await db.execute(query)
+        scm_order = result.scalar_one_or_none()
+        
+        if not scm_order:
+            logger.error(f"❌ SCM订单不存在: scm_order_id={scm_order_id}, tenant_id={tenant.id}")
+            raise HTTPException(status_code=404, detail="SCM order not found")
+        
+        # 删除SCM订单（级联删除相关数据）
+        await db.delete(scm_order)
+        await db.commit()
+        
+        logger.info(f"✅ SCM订单删除成功: {scm_order.scm_order_number or scm_order.id}")
+        
+        return {"message": "SCM order deleted successfully", "success": True}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"❌ 删除SCM订单失败: {str(e)}")
+        import traceback
+        logger.error(f"   异常堆栈: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.post("/{scm_order_hashid}/generate-printify", response_model=dict)
+async def generate_printify_order(
+    scm_order_hashid: str,
+    request_data: dict,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
+):
+    """
+    为选中的商品生成 Printify 订单
+    """
+    from app.core.hashids_utils import decode_id
+    from app.core.logging import RequestLogger
+    from app.models.scm_order import SCMOrder
+    from sqlalchemy import select
+    from fastapi import HTTPException
+    from datetime import datetime
+
+    logger = RequestLogger("scm_orders.generate_printify_order")
+    tenant, user = auth
+
+    try:
+        # 解码 hashid
+        scm_order_id = decode_id(scm_order_hashid)
+        logger.info(f"✅ Hashid 解码成功: {scm_order_hashid} -> {scm_order_id}")
+    except Exception as e:
+        logger.error(f"❌ Hashid 解码失败: {scm_order_hashid}, 错误: {str(e)}")
+        raise HTTPException(status_code=400, detail="Invalid SCM order ID")
+
+    # 查询SCM订单
+    result = await db.execute(
+        select(SCMOrder).where(
+            SCMOrder.id == scm_order_id, SCMOrder.tenant_id == tenant.id
+        )
+    )
+    scm_order = result.scalar_one_or_none()
+
+    if not scm_order:
+        logger.error(f"❌ SCM 订单不存在: scm_order_id={scm_order_id}, tenant_id={tenant.id}")
+        raise HTTPException(status_code=404, detail="SCM order not found")
+
+    # 获取选中的商品
+    selected_items = request_data.get('selected_items', [])
+    if not selected_items:
+        logger.error(f"❌ 没有选中任何商品")
+        raise HTTPException(status_code=400, detail="No items selected")
+
+    try:
+        # 调用 Printify 服务生成订单
+        from app.services.printify_fulfillment_service import PrintifyFulfillmentService
+        fulfillment_service = PrintifyFulfillmentService()
+        
+        # 创建包含选中商品的临时 SCM 订单对象
+        temp_scm_order = SCMOrder(
+            id=scm_order.id,
+            tenant_id=scm_order.tenant_id,
+            source_order_id=scm_order.source_order_id,
+            scm_order_number=scm_order.scm_order_number,
+            status=scm_order.status,
+            fulfillment_status=scm_order.fulfillment_status,
+            routing_strategy=scm_order.routing_strategy,
+            line_items=selected_items,  # 只包含选中的商品
+            currency=scm_order.currency,
+            customer_email=scm_order.customer_email,
+            customer_name=scm_order.customer_name,
+            customer_phone=scm_order.customer_phone,
+            shipping_address=scm_order.shipping_address,
+            billing_address=scm_order.billing_address,
+            routing_metadata=scm_order.routing_metadata,
+            tracking_number=scm_order.tracking_number,
+            tracking_url=scm_order.tracking_url,
+            carrier=scm_order.carrier,
+            shipped_at=scm_order.shipped_at,
+            delivered_at=scm_order.delivered_at,
+            error_message=scm_order.error_message,
+            retry_count=scm_order.retry_count,
+            shopify_fulfillment_order_id=scm_order.shopify_fulfillment_order_id,
+            shopify_fulfillment_id=scm_order.shopify_fulfillment_id,
+            created_at=scm_order.created_at,
+            updated_at=scm_order.updated_at,
+            fulfilled_at=scm_order.fulfilled_at,
+        )
+        
+        # 生成 Printify 订单
+        printify_result = await fulfillment_service.create_fulfillment_order(
+            scm_order=temp_scm_order,
+            tenant=tenant,
+            db=db
+        )
+        
+        # 更新 SCM 订单状态
+        scm_order.fulfillment_status = 'fulfilled'
+        scm_order.tracking_number = printify_result.get('tracking_number')
+        scm_order.tracking_url = printify_result.get('tracking_url')
+        scm_order.carrier = printify_result.get('carrier')
+        scm_order.shipped_at = datetime.utcnow()
+        
+        # 更新路由元数据
+        if not scm_order.routing_metadata:
+            scm_order.routing_metadata = {}
+        scm_order.routing_metadata['printify_order_id'] = printify_result.get('fulfillment_id')
+        scm_order.routing_metadata['printify_status'] = printify_result.get('status')
+        scm_order.routing_metadata['generated_at'] = datetime.utcnow().isoformat()
+        
+        await db.commit()
+        await db.refresh(scm_order)
+        
+        logger.info(f"✅ Printify 订单生成成功: scm_order_id={scm_order_id}, printify_order_id={printify_result.get('fulfillment_id')}")
+        
+        return {
+            "success": True,
+            "message": "Printify order generated successfully",
+            "printify_order_id": printify_result.get('fulfillment_id'),
+            "tracking_number": printify_result.get('tracking_number'),
+            "tracking_url": printify_result.get('tracking_url'),
+            "carrier": printify_result.get('carrier'),
+            "status": printify_result.get('status'),
+            "selected_items_count": len(selected_items)
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ 生成 Printify 订单失败: {str(e)}")
+        import traceback
+        logger.error(f"   异常堆栈: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate Printify order: {str(e)}")

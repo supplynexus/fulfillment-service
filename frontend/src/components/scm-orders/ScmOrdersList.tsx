@@ -22,6 +22,11 @@ import {
   Tooltip,
   Alert,
   CircularProgress,
+  Checkbox,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -30,6 +35,7 @@ import {
   FilterList as FilterIcon,
   LocalShipping as ShippingIcon,
   Sync as SyncIcon,
+  Delete as DeleteIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
 import { frontendApi } from '@/lib/api';
@@ -37,9 +43,8 @@ import { frontendApi } from '@/lib/api';
 const ITEMS_PER_PAGE = 10;
 
 interface ScmOrder {
-  id: number;
-  tenant_id: number;
-  source_order_id?: number;
+  id_hashid: string;
+  source_order_id_hashid?: string;
   scm_order_number?: string;
   status: string;
   fulfillment_status?: string;
@@ -76,6 +81,12 @@ export function ScmOrdersList() {
   const [totalPages, setTotalPages] = useState(1);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  
+  // 删除相关状态
+  const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletingOrders, setDeletingOrders] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   console.log('🔍 ScmOrdersList 组件渲染，当前状态:', {
     orders: orders.length,
@@ -157,8 +168,64 @@ export function ScmOrdersList() {
     }
   };
 
-  const handleViewOrder = (orderId: number) => {
-    router.push(`/scm-orders/${orderId}`);
+  const handleViewOrder = (orderHashid: string) => {
+    router.push(`/scm-orders/${orderHashid}`);
+  };
+
+  // 删除相关处理函数
+  const handleSelectOrder = (orderHashid: string) => {
+    const newSelected = new Set(selectedOrders);
+    if (newSelected.has(orderHashid)) {
+      newSelected.delete(orderHashid);
+    } else {
+      newSelected.add(orderHashid);
+    }
+    setSelectedOrders(newSelected);
+  };
+
+  const handleSelectAll = () => {
+    if (selectedOrders.size === orders.length) {
+      setSelectedOrders(new Set());
+    } else {
+      setSelectedOrders(new Set(orders.map(order => order.id_hashid)));
+    }
+  };
+
+  const handleDeleteOrder = async (orderHashid: string) => {
+    try {
+      setDeletingOrders(true);
+      await frontendApi.delete(`/api/scm-orders/${orderHashid}`);
+      await fetchScmOrders();
+      console.log('✅ SCM 订单删除成功');
+    } catch (error: any) {
+      console.error('❌ SCM 订单删除失败:', error);
+      setError(error.response?.data?.detail || '删除失败');
+    } finally {
+      setDeletingOrders(false);
+    }
+  };
+
+  const handleBulkDelete = () => {
+    setDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    try {
+      setBulkDeleting(true);
+      const deletePromises = Array.from(selectedOrders).map(orderHashid =>
+        frontendApi.delete(`/api/scm-orders/${orderHashid}`)
+      );
+      await Promise.all(deletePromises);
+      setSelectedOrders(new Set());
+      setDeleteDialogOpen(false);
+      await fetchScmOrders();
+      console.log('✅ 批量删除 SCM 订单成功');
+    } catch (error: any) {
+      console.error('❌ 批量删除 SCM 订单失败:', error);
+      setError(error.response?.data?.detail || '批量删除失败');
+    } finally {
+      setBulkDeleting(false);
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -233,6 +300,33 @@ export function ScmOrdersList() {
         </Box>
       </Box>
 
+      {/* 批量操作区域 */}
+      {selectedOrders.size > 0 && (
+        <Box sx={{ mb: 2, p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
+          <Box display='flex' alignItems='center' gap={2}>
+            <Typography variant='body2' color='text.secondary'>
+              已选择 {selectedOrders.size} 个 SCM 订单
+            </Typography>
+            <Button
+              variant='contained'
+              color='error'
+              startIcon={bulkDeleting ? <CircularProgress size={16} /> : <DeleteIcon />}
+              onClick={handleBulkDelete}
+              disabled={bulkDeleting}
+            >
+              {bulkDeleting ? '删除中...' : '删除订单'}
+            </Button>
+            <Button
+              variant='outlined'
+              onClick={() => setSelectedOrders(new Set())}
+              disabled={bulkDeleting}
+            >
+              取消选择
+            </Button>
+          </Box>
+        </Box>
+      )}
+
       {error && (
         <Alert severity='error' sx={{ mb: 2 }}>
           {error}
@@ -273,6 +367,13 @@ export function ScmOrdersList() {
             <Table>
               <TableHead>
                 <TableRow>
+                  <TableCell padding="checkbox">
+                    <Checkbox
+                      checked={selectedOrders.size === orders.length && orders.length > 0}
+                      indeterminate={selectedOrders.size > 0 && selectedOrders.size < orders.length}
+                      onChange={handleSelectAll}
+                    />
+                  </TableCell>
                   <TableCell>SCM 订单ID</TableCell>
                   <TableCell>目标系统</TableCell>
                   <TableCell>目标系统ID</TableCell>
@@ -288,7 +389,7 @@ export function ScmOrdersList() {
               <TableBody>
                 {orders.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} align='center'>
+                    <TableCell colSpan={11} align='center'>
                       <Typography variant='body2' color='text.secondary'>
                         {searchTerm
                           ? '没有找到匹配的 SCM 订单'
@@ -298,10 +399,16 @@ export function ScmOrdersList() {
                   </TableRow>
                 ) : (
                   orders.map(order => (
-                    <TableRow key={order.id} hover>
+                    <TableRow key={order.id_hashid} hover>
+                      <TableCell padding="checkbox">
+                        <Checkbox
+                          checked={selectedOrders.has(order.id_hashid)}
+                          onChange={() => handleSelectOrder(order.id_hashid)}
+                        />
+                      </TableCell>
                       <TableCell>
                         <Typography variant='body2' fontWeight='medium'>
-                          #{order.id}
+                          {order.id_hashid}
                         </Typography>
                         {order.scm_order_number && (
                           <Typography variant='caption' color='text.secondary'>
@@ -407,14 +514,26 @@ export function ScmOrdersList() {
                         </Typography>
                       </TableCell>
                       <TableCell>
-                        <Tooltip title='查看详情'>
-                          <IconButton
-                            size='small'
-                            onClick={() => handleViewOrder(order.id)}
-                          >
-                            <ViewIcon />
-                          </IconButton>
-                        </Tooltip>
+                        <Box display='flex' gap={1}>
+                          <Tooltip title='查看详情'>
+                            <IconButton
+                              size='small'
+                              onClick={() => handleViewOrder(order.id_hashid)}
+                            >
+                              <ViewIcon />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title='删除订单'>
+                            <IconButton
+                              size='small'
+                              onClick={() => handleDeleteOrder(order.id_hashid)}
+                              disabled={deletingOrders}
+                              color='error'
+                            >
+                              {deletingOrders ? <CircularProgress size={16} /> : <DeleteIcon />}
+                            </IconButton>
+                          </Tooltip>
+                        </Box>
                       </TableCell>
                     </TableRow>
                   ))
@@ -435,6 +554,55 @@ export function ScmOrdersList() {
           )}
         </CardContent>
       </Card>
+
+      {/* 删除确认对话框 */}
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          确认删除 SCM 订单
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" gutterBottom>
+            您确定要删除选中的 {selectedOrders.size} 个 SCM 订单吗？
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            此操作不可撤销，删除的 SCM 订单将从数据库中永久移除。
+          </Typography>
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="subtitle2" gutterBottom>
+              将要删除的 SCM 订单：
+            </Typography>
+            <Box sx={{ maxHeight: '200px', overflow: 'auto' }}>
+              {Array.from(selectedOrders).map(orderHashid => {
+                const order = orders.find(o => o.id_hashid === orderHashid);
+                return order ? (
+                  <Typography key={orderHashid} variant="body2" color="text.secondary">
+                    • {order.scm_order_number || orderHashid} - {order.customer_name || order.customer_email}
+                  </Typography>
+                ) : null;
+              })}
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialogOpen(false)}>
+            取消
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            startIcon={bulkDeleting ? <CircularProgress size={16} /> : <DeleteIcon />}
+            onClick={handleConfirmDelete}
+            disabled={bulkDeleting}
+          >
+            {bulkDeleting ? '删除中...' : '确认删除'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

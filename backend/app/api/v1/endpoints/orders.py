@@ -479,3 +479,64 @@ async def create_shipping_label(
     except Exception as e:
         logger.error(f"❌ 创建发货单时发生错误: {e}")
         raise HTTPException(status_code=500, detail=f"创建发货单失败: {str(e)}")
+
+
+@router.delete("/{order_hashid}")
+async def delete_order(
+    order_hashid: str,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
+):
+    """
+    删除订单
+    """
+    from app.core.logging import RequestLogger
+    from app.core.hashids_utils import decode_id
+    from app.models.order import Order
+    from sqlalchemy import select, delete, and_
+    from sqlalchemy.orm import selectinload
+
+    logger = RequestLogger("orders.delete_order")
+    tenant, user = auth
+
+    try:
+        logger.info(f"🔍 开始删除订单: order_hashid={order_hashid}, tenant_id={tenant.id}")
+        
+        # 解码 hashid
+        try:
+            order_id = decode_id(order_hashid)
+            logger.info(f"✅ Hashid 解码成功: {order_hashid} -> {order_id}")
+        except Exception as e:
+            logger.error(f"❌ Hashid 解码失败: {order_hashid}, 错误: {str(e)}")
+            raise HTTPException(status_code=400, detail="Invalid order ID")
+        
+        # 查询订单
+        query = select(Order).where(
+            and_(
+                Order.id == order_id,
+                Order.tenant_id == tenant.id
+            )
+        )
+        result = await db.execute(query)
+        order = result.scalar_one_or_none()
+        
+        if not order:
+            logger.error(f"❌ 订单不存在: order_id={order_id}, tenant_id={tenant.id}")
+            raise HTTPException(status_code=404, detail="Order not found")
+        
+        # 删除订单（级联删除相关数据）
+        await db.delete(order)
+        await db.commit()
+        
+        logger.info(f"✅ 订单删除成功: {order.external_order_name or order.external_order_id}")
+        
+        return {"message": "Order deleted successfully", "success": True}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"❌ 删除订单失败: {str(e)}")
+        import traceback
+        logger.error(f"   异常堆栈: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")

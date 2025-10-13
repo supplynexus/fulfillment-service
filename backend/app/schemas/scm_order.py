@@ -37,9 +37,8 @@ class SCMOrderCreate(BaseModel):
 class SCMOrderResponse(BaseModel):
     """SCM订单响应 schema"""
 
-    id: int
-    tenant_id: int
-    source_order_id: Optional[int] = None
+    id_hashid: str
+    source_order_id_hashid: Optional[str] = None
     # 核心SCM订单不直接绑定目标系统
     scm_order_number: Optional[str] = None
     status: str

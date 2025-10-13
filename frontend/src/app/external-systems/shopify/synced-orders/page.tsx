@@ -47,7 +47,8 @@ import {
   AttachMoney as MoneyIcon,
   CalendarToday as CalendarIcon,
   FilterList as FilterIcon,
-  Sync as SyncIcon
+  Sync as SyncIcon,
+  Delete as DeleteIcon
 } from '@mui/icons-material';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -104,6 +105,9 @@ const SyncedShopifyOrdersPage: React.FC = () => {
   const [syncingOrders, setSyncingOrders] = useState<Set<number>>(new Set());
   const [selectedOrders, setSelectedOrders] = useState<Set<number>>(new Set()); // Selected orders for bulk sync
   const [bulkSyncing, setBulkSyncing] = useState(false); // Bulk sync status
+  const [deletingOrders, setDeletingOrders] = useState<Set<number>>(new Set()); // Orders being deleted
+  const [bulkDeleting, setBulkDeleting] = useState(false); // Bulk delete status
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false); // Delete confirmation dialog
 
   // 获取同步的Shopify订单列表
   const fetchOrders = useCallback(async (pageNum: number = 1) => {
@@ -255,6 +259,86 @@ const SyncedShopifyOrdersPage: React.FC = () => {
     } finally {
       setBulkSyncing(false);
     }
+  };
+
+  // 单个订单删除
+  const handleDeleteOrder = async (order: SyncedShopifyOrder) => {
+    try {
+      setDeletingOrders(prev => new Set(prev).add(order.id));
+      frontendLogger.info('🔄 开始删除订单', { orderId: order.id, orderName: order.name });
+
+      const response = await frontendApi.delete(`/api/shopify-orders/${order.id_hashid}`);
+      
+      if (response.data.success) {
+        frontendLogger.info('✅ 订单删除成功', { orderId: order.id });
+        toast.success(`订单 ${order.name} 已成功删除！`);
+        // 刷新列表
+        fetchOrders(page);
+      } else {
+        frontendLogger.error('❌ 订单删除失败', { orderId: order.id, error: response.data.message });
+        toast.error(`删除失败：${response.data.message || '未知错误'}`);
+      }
+    } catch (error: any) {
+      frontendLogger.error('❌ 订单删除异常', { orderId: order.id, error: error.message });
+      toast.error(`删除失败：${error.message || '网络错误'}`);
+    } finally {
+      setDeletingOrders(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(order.id);
+        return newSet;
+      });
+    }
+  };
+
+  // 批量删除订单
+  const handleBulkDelete = async () => {
+    if (selectedOrders.size === 0) {
+      toast.error('请先选择要删除的订单');
+      return;
+    }
+
+    setBulkDeleting(true);
+    frontendLogger.info('🔄 开始批量删除订单', { selectedCount: selectedOrders.size });
+
+    try {
+      const deletePromises = Array.from(selectedOrders).map(async (orderId) => {
+        const order = orders.find(o => o.id === orderId);
+        if (!order) return null;
+
+        try {
+          const response = await frontendApi.delete(`/api/shopify-orders/${order.id_hashid}`);
+          return { orderId, success: response.data.success, orderName: order.name };
+        } catch (error: any) {
+          return { orderId, success: false, error: error.message, orderName: order.name };
+        }
+      });
+
+      const results = await Promise.all(deletePromises);
+      const successful = results.filter(r => r?.success).length;
+      const failed = results.filter(r => r && !r.success).length;
+
+      frontendLogger.info('✅ 批量删除完成', { successful, failed });
+      toast.success(`批量删除完成：成功 ${successful} 个，失败 ${failed} 个`);
+
+      // 关闭确认对话框，清空选择并刷新列表
+      setDeleteConfirmOpen(false);
+      setSelectedOrders(new Set());
+      fetchOrders(page);
+    } catch (error: any) {
+      frontendLogger.error('❌ 批量删除异常', { error: error.message });
+      toast.error(`批量删除失败：${error.message || '网络错误'}`);
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
+  // 确认删除对话框
+  const handleConfirmDelete = () => {
+    if (selectedOrders.size === 0) {
+      toast.error('请先选择要删除的订单');
+      return;
+    }
+    setDeleteConfirmOpen(true);
   };
 
   // 格式化价格
@@ -439,6 +523,15 @@ const SyncedShopifyOrdersPage: React.FC = () => {
                     {bulkSyncing ? '批量同步中...' : `同步到核心订单 (${selectedOrders.size})`}
                   </Button>
                   <Button
+                    variant="contained"
+                    color="error"
+                    startIcon={bulkDeleting ? <CircularProgress size={16} /> : <DeleteIcon />}
+                    onClick={handleConfirmDelete}
+                    disabled={bulkDeleting}
+                  >
+                    {bulkDeleting ? '批量删除中...' : `删除订单 (${selectedOrders.size})`}
+                  </Button>
+                  <Button
                     variant="outlined"
                     onClick={() => setSelectedOrders(new Set())}
                   >
@@ -559,6 +652,20 @@ const SyncedShopifyOrdersPage: React.FC = () => {
                                 <DatabaseIcon />
                               </IconButton>
                             </Tooltip>
+                            <Tooltip title="删除订单">
+                              <IconButton
+                                size="small"
+                                color="error"
+                                onClick={() => handleDeleteOrder(order)}
+                                disabled={deletingOrders.has(order.id)}
+                              >
+                                {deletingOrders.has(order.id) ? (
+                                  <CircularProgress size={16} />
+                                ) : (
+                                  <DeleteIcon />
+                                )}
+                              </IconButton>
+                            </Tooltip>
                           </Stack>
                         </TableCell>
                       </TableRow>
@@ -672,6 +779,55 @@ const SyncedShopifyOrdersPage: React.FC = () => {
             <DialogActions>
               <Button onClick={() => setJsonModalOpen(false)}>
                 关闭
+              </Button>
+            </DialogActions>
+          </Dialog>
+
+          {/* 删除确认对话框 */}
+          <Dialog
+            open={deleteConfirmOpen && selectedOrders.size > 0}
+            onClose={() => setDeleteConfirmOpen(false)}
+            maxWidth="sm"
+            fullWidth
+          >
+            <DialogTitle>
+              确认删除订单
+            </DialogTitle>
+            <DialogContent>
+              <Typography variant="body1" gutterBottom>
+                您确定要删除选中的 {selectedOrders.size} 个订单吗？
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                此操作不可撤销，删除的订单将从数据库中永久移除。
+              </Typography>
+              <Box sx={{ mt: 2 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  将要删除的订单：
+                </Typography>
+                <Box sx={{ maxHeight: '200px', overflow: 'auto' }}>
+                  {Array.from(selectedOrders).map(orderId => {
+                    const order = orders.find(o => o.id === orderId);
+                    return order ? (
+                      <Typography key={orderId} variant="body2" color="text.secondary">
+                        • {order.name} ({order.shopify_order_id})
+                      </Typography>
+                    ) : null;
+                  })}
+                </Box>
+              </Box>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setDeleteConfirmOpen(false)}>
+                取消
+              </Button>
+              <Button
+                variant="contained"
+                color="error"
+                startIcon={bulkDeleting ? <CircularProgress size={16} /> : <DeleteIcon />}
+                onClick={handleBulkDelete}
+                disabled={bulkDeleting}
+              >
+                {bulkDeleting ? '删除中...' : '确认删除'}
               </Button>
             </DialogActions>
           </Dialog>

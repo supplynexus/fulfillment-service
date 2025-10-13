@@ -13,7 +13,7 @@ from app.models.external_system import ExternalSystem, ExternalSystemType
 from app.models.order import Order, OrderStatus
 from app.models.shopify_order import ShopifyOrder
 from app.models.customer import Customer
-from app.models.product_new import Product
+from app.models.product import Product
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
