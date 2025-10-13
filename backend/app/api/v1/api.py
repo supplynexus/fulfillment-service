@@ -32,6 +32,9 @@ from app.api.v1.endpoints import (
     multi_platform_sync,
     retry_service,
     product_mapping_check,
+    product_categories,
+    product_dimensions,
+    product_variants,
 )
 
 api_router = APIRouter()
@@ -100,4 +103,19 @@ api_router.include_router(
 # Retry Service
 api_router.include_router(
     retry_service.router, prefix="/retry", tags=["retry-service"]
+)
+
+# Product Categories Management
+api_router.include_router(
+    product_categories.router, prefix="/product-categories", tags=["product-categories"]
+)
+
+# Product Dimensions Management
+api_router.include_router(
+    product_dimensions.router, prefix="/product-dimensions", tags=["product-dimensions"]
+)
+
+# Product Variants Management
+api_router.include_router(
+    product_variants.router, prefix="/product-variants", tags=["product-variants"]
 )

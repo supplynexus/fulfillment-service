@@ -26,6 +26,21 @@ from .product import (
     ExternalProduct,
     ProductStatus
 )
+from .product_dimension import (
+    ProductDimensionTemplate,
+    ProductDimensionValue,
+    ProductVariantDimension
+)
+from .product_category import (
+    ProductCategory,
+    ProductCategoryRelation,
+    ProductCategoryDimension,
+    ProductCategoryAssignment
+)
+from .product_attribute import (
+    ProductAttribute,
+    ProductVariantAttribute
+)
 from .scm_order import SCMOrder, SCMOrderStatus, RoutingRule, RoutingStatus
 from .shopify_order import ShopifyOrder
 from .printify_product import PrintifyProduct, PrintifyVariant
@@ -61,6 +76,16 @@ __all__ = [
     "ProductMapping",
     "ExternalProduct",
     "ProductStatus",
+    # PIM 新模型
+    "ProductDimensionTemplate",
+    "ProductDimensionValue",
+    "ProductVariantDimension",
+    "ProductCategory",
+    "ProductCategoryRelation",
+    "ProductCategoryDimension",
+    "ProductCategoryAssignment",
+    "ProductAttribute",
+    "ProductVariantAttribute",
     "SCMOrder",
     "SCMOrderStatus",
     "RoutingRule",

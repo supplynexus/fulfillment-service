@@ -61,6 +61,10 @@ class Product(Base):
     combinations = relationship("ProductCombination", back_populates="product", cascade="all, delete-orphan")
     mappings = relationship("ProductMapping", back_populates="core_product", cascade="all, delete-orphan")
     
+    # PIM 新关系
+    product_attributes = relationship("ProductAttribute", back_populates="product", cascade="all, delete-orphan")
+    category_assignments = relationship("ProductCategoryAssignment", back_populates="product", cascade="all, delete-orphan")
+    
     # 索引
     __table_args__ = (
         Index('idx_products_new_tenant_status', 'tenant_id', 'status'),
@@ -165,6 +169,10 @@ class ProductVariant(Base):
     product = relationship("Product", back_populates="variants")
     attributes_rel = relationship("VariantAttribute", back_populates="variant", cascade="all, delete-orphan")
     barcodes = relationship("VariantBarcode", back_populates="variant", cascade="all, delete-orphan")
+    
+    # PIM 新关系
+    variant_attributes = relationship("ProductVariantAttribute", back_populates="variant", cascade="all, delete-orphan")
+    variant_dimensions = relationship("ProductVariantDimension", back_populates="variant", cascade="all, delete-orphan")
     
     # 索引
     __table_args__ = (
