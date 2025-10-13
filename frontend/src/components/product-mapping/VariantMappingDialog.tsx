@@ -266,8 +266,8 @@ export function VariantMappingDialog({
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {coreProduct.variants.map((variant) => (
-                        <TableRow key={variant.id}>
+                      {coreProduct.variants.map((variant, index) => (
+                        <TableRow key={`core-variant-${variant.id}-${index}`}>
                           <TableCell>{variant.sku}</TableCell>
                           <TableCell>{variant.title}</TableCell>
                           <TableCell>${variant.price}</TableCell>
@@ -299,8 +299,8 @@ export function VariantMappingDialog({
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {printifyProduct.variants.map((variant) => (
-                        <TableRow key={variant.id}>
+                      {printifyProduct.variants.map((variant, index) => (
+                        <TableRow key={`printify-variant-${variant.id}-${index}`}>
                           <TableCell>{variant.sku}</TableCell>
                           <TableCell>{variant.title}</TableCell>
                           <TableCell>${variant.price}</TableCell>

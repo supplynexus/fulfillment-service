@@ -9,16 +9,17 @@ export const metadata: Metadata = {
 };
 
 interface ScmOrderDetailsPageProps {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
-export default function ScmOrderDetailsPage({ params }: ScmOrderDetailsPageProps) {
+export default async function ScmOrderDetailsPage({ params }: ScmOrderDetailsPageProps) {
+  const { id } = await params;
   return (
     <ProtectedRoute>
       <DashboardLayout>
-        <ScmOrderDetails orderId={params.id} />
+        <ScmOrderDetails orderId={id} />
       </DashboardLayout>
     </ProtectedRoute>
   );

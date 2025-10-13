@@ -31,6 +31,7 @@ from app.api.v1.endpoints import (
     order_lifecycle,
     multi_platform_sync,
     retry_service,
+    product_mapping_check,
 )
 
 api_router = APIRouter()
@@ -61,6 +62,7 @@ api_router.include_router(
 
 # SCM Order Management
 api_router.include_router(scm_orders.router, prefix="/scm-orders", tags=["scm-orders"])
+api_router.include_router(product_mapping_check.router, prefix="/product-mapping", tags=["product-mapping-check"])
 api_router.include_router(
     order_routing.router, prefix="/routing", tags=["order-routing"]
 )

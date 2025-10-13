@@ -364,17 +364,25 @@ const ShopifyOrdersPage: React.FC = () => {
       setLoadingJson(true);
       
       // 从 GraphQL ID 中提取纯数字 ID (例如: gid://shopify/Order/5839241838692 -> 5839241838692)
-      const numericOrderId = orderId.replace('gid://shopify/Order/', '');
+      // 如果已经是纯数字，则直接使用；否则提取数字部分
+      const numericOrderId = orderId.includes('gid://shopify/Order/') 
+        ? orderId.replace('gid://shopify/Order/', '')
+        : orderId;
       
       frontendLogger.info('🔄 获取 Shopify 订单完整 JSON 数据', { 
         originalId: orderId,
         numericId: numericOrderId,
-        storeId: selectedStore.external_system_id
+        orderIdType: typeof orderId,
+        orderIdLength: orderId.length,
+        storeId: selectedStore.external_system_id,
+        selectedStoreIdHashid: selectedStore.id_hashid,
+        selectedStoreFull: selectedStore
       });
       
-      const response = await frontendApi.get(
-        `/api/external-systems/shopify/orders/${numericOrderId}/json?shop_id=${selectedStore.external_system_id}`
-      );
+      const apiUrl = `/api/external-systems/shopify/${selectedStore.id_hashid}/orders/${numericOrderId}/json`;
+      frontendLogger.info('🔗 构建的 API URL', { apiUrl, numericOrderId, selectedStoreIdHashid: selectedStore.id_hashid });
+      
+      const response = await frontendApi.get(apiUrl);
       
       frontendLogger.info('✅ Shopify 订单 JSON 数据获取成功', { 
         orderId, 
@@ -407,6 +415,41 @@ const ShopifyOrdersPage: React.FC = () => {
         storeId: selectedStore.external_system_id
       });
       
+      // 如果没有获取过完整的 JSON 数据，先获取它
+      let fullOrderJson = orderJson;
+      if (!fullOrderJson || Object.keys(fullOrderJson).length === 0) {
+        frontendLogger.info('📥 获取完整的 Shopify 订单 JSON 数据');
+        try {
+          // 从 GraphQL ID 中提取纯数字 ID
+          const numericOrderId = selectedOrder.id.includes('gid://shopify/Order/') 
+            ? selectedOrder.id.replace('gid://shopify/Order/', '')
+            : selectedOrder.id;
+          
+          const jsonResponse = await frontendApi.get(
+            `/api/external-systems/shopify/${selectedStore.id_hashid}/orders/${numericOrderId}/json`
+          );
+          fullOrderJson = jsonResponse.data;
+          frontendLogger.info('✅ 完整 JSON 数据获取成功', { hasData: !!fullOrderJson });
+        } catch (error: any) {
+          frontendLogger.warn('⚠️ 获取完整 JSON 数据失败，使用订单基本信息', { error: error.message });
+          // 如果获取失败，使用订单的基本信息构建 raw_data
+          fullOrderJson = {
+            id: selectedOrder.id,
+            name: selectedOrder.name,
+            financial_status: selectedOrder.financial_status,
+            fulfillment_status: selectedOrder.fulfillment_status,
+            total_price: selectedOrder.total_price,
+            currency: selectedOrder.currency,
+            customer: selectedOrder.customer,
+            line_items: selectedOrder.line_items,
+            shipping_address: selectedOrder.shipping_address,
+            billing_address: selectedOrder.billing_address,
+            created_at: selectedOrder.created_at,
+            updated_at: selectedOrder.updated_at
+          };
+        }
+      }
+      
       // 构建保存到数据库的订单数据
       const orderData = {
         shopify_order_id: selectedOrder.id,
@@ -435,7 +478,7 @@ const ShopifyOrdersPage: React.FC = () => {
         line_items: selectedOrder.line_items || [],
         fulfillments: selectedOrder.fulfillments || [],
         refunds: selectedOrder.refunds || [],
-        raw_data: orderJson || {} // 使用已获取的 JSON 数据
+        raw_data: fullOrderJson // 使用完整的 JSON 数据
       };
       
       // 调用后端 API 保存订单

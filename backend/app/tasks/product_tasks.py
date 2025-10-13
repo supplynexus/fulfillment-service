@@ -16,7 +16,7 @@ from app.core.database import get_sync_db, get_async_db
 from app.services.shopify_product_service import ShopifyProductService
 from app.services.product_mapper import ProductMapper
 from app.models.external_system import ExternalSystem
-from app.models.product_new import Product
+from app.models.product import Product
 from app.models.sync_config import SyncConfig
 
 logger = logging.getLogger(__name__)
