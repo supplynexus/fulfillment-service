@@ -22,6 +22,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Checkbox,
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -88,8 +89,15 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
   const [order, setOrder] = useState<ScmOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [creatingPrintifyOrder, setCreatingPrintifyOrder] = useState(false);
-  const [printifyOrderError, setPrintifyOrderError] = useState<string | null>(null);
+  const [fulfilling, setFulfilling] = useState(false);
+  const [fulfillmentError, setFulfillmentError] = useState<string | null>(null);
+  const [mappingStatus, setMappingStatus] = useState<any>(null);
+  const [checkingMapping, setCheckingMapping] = useState(false);
+  
+  // 商品选择相关状态
+  const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
+  const [generatingPrintify, setGeneratingPrintify] = useState(false);
+  const [printifyError, setPrintifyError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchOrderDetails();
@@ -121,27 +129,109 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
     fetchOrderDetails();
   };
 
-  const handleCreatePrintifyOrder = async () => {
+  const checkProductMapping = async () => {
     if (!order) return;
     
-    setCreatingPrintifyOrder(true);
-    setPrintifyOrderError(null);
+    try {
+      setCheckingMapping(true);
+      
+      const response = await frontendApi.get(`/api/product-mapping/scm-orders/${orderId}/mapping-check?external_system=printify`);
+      setMappingStatus(response.data);
+      
+      console.log('商品映射检查结果:', response.data);
+      
+    } catch (error: any) {
+      console.error('检查商品映射失败:', error);
+      setFulfillmentError(error?.response?.data?.detail || '检查商品映射失败');
+    } finally {
+      setCheckingMapping(false);
+    }
+  };
+
+  const handleFulfillToPrintify = async () => {
+    if (!order) return;
+    
+    // 先检查商品映射
+    if (!mappingStatus) {
+      await checkProductMapping();
+      return;
+    }
+    
+    // 检查是否所有商品都已映射
+    if (!mappingStatus.can_fulfill) {
+      setFulfillmentError(`无法发货：${mappingStatus.unmapped_items} 个商品未映射到 Printify`);
+      return;
+    }
     
     try {
-      const response = await frontendApi.post(`/api/scm-orders/${orderId}/create-printify-order`);
+      setFulfilling(true);
+      setFulfillmentError(null);
       
-      if (response.data.success) {
-        // 刷新订单详情以获取最新的 Printify 订单信息
-        await fetchOrderDetails();
-        alert('Printify 发货单创建成功！');
-      } else {
-        setPrintifyOrderError(response.data.message || '创建 Printify 发货单失败');
-      }
+      const response = await frontendApi.post(`/api/scm-orders/${orderId}/fulfill`, {
+        fulfillment_channel: 'printify',
+        scm_order_id: orderId,
+      });
+      
+      // 刷新订单详情以获取最新状态
+      await fetchOrderDetails();
+      
+      // 显示成功消息
+      console.log('发货指示发送成功:', response.data);
+      
     } catch (error: any) {
-      console.error('创建 Printify 发货单失败:', error);
-      setPrintifyOrderError(error.response?.data?.detail || '创建 Printify 发货单失败');
+      console.error('发送发货指示失败:', error);
+      setFulfillmentError(error?.response?.data?.detail || '发送发货指示失败');
     } finally {
-      setCreatingPrintifyOrder(false);
+      setFulfilling(false);
+    }
+  };
+
+  // 商品选择相关函数
+  const handleSelectItem = (index: number) => {
+    const newSelected = new Set(selectedItems);
+    if (newSelected.has(index)) {
+      newSelected.delete(index);
+    } else {
+      newSelected.add(index);
+    }
+    setSelectedItems(newSelected);
+  };
+
+  const handleSelectAllItems = () => {
+    if (!order?.line_items) return;
+    
+    if (selectedItems.size === order.line_items.length) {
+      setSelectedItems(new Set());
+    } else {
+      setSelectedItems(new Set(order.line_items.map((_, index) => index)));
+    }
+  };
+
+  const handleGeneratePrintifyOrder = async () => {
+    if (!order || selectedItems.size === 0) return;
+    
+    try {
+      setGeneratingPrintify(true);
+      setPrintifyError(null);
+      
+      // 获取选中的商品
+      const selectedLineItems = Array.from(selectedItems).map(index => order.line_items[index]);
+      
+      const response = await frontendApi.post(`/api/scm-orders/${orderId}/generate-printify`, {
+        selected_items: selectedLineItems,
+        scm_order_id: orderId,
+      });
+      
+      console.log('Printify 订单生成成功:', response.data);
+      
+      // 刷新订单详情以获取最新状态
+      await fetchOrderDetails();
+      
+    } catch (error: any) {
+      console.error('生成 Printify 订单失败:', error);
+      setPrintifyError(error?.response?.data?.detail || '生成 Printify 订单失败');
+    } finally {
+      setGeneratingPrintify(false);
     }
   };
 
@@ -250,10 +340,10 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
               <PrintIcon />
             </IconButton>
           </Tooltip>
-          <Tooltip title="创建 Printify 发货单">
+          <Tooltip title="发送到 Printify">
             <IconButton 
-              onClick={handleCreatePrintifyOrder}
-              disabled={creatingPrintifyOrder || loading}
+              onClick={handleFulfillToPrintify}
+              disabled={fulfilling || checkingMapping || order?.fulfillment_status === 'fulfilled'}
               color="primary"
             >
               <LocalShippingIcon />
@@ -262,13 +352,51 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
         </Box>
       </Box>
 
-      {printifyOrderError && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {printifyOrderError}
-        </Alert>
-      )}
-
       <Stack spacing={3}>
+        {/* Fulfillment Error Alert */}
+        {fulfillmentError && (
+          <Alert severity="error" onClose={() => setFulfillmentError(null)}>
+            {fulfillmentError}
+          </Alert>
+        )}
+        
+        {/* Fulfillment Loading Alert */}
+        {fulfilling && (
+          <Alert severity="info">
+            正在发送发货指示到 Printify...
+          </Alert>
+        )}
+        
+        {/* Mapping Check Loading Alert */}
+        {checkingMapping && (
+          <Alert severity="info">
+            正在检查商品映射状态...
+          </Alert>
+        )}
+        
+        {/* Mapping Status Alert */}
+        {mappingStatus && (
+          <Alert 
+            severity={mappingStatus.can_fulfill ? "success" : "warning"}
+            action={
+              !mappingStatus.can_fulfill && (
+                <Button 
+                  size="small" 
+                  onClick={() => router.push('/product-mapping')}
+                  color="inherit"
+                >
+                  去映射商品
+                </Button>
+              )
+            }
+          >
+            {mappingStatus.can_fulfill 
+              ? `✅ 所有商品已映射 (${mappingStatus.mapped_items}/${mappingStatus.total_items})`
+              : `⚠️ ${mappingStatus.unmapped_items} 个商品未映射到 Printify`
+            }
+          </Alert>
+        )}
+        
         {/* Order Status and Basic Info */}
         <Card>
           <CardContent>
@@ -731,14 +859,47 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
         {/* Line Items */}
         <Card>
           <CardContent>
-            <Typography variant="h6" gutterBottom>
-              商品清单
-            </Typography>
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+              <Typography variant="h6">
+                商品清单
+              </Typography>
+              {selectedItems.size > 0 && (
+                <Box display="flex" gap={2} alignItems="center">
+                  <Typography variant="body2" color="text.secondary">
+                    已选择 {selectedItems.size} 个商品
+                  </Typography>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    startIcon={generatingPrintify ? <CircularProgress size={16} /> : <LocalShippingIcon />}
+                    onClick={handleGeneratePrintifyOrder}
+                    disabled={generatingPrintify}
+                  >
+                    {generatingPrintify ? '生成中...' : '生成 Printify 订单'}
+                  </Button>
+                </Box>
+              )}
+            </Box>
+            
+            {/* Printify 错误提示 */}
+            {printifyError && (
+              <Alert severity="error" sx={{ mb: 2 }} onClose={() => setPrintifyError(null)}>
+                {printifyError}
+              </Alert>
+            )}
+            
             {order.line_items && order.line_items.length > 0 ? (
               <TableContainer component={Paper} variant="outlined">
                 <Table>
                   <TableHead>
                     <TableRow>
+                      <TableCell padding="checkbox">
+                        <Checkbox
+                          checked={selectedItems.size === order.line_items.length && order.line_items.length > 0}
+                          indeterminate={selectedItems.size > 0 && selectedItems.size < order.line_items.length}
+                          onChange={handleSelectAllItems}
+                        />
+                      </TableCell>
                       <TableCell>商品名称</TableCell>
                       <TableCell>SKU</TableCell>
                       <TableCell>规格</TableCell>
@@ -749,37 +910,29 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
                   </TableHead>
                   <TableBody>
                     {order.line_items.map((item: any, index: number) => {
-                      // 兼容旧格式和新格式
-                      const title = item.metadata?.title || item.title || `商品 ${index + 1}`;
-                      const sku = item.metadata?.sku || item.sku || 'N/A';
-                      const variantLabel = item.metadata?.variant_label || item.variant_title || 'N/A';
+                      const sku = item.sku || item.metadata?.sku || 'N/A';
+                      const variantLabel = item.metadata?.variant_label || 'N/A';
                       const quantity = item.quantity || 1;
-                      
-                      // 处理价格 - 兼容不同的价格字段和格式
-                      let price = 0;
-                      if (item.metadata?.price !== undefined) {
-                        price = item.metadata.price;
-                      } else if (item.cost !== undefined) {
-                        price = item.cost;
-                      } else if (item.price !== undefined) {
-                        price = item.price;
-                      }
-                      
-                      // 如果价格是字符串格式（如 "10.00"），转换为数字
-                      if (typeof price === 'string') {
-                        price = parseFloat(price) || 0;
-                      }
-                      
-                      // 如果价格看起来是以分为单位（大于100），转换为元
-                      const displayPrice = price > 100 ? price / 100 : price;
-                      const currency = item.currency || order.currency || 'USD';
+                      const displayPrice = item.price || item.metadata?.price || 0;
+                      const currency = order.currency || 'USD';
                       
                       return (
                         <TableRow key={index}>
+                          <TableCell padding="checkbox">
+                            <Checkbox
+                              checked={selectedItems.has(index)}
+                              onChange={() => handleSelectItem(index)}
+                            />
+                          </TableCell>
                           <TableCell>
                             <Typography variant="body2" fontWeight="medium">
-                              {title}
+                              {item.metadata?.title || item.title || `商品 ${index + 1}`}
                             </Typography>
+                            {item.metadata?.variant_label && (
+                              <Typography variant="caption" color="text.secondary">
+                                {item.metadata.variant_label}
+                              </Typography>
+                            )}
                             {variantLabel && variantLabel !== 'N/A' && (
                               <Typography variant="caption" color="text.secondary">
                                 {variantLabel}

@@ -1873,7 +1873,7 @@ async def check_shopify_product_mapping(
         logger.info(f"✅ 找到外部系统: external_system_id={external_system.id}")
         
         # Import here to avoid circular imports
-        from app.models.product_new import ProductMapping, Product, ProductVariant
+        from app.models.product import ProductMapping, Product, ProductVariant
         from app.core.hashids_utils import encode_id
         from sqlalchemy import select, or_
         from sqlalchemy.orm import selectinload

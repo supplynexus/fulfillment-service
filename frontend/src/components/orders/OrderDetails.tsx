@@ -130,7 +130,7 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
 
       const resp = await frontendApi.post('/api/scm-orders', body);
       const scm = resp.data;
-      router.push(`/scm-orders/${scm.id}`);
+      router.push(`/scm-orders/${scm.id_hashid}`);
     } catch (e: any) {
       console.error('创建SCM订单失败', e);
       setCreateError(e?.response?.data?.detail || '创建SCM订单失败');

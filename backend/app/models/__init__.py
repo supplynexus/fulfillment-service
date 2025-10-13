@@ -11,7 +11,7 @@ from .external_system import ExternalSystem, ExternalSystemType
 from .external_data import ExternalData, ExternalDataType
 from .order import Order, OrderStatus
 # from .product import Product  # 已替换为新的商品系统
-from .product_new import (
+from .product import (
     Product,
     ProductDimension,
     ProductVariant,
