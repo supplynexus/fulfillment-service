@@ -190,7 +190,8 @@ async def get_scm_order(
         select(SCMOrder).where(
             SCMOrder.id == scm_order_id, SCMOrder.tenant_id == tenant.id
         )
-        scm_order = result.scalar_one_or_none()
+    )
+    scm_order = result.scalar_one_or_none()
 
     if not scm_order:
         logger.error(f"❌ SCM 订单不存在: scm_order_id={scm_order_id}, tenant_id={tenant.id}")

@@ -909,22 +909,30 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {order.line_items.map((item: any, index: number) => (
-                      <TableRow key={index}>
-                        <TableCell padding="checkbox">
-                          <Checkbox
-                            checked={selectedItems.has(index)}
-                            onChange={() => handleSelectItem(index)}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="body2" fontWeight="medium">
-                            {item.metadata?.title || item.title || `商品 ${index + 1}`}
-                          </Typography>
-                          {item.metadata?.variant_label && (
-                            <Typography variant="caption" color="text.secondary">
-                              {item.metadata.variant_label}
+                    {order.line_items.map((item: any, index: number) => {
+                      const sku = item.sku || item.metadata?.sku || 'N/A';
+                      const variantLabel = item.metadata?.variant_label || 'N/A';
+                      const quantity = item.quantity || 1;
+                      const displayPrice = item.price || item.metadata?.price || 0;
+                      const currency = order.currency || 'USD';
+                      
+                      return (
+                        <TableRow key={index}>
+                          <TableCell padding="checkbox">
+                            <Checkbox
+                              checked={selectedItems.has(index)}
+                              onChange={() => handleSelectItem(index)}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" fontWeight="medium">
+                              {item.metadata?.title || item.title || `商品 ${index + 1}`}
                             </Typography>
+                            {item.metadata?.variant_label && (
+                              <Typography variant="caption" color="text.secondary">
+                                {item.metadata.variant_label}
+                              </Typography>
+                            )}
                             {variantLabel && variantLabel !== 'N/A' && (
                               <Typography variant="caption" color="text.secondary">
                                 {variantLabel}
