@@ -17,7 +17,10 @@ from app.core.security import decrypt_data
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.models.external_system import ExternalSystem, ExternalSystemType
+from app.models.printify_order import PrintifyOrder
 from app.services.printify_error_handler import execute_printify_operation
+from sqlalchemy import select, desc
+from sqlalchemy.orm import selectinload
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -359,4 +362,336 @@ async def get_printify_products(
         logger.error("❌ 获取Printify商品列表时发生错误", error=str(e))
         raise HTTPException(
             status_code=500, detail=f"获取Printify商品列表失败: {str(e)}"
+        )
+
+
+@router.get("/orders", response_model=dict)
+async def get_printify_orders_from_db(
+    page: int = 1,
+    limit: int = 20,
+    status: Optional[str] = None,
+    search: Optional[str] = None,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
+) -> Any:
+    """
+    获取数据库中的 Printify 订单列表（从 SCM 订单创建的）
+    """
+    tenant, user = auth
+    
+    logger.info(
+        "🔍 开始获取数据库中的 Printify 订单列表",
+        tenant_id=tenant.id,
+        user_id=user.id,
+        page=page,
+        limit=limit,
+        status=status,
+        search=search
+    )
+
+    try:
+        # 构建查询
+        query = select(PrintifyOrder).where(
+            PrintifyOrder.tenant_id == tenant.id
+        ).options(
+            selectinload(PrintifyOrder.external_system),
+            selectinload(PrintifyOrder.scm_order)
+        ).order_by(desc(PrintifyOrder.created_at))
+
+        # 添加状态过滤
+        if status and status != 'all':
+            query = query.where(PrintifyOrder.status == status)
+
+        # 添加搜索过滤（搜索外部订单ID或客户邮箱）
+        if search:
+            search_term = f"%{search}%"
+            query = query.where(
+                (PrintifyOrder.external_order_id.ilike(search_term)) |
+                (PrintifyOrder.customer_email.ilike(search_term))
+            )
+
+        # 计算总数
+        count_query = select(PrintifyOrder.id).where(
+            PrintifyOrder.tenant_id == tenant.id
+        )
+        if status and status != 'all':
+            count_query = count_query.where(PrintifyOrder.status == status)
+        if search:
+            search_term = f"%{search}%"
+            count_query = count_query.where(
+                (PrintifyOrder.external_order_id.ilike(search_term)) |
+                (PrintifyOrder.customer_email.ilike(search_term))
+            )
+
+        total_result = await db.execute(count_query)
+        total_count = len(total_result.fetchall())
+
+        # 添加分页
+        offset = (page - 1) * limit
+        query = query.offset(offset).limit(limit)
+
+        # 执行查询
+        result = await db.execute(query)
+        orders = result.scalars().all()
+
+        logger.info(
+            "✅ Printify 订单列表获取成功",
+            count=len(orders),
+            total=total_count,
+            page=page
+        )
+
+        # 转换为响应格式
+        orders_data = []
+        for order in orders:
+            order_data = {
+                "id": order.id,
+                "external_order_id": order.external_order_id,
+                "scm_order_id": order.scm_order_id,
+                "status": order.status,
+                "total_price": order.total_price,
+                "currency": order.currency,
+                "customer_email": order.customer_email,
+                "customer_name": order.customer_name,
+                "shipping_address": order.shipping_address,
+                "billing_address": order.billing_address,
+                "tracking_number": order.tracking_number,
+                "tracking_url": order.tracking_url,
+                "carrier": order.carrier,
+                "created_at": order.created_at.isoformat() if order.created_at else None,
+                "updated_at": order.updated_at.isoformat() if order.updated_at else None,
+                "shipped_at": order.shipped_at.isoformat() if order.shipped_at else None,
+                "delivered_at": order.delivered_at.isoformat() if order.delivered_at else None,
+                "external_system": {
+                    "id": order.external_system.id,
+                    "name": order.external_system.name,
+                    "system_type": order.external_system.system_type
+                } if order.external_system else None,
+                "scm_order": {
+                    "id": order.scm_order.id,
+                    "scm_order_number": order.scm_order.scm_order_number,
+                    "status": order.scm_order.status
+                } if order.scm_order else None,
+                "printify_data": order.printify_data,
+                "external_data": order.external_data
+            }
+            orders_data.append(order_data)
+
+        return {
+            "success": True,
+            "orders": orders_data,
+            "total_count": total_count,
+            "current_page": page,
+            "per_page": limit,
+            "total_pages": (total_count + limit - 1) // limit,
+            "has_more": page * limit < total_count
+        }
+
+    except Exception as e:
+        logger.error("❌ 获取 Printify 订单列表失败", error=str(e))
+        import traceback
+        logger.error("   异常堆栈", stack=traceback.format_exc())
+        raise HTTPException(
+            status_code=500,
+            detail=f"获取 Printify 订单列表失败: {str(e)}"
+        )
+
+
+@router.get("/orders/{order_id}", response_model=dict)
+async def get_printify_order_details(
+    order_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
+) -> Any:
+    """
+    获取 Printify 订单详情
+    """
+    tenant, user = auth
+    
+    logger.info(
+        "🔍 开始获取 Printify 订单详情",
+        order_id=order_id,
+        tenant_id=tenant.id,
+        user_id=user.id
+    )
+
+    try:
+        # 查询订单
+        query = select(PrintifyOrder).where(
+            PrintifyOrder.id == order_id,
+            PrintifyOrder.tenant_id == tenant.id
+        ).options(
+            selectinload(PrintifyOrder.external_system),
+            selectinload(PrintifyOrder.scm_order)
+        )
+
+        result = await db.execute(query)
+        order = result.scalar_one_or_none()
+
+        if not order:
+            logger.error("❌ Printify 订单不存在", order_id=order_id)
+            raise HTTPException(status_code=404, detail="Printify 订单不存在")
+
+        logger.info("✅ Printify 订单详情获取成功", order_id=order_id)
+
+        # 构建响应数据
+        order_data = {
+            "id": order.id,
+            "external_order_id": order.external_order_id,
+            "scm_order_id": order.scm_order_id,
+            "status": order.status,
+            "total_price": order.total_price,
+            "currency": order.currency,
+            "customer_email": order.customer_email,
+            "customer_name": order.customer_name,
+            "shipping_address": order.shipping_address,
+            "billing_address": order.billing_address,
+            "tracking_number": order.tracking_number,
+            "tracking_url": order.tracking_url,
+            "carrier": order.carrier,
+            "created_at": order.created_at.isoformat() if order.created_at else None,
+            "updated_at": order.updated_at.isoformat() if order.updated_at else None,
+            "shipped_at": order.shipped_at.isoformat() if order.shipped_at else None,
+            "delivered_at": order.delivered_at.isoformat() if order.delivered_at else None,
+            "external_system": {
+                "id": order.external_system.id,
+                "name": order.external_system.name,
+                "system_type": order.external_system.system_type
+            } if order.external_system else None,
+            "scm_order": {
+                "id": order.scm_order.id,
+                "scm_order_number": order.scm_order.scm_order_number,
+                "status": order.scm_order.status
+            } if order.scm_order else None,
+            "printify_data": order.printify_data,
+            "external_data": order.external_data
+        }
+
+        return {
+            "success": True,
+            "order": order_data
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("❌ 获取 Printify 订单详情失败", error=str(e))
+        import traceback
+        logger.error("   异常堆栈", stack=traceback.format_exc())
+        raise HTTPException(
+            status_code=500,
+            detail=f"获取 Printify 订单详情失败: {str(e)}"
+        )
+
+
+@router.post("/orders/sync-logistics", response_model=dict)
+async def sync_printify_logistics(
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
+) -> Any:
+    """
+    同步 Printify 订单物流信息到 SCM 订单
+    """
+    tenant, user = auth
+    
+    logger.info(
+        "🔍 开始同步 Printify 订单物流信息",
+        tenant_id=tenant.id,
+        user_id=user.id
+    )
+
+    try:
+        # 获取所有待同步的 Printify 订单
+        query = select(PrintifyOrder).where(
+            PrintifyOrder.tenant_id == tenant.id,
+            PrintifyOrder.scm_order_id.isnot(None),
+            PrintifyOrder.status.in_(['shipped', 'delivered'])
+        ).options(
+            selectinload(PrintifyOrder.scm_order)
+        )
+
+        result = await db.execute(query)
+        orders = result.scalars().all()
+
+        logger.info(f"✅ 找到 {len(orders)} 个需要同步物流信息的订单")
+
+        synced_count = 0
+        errors = []
+
+        for order in orders:
+            try:
+                # 检查是否需要更新物流信息
+                needs_update = False
+                
+                # 检查跟踪号
+                if order.tracking_number and order.scm_order.tracking_number != order.tracking_number:
+                    order.scm_order.tracking_number = order.tracking_number
+                    needs_update = True
+
+                # 检查跟踪链接
+                if order.tracking_url and order.scm_order.tracking_url != order.tracking_url:
+                    order.scm_order.tracking_url = order.tracking_url
+                    needs_update = True
+
+                # 检查承运商
+                if order.carrier and order.scm_order.carrier != order.carrier:
+                    order.scm_order.carrier = order.carrier
+                    needs_update = True
+
+                # 检查发货时间
+                if order.shipped_at and not order.scm_order.shipped_at:
+                    order.scm_order.shipped_at = order.shipped_at
+                    needs_update = True
+
+                # 检查送达时间
+                if order.delivered_at and not order.scm_order.delivered_at:
+                    order.scm_order.delivered_at = order.delivered_at
+                    needs_update = True
+
+                # 更新订单状态
+                if order.status == 'shipped' and order.scm_order.fulfillment_status != 'shipped':
+                    order.scm_order.fulfillment_status = 'shipped'
+                    needs_update = True
+                elif order.status == 'delivered' and order.scm_order.fulfillment_status != 'delivered':
+                    order.scm_order.fulfillment_status = 'delivered'
+                    needs_update = True
+
+                if needs_update:
+                    # 更新 SCM 订单
+                    order.scm_order.updated_at = datetime.now()
+                    db.add(order.scm_order)
+                    
+                    # 更新 Printify 订单的同步时间
+                    order.updated_at = datetime.now()
+                    db.add(order)
+                    
+                    synced_count += 1
+                    logger.info(f"✅ 同步物流信息成功: Printify订单 {order.id} -> SCM订单 {order.scm_order.id}")
+
+            except Exception as e:
+                error_msg = f"同步订单 {order.id} 失败: {str(e)}"
+                logger.error(f"❌ {error_msg}")
+                errors.append(error_msg)
+
+        # 提交所有更改
+        await db.commit()
+
+        logger.info(f"✅ 物流信息同步完成: 成功 {synced_count} 个，错误 {len(errors)} 个")
+
+        return {
+            "success": True,
+            "message": f"物流信息同步完成",
+            "synced_count": synced_count,
+            "total_orders": len(orders),
+            "errors": errors,
+            "error_count": len(errors)
+        }
+
+    except Exception as e:
+        logger.error("❌ 同步 Printify 订单物流信息失败", error=str(e))
+        import traceback
+        logger.error("   异常堆栈", stack=traceback.format_exc())
+        raise HTTPException(
+            status_code=500,
+            detail=f"同步 Printify 订单物流信息失败: {str(e)}"
         )

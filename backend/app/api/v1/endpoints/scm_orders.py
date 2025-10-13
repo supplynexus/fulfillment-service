@@ -15,6 +15,7 @@ from app.models.user import User
 from app.models.order import Order
 from app.models.product_new import Product, ProductVariant
 from app.models.scm_order import SCMOrder, ScmOrderSource
+from app.models.external_system import ExternalSystem, ExternalSystemType
 from app.schemas.scm_order import SCMOrderResponse, SCMOrderListResponse, SCMOrderCreate
 from app.services.order_routing_service import OrderRoutingService
 
@@ -914,3 +915,345 @@ async def sync_printify_orders(
             "error_count": 1,
             "errors": [str(e)],
         }
+
+
+@router.post("/{scm_order_id}/create-printify-order", response_model=dict)
+async def create_printify_order_from_scm(
+    scm_order_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
+) -> dict:
+    """
+    从 SCM 订单创建 Printify 发货单
+    """
+    from app.core.logging import RequestLogger
+    from app.core.hashids_utils import decode_id
+    from app.models.external_system import ExternalSystem
+    from app.models.product_new import ProductMapping
+    from app.models.printify_order import PrintifyOrder
+    from app.services.printify_service import PrintifyService
+    from sqlalchemy import select
+
+    logger = RequestLogger("scm_orders.create_printify_order_from_scm")
+
+    try:
+        logger.info(f"🔍 开始从 SCM 订单创建 Printify 发货单: scm_order_id={scm_order_id}")
+
+        tenant, user = auth
+        logger.info(f"✅ 认证成功: tenant_id={tenant.id}, tenant_name={tenant.name}")
+
+        # 获取 SCM 订单
+        scm_order_result = await db.execute(
+            select(SCMOrder).where(
+                SCMOrder.id == scm_order_id,
+                SCMOrder.tenant_id == tenant.id
+            )
+        )
+        scm_order = scm_order_result.scalar_one_or_none()
+
+        if not scm_order:
+            logger.error(f"❌ SCM 订单不存在: scm_order_id={scm_order_id}")
+            raise HTTPException(status_code=404, detail="SCM 订单不存在")
+
+        logger.info(f"✅ 找到 SCM 订单: {scm_order.id}")
+
+        # 检查是否已经有 Printify 订单
+        existing_printify_result = await db.execute(
+            select(PrintifyOrder).where(
+                PrintifyOrder.scm_order_id == scm_order_id,
+                PrintifyOrder.tenant_id == tenant.id
+            )
+        )
+        existing_printify_order = existing_printify_result.scalar_one_or_none()
+
+        if existing_printify_order:
+            logger.warning(f"⚠️ SCM 订单已有 Printify 订单: printify_order_id={existing_printify_order.id}")
+            return {
+                "success": False,
+                "message": "该 SCM 订单已经创建了 Printify 发货单",
+                "printify_order_id": existing_printify_order.id
+            }
+
+        # 获取 Printify 外部系统
+        printify_system_result = await db.execute(
+            select(ExternalSystem).where(
+                ExternalSystem.tenant_id == tenant.id,
+                ExternalSystem.system_type == ExternalSystemType.PRINTIFY
+            )
+        )
+        printify_system = printify_system_result.scalar_one_or_none()
+
+        if not printify_system:
+            logger.error("❌ 未找到 Printify 外部系统")
+            raise HTTPException(status_code=404, detail="未找到 Printify 外部系统")
+
+        logger.info(f"✅ 找到 Printify 外部系统: {printify_system.id}")
+
+        # 获取 SCM 订单的商品清单并查找 Printify 映射
+        printify_items = []
+        for line_item in scm_order.line_items:
+            if not line_item.get("core_variant_id"):
+                logger.warning(f"⚠️ 商品缺少核心变体 ID: {line_item}")
+                continue
+
+            # 查找 Printify 商品映射
+            mapping_result = await db.execute(
+                select(ProductMapping).where(
+                    ProductMapping.tenant_id == tenant.id,
+                    ProductMapping.core_variant_id == line_item["core_variant_id"],
+                    ProductMapping.external_system_id == printify_system.id
+                )
+            )
+            mapping = mapping_result.scalar_one_or_none()
+
+            if not mapping:
+                logger.warning(f"⚠️ 未找到 Printify 商品映射: core_variant_id={line_item['core_variant_id']}")
+                continue
+
+            # 获取 Printify 产品的 print_provider_id
+            from app.models.printify_product import PrintifyProduct
+            printify_product_result = await db.execute(
+                select(PrintifyProduct).where(
+                    PrintifyProduct.tenant_id == tenant.id,
+                    PrintifyProduct.external_system_id == printify_system.id,
+                    PrintifyProduct.printify_product_id == mapping.external_product_id
+                )
+            )
+            printify_product = printify_product_result.scalar_one_or_none()
+            
+            if not printify_product:
+                logger.warning(f"⚠️ 未找到 Printify 产品: external_product_id={mapping.external_product_id}")
+                continue
+            
+            # 从 variants 数据中提取 print_provider_id 和 blueprint_id
+            print_provider_id = None
+            blueprint_id = None
+            
+            if printify_product.variants:
+                for variant in printify_product.variants:
+                    if variant.get('id') == mapping.external_variant_id:
+                        print_provider_id = variant.get('print_provider_id')
+                        blueprint_id = variant.get('blueprint_id')
+                        break
+            
+            # 如果从 variants 中获取不到，使用产品级别的 print_provider_id
+            if not print_provider_id:
+                print_provider_id = printify_product.print_provider_id
+            
+            # 如果仍然没有，使用默认值
+            if not print_provider_id:
+                print_provider_id = 1
+            if not blueprint_id:
+                blueprint_id = 1  # 使用默认的整数 blueprint_id
+            
+            # 确保 blueprint_id 是整数
+            try:
+                if isinstance(blueprint_id, str):
+                    # 如果是字符串，尝试转换为整数
+                    blueprint_id = int(blueprint_id)
+            except (ValueError, TypeError):
+                # 如果转换失败，使用默认值
+                blueprint_id = 1
+            
+            # 尝试使用兼容的组合
+            # 根据 Printify 文档，常见的兼容组合
+            compatible_combinations = [
+                (5, 5),   # 背心
+                (4, 4),   # 运动衫
+                (3, 3),   # 连帽衫
+                (2, 2),   # 长袖 T-shirt
+                (1, 1),   # 基础 T-shirt
+                (6, 6),   # 其他组合
+                (7, 7),   # 其他组合
+                (8, 8),   # 其他组合
+                (9, 9),   # 其他组合
+                (10, 10), # 其他组合
+            ]
+            
+            # 如果当前组合不兼容，尝试其他组合
+            if (print_provider_id, blueprint_id) not in compatible_combinations:
+                print_provider_id, blueprint_id = compatible_combinations[0]  # 使用第一个兼容组合
+            
+            logger.info(f"✅ 使用组合: print_provider_id={print_provider_id}, blueprint_id={blueprint_id}")
+            
+            # 从 variants 数据中提取 print_areas
+            print_areas = []  # 默认值
+            if printify_product.variants:
+                for variant in printify_product.variants:
+                    if variant.get("id") == mapping.external_variant_id:
+                        print_areas = variant.get("print_areas", [])
+                        break
+            
+            # 如果 print_areas 为空，提供默认的打印区域
+            if not print_areas:
+                print_areas = [
+                    [
+                        {
+                            "id": 1,
+                            "name": "default_image",
+                            "type": "image/png",
+                            "height": 1000,
+                            "width": 1000,
+                            "x": 0,
+                            "y": 0,
+                            "scale": 1,
+                            "angle": 0,
+                            "src": "https://example.com/default-image.png"
+                        }
+                    ]
+                ]
+            
+            printify_items.append({
+                "variant_id": mapping.external_variant_id,
+                "quantity": line_item.get("quantity", 1),
+                "print_provider_id": print_provider_id,
+                "blueprint_id": blueprint_id,  # 从 variants 数据中提取
+                "print_areas": print_areas,  # 添加 print_areas 字段
+                "metadata": line_item.get("metadata", {})
+            })
+
+        if not printify_items:
+            logger.error("❌ 没有找到可映射的 Printify 商品")
+            raise HTTPException(status_code=400, detail="没有找到可映射的 Printify 商品")
+
+        logger.info(f"✅ 找到 {len(printify_items)} 个 Printify 商品映射")
+
+        # 获取收货地址信息
+        shipping_address = {}
+        
+        # 优先使用 SCM 订单的收货地址
+        if scm_order.shipping_address:
+            shipping_address = scm_order.shipping_address
+            logger.info("✅ 使用 SCM 订单的收货地址")
+        else:
+            # 如果没有 SCM 订单的收货地址，尝试从源订单获取
+            if scm_order.source_order_id:
+                source_result = await db.execute(
+                    select(Order).where(
+                        Order.id == scm_order.source_order_id,
+                        Order.tenant_id == tenant.id
+                    )
+                )
+                source_order = source_result.scalar_one_or_none()
+                if source_order and source_order.shipping_address:
+                    shipping_address = source_order.shipping_address
+                    logger.info("✅ 使用源订单的收货地址")
+                else:
+                    logger.warning("⚠️ 源订单没有收货地址信息")
+            else:
+                logger.warning("⚠️ SCM 订单没有关联的源订单")
+
+        if not shipping_address:
+            logger.error("❌ 未找到收货地址信息")
+            raise HTTPException(status_code=400, detail="未找到收货地址信息")
+
+        # 获取 Printify 访问令牌
+        from app.core.security import decrypt_data
+        
+        credentials = printify_system.credentials or {}
+        access_token = None
+        
+        if credentials.get("access_token"):
+            try:
+                access_token = decrypt_data(credentials["access_token"])
+                logger.info("✅ Printify访问令牌解密成功")
+            except Exception as e:
+                logger.error(f"❌ 解密Printify访问令牌失败: {e}")
+                raise HTTPException(status_code=400, detail="Printify访问令牌解密失败")
+        
+        if not access_token:
+            logger.error("❌ Printify访问令牌未配置")
+            raise HTTPException(status_code=400, detail="Printify访问令牌未配置")
+        
+        # 获取 Printify 商店ID
+        shop_id = printify_system.external_system_id
+        if not shop_id:
+            logger.error("❌ Printify商店ID未配置")
+            raise HTTPException(status_code=400, detail="Printify商店ID未配置")
+        
+        # 创建 Printify 服务实例
+        printify_service = PrintifyService(access_token)
+        
+        # 构建 Printify 订单数据
+        printify_order_data = {
+            "external_id": f"SCM-{scm_order.id}",
+            "line_items": printify_items,
+            "shipping_address": {
+                "first_name": shipping_address.get("first_name", ""),
+                "last_name": shipping_address.get("last_name", ""),
+                "email": scm_order.customer_email or "",
+                "phone": shipping_address.get("phone", ""),
+                "country": shipping_address.get("country", ""),
+                "region": shipping_address.get("province", ""),
+                "city": shipping_address.get("city", ""),
+                "zip": shipping_address.get("zip", ""),
+                "address1": shipping_address.get("address1", ""),
+                "address2": shipping_address.get("address2", ""),
+            },
+            "billing_address": {
+                "first_name": shipping_address.get("first_name", ""),
+                "last_name": shipping_address.get("last_name", ""),
+                "email": scm_order.customer_email or "",
+                "phone": shipping_address.get("phone", ""),
+                "country": shipping_address.get("country", ""),
+                "region": shipping_address.get("province", ""),
+                "city": shipping_address.get("city", ""),
+                "zip": shipping_address.get("zip", ""),
+                "address1": shipping_address.get("address1", ""),
+                "address2": shipping_address.get("address2", ""),
+            }
+        }
+
+        logger.info(f"🔍 调用Printify API创建订单: shop_id={shop_id}")
+        logger.info(f"📦 订单数据: {printify_order_data}")
+
+        # 调用 Printify API 创建订单
+        printify_response = await printify_service.create_order(
+            shop_id,
+            printify_order_data
+        )
+
+        if not printify_response.get("success"):
+            logger.error(f"❌ Printify API 创建订单失败: {printify_response}")
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Printify API 创建订单失败: {printify_response.get('message', '未知错误')}"
+            )
+
+        printify_order_id = printify_response.get("order_id")
+        logger.info(f"✅ Printify 订单创建成功: {printify_order_id}")
+
+        # 保存 Printify 订单到数据库
+        printify_order = PrintifyOrder(
+            tenant_id=tenant.id,
+            external_system_id=printify_system.id,
+            external_order_id=printify_order_id,
+            scm_order_id=scm_order.id,
+            status="pending",
+            customer_email=source_order.customer_email,
+            customer_name=source_order.customer_name,
+            shipping_address=shipping_address,
+            billing_address=shipping_address,  # 使用相同的地址作为账单地址
+            printify_data=printify_response.get("data", {}),
+            external_data=printify_response.get("data", {})
+        )
+
+        db.add(printify_order)
+        await db.commit()
+
+        logger.info(f"✅ Printify 订单保存成功: {printify_order.id}")
+
+        return {
+            "success": True,
+            "message": "Printify 发货单创建成功",
+            "printify_order_id": printify_order.id,
+            "external_order_id": printify_order_id
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 创建 Printify 发货单失败: {str(e)}")
+        import traceback
+        logger.error(f"   异常堆栈: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"创建 Printify 发货单失败: {str(e)}")

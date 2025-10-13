@@ -39,6 +39,7 @@ class Tenant(Base):
     products = relationship("Product", back_populates="tenant")
     orders = relationship("Order", back_populates="tenant")
     scm_orders = relationship("SCMOrder", back_populates="tenant")
+    printify_orders = relationship("PrintifyOrder", back_populates="tenant")
     routing_rules = relationship("RoutingRule", back_populates="tenant")
     sync_configs = relationship("SyncConfig", back_populates="tenant")
     sync_jobs = relationship("SyncJob", back_populates="tenant")

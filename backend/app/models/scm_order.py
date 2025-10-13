@@ -93,6 +93,7 @@ class SCMOrder(Base):
     # Relationships
     tenant = relationship("Tenant", back_populates="scm_orders")
     source_order = relationship("Order", back_populates="scm_orders")
+    printify_orders = relationship("PrintifyOrder", back_populates="scm_order")
 
 
 class ScmOrderSource(Base):

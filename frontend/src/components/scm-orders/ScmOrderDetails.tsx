@@ -28,6 +28,7 @@ import {
   Refresh as RefreshIcon,
   Edit as EditIcon,
   Print as PrintIcon,
+  LocalShipping as LocalShippingIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
 import { frontendApi } from '@/lib/api';
@@ -87,6 +88,8 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
   const [order, setOrder] = useState<ScmOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [creatingPrintifyOrder, setCreatingPrintifyOrder] = useState(false);
+  const [printifyOrderError, setPrintifyOrderError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchOrderDetails();
@@ -116,6 +119,30 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
 
   const handleRefresh = () => {
     fetchOrderDetails();
+  };
+
+  const handleCreatePrintifyOrder = async () => {
+    if (!order) return;
+    
+    setCreatingPrintifyOrder(true);
+    setPrintifyOrderError(null);
+    
+    try {
+      const response = await frontendApi.post(`/api/scm-orders/${orderId}/create-printify-order`);
+      
+      if (response.data.success) {
+        // 刷新订单详情以获取最新的 Printify 订单信息
+        await fetchOrderDetails();
+        alert('Printify 发货单创建成功！');
+      } else {
+        setPrintifyOrderError(response.data.message || '创建 Printify 发货单失败');
+      }
+    } catch (error: any) {
+      console.error('创建 Printify 发货单失败:', error);
+      setPrintifyOrderError(error.response?.data?.detail || '创建 Printify 发货单失败');
+    } finally {
+      setCreatingPrintifyOrder(false);
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -223,8 +250,23 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
               <PrintIcon />
             </IconButton>
           </Tooltip>
+          <Tooltip title="创建 Printify 发货单">
+            <IconButton 
+              onClick={handleCreatePrintifyOrder}
+              disabled={creatingPrintifyOrder || loading}
+              color="primary"
+            >
+              <LocalShippingIcon />
+            </IconButton>
+          </Tooltip>
         </Box>
       </Box>
+
+      {printifyOrderError && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {printifyOrderError}
+        </Alert>
+      )}
 
       <Stack spacing={3}>
         {/* Order Status and Basic Info */}
