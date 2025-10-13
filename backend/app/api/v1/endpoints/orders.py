@@ -206,6 +206,7 @@ async def get_order(
                 "sku": item.sku,
                 "variant_title": item.variant_title,
                 "quantity": item.quantity,
+                "price": float(item.unit_price) if item.unit_price else 0.0,  # 使用price字段
                 "unit_price": float(item.unit_price) if item.unit_price else 0.0,
                 "total_price": float(item.total_price) if item.total_price else 0.0,
                 "core_product_id": item.core_product_id,
@@ -523,6 +524,27 @@ async def delete_order(
         if not order:
             logger.error(f"❌ 订单不存在: order_id={order_id}, tenant_id={tenant.id}")
             raise HTTPException(status_code=404, detail="Order not found")
+        
+        # 先删除相关的 scm_order_sources 记录
+        from app.models.scm_order import ScmOrderSource, SCMOrder
+        scm_sources_stmt = delete(ScmOrderSource).where(
+            ScmOrderSource.source_order_id == order_id,
+            ScmOrderSource.tenant_id == tenant.id
+        )
+        await db.execute(scm_sources_stmt)
+        logger.info(f"✅ 删除相关 SCM 订单源记录: order_id={order_id}")
+        
+        # 删除相关的 scm_orders 记录（将 source_order_id 设为 NULL）
+        scm_orders_stmt = select(SCMOrder).where(
+            SCMOrder.source_order_id == order_id,
+            SCMOrder.tenant_id == tenant.id
+        )
+        scm_orders_result = await db.execute(scm_orders_stmt)
+        scm_orders = scm_orders_result.scalars().all()
+        
+        for scm_order in scm_orders:
+            scm_order.source_order_id = None
+        logger.info(f"✅ 清空相关 SCM 订单的源订单引用: order_id={order_id}, count={len(scm_orders)}")
         
         # 删除订单（级联删除相关数据）
         await db.delete(order)

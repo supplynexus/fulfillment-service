@@ -408,11 +408,11 @@ export function ScmOrdersList() {
                       </TableCell>
                       <TableCell>
                         <Typography variant='body2' fontWeight='medium'>
-                          {order.id_hashid}
+                          {order.scm_order_number || order.id_hashid}
                         </Typography>
                         {order.scm_order_number && (
                           <Typography variant='caption' color='text.secondary'>
-                            SCM: {order.scm_order_number}
+                            ID: {order.id_hashid}
                           </Typography>
                         )}
                       </TableCell>

@@ -98,14 +98,30 @@ class ShopifyService:
                                 }
                             }
                             shippingAddress {
-                                country
-                                province
+                                id
+                                firstName
+                                lastName
+                                company
+                                address1
+                                address2
                                 city
+                                province
+                                country
+                                zip
+                                phone
                             }
                             billingAddress {
-                                country
-                                province
+                                id
+                                firstName
+                                lastName
+                                company
+                                address1
+                                address2
                                 city
+                                province
+                                country
+                                zip
+                                phone
                             }
                             lineItems(first: 50) {
                                 edges {
@@ -306,31 +322,29 @@ class ShopifyService:
                                         else {}
                                     )
 
+                                    # 提取 SKU - 优先从 variant.sku 获取，如果没有则从 item.sku 获取
+                                    sku = variant.get("sku", "") or item.get("sku", "")
+                                    
                                     line_items.append(
                                         {
-                                            "shopify_line_item_id": (
-                                                item.get("id", "").split("/")[-1]
-                                                if item.get("id")
-                                                else ""
-                                            ),
-                                            "name": item.get("name", ""),
+                                            "id": item.get("id", ""),
+                                            "title": item.get("name", ""),
                                             "quantity": item.get("quantity", 0),
-                                            "sku": item.get("sku", ""),
-                                            "variant_id": (
-                                                variant.get("id", "").split("/")[-1]
-                                                if variant.get("id")
-                                                else ""
-                                            ),
+                                            "sku": sku,
                                             "variant_title": variant.get("title", ""),
-                                            "variant_sku": variant.get("sku", ""),
-                                            "price": variant.get("price", "0"),
-                                            "product_id": (
-                                                product.get("id", "").split("/")[-1]
-                                                if product.get("id")
-                                                else ""
-                                            ),
-                                            "product_title": product.get("title", ""),
-                                            "product_handle": product.get("handle", ""),
+                                            "vendor": product.get("vendor", ""),
+                                            "price": item.get("price", variant.get("price", "0")),
+                                            "currency": item.get("currency", "USD"),
+                                            "product": {
+                                                "id": product.get("id", ""),
+                                                "title": product.get("title", ""),
+                                                "handle": product.get("handle", ""),
+                                            },
+                                            "variant": {
+                                                "id": variant.get("id", ""),
+                                                "title": variant.get("title", ""),
+                                                "sku": variant.get("sku", ""),
+                                            }
                                         }
                                     )
             except (AttributeError, TypeError) as e:
@@ -785,14 +799,30 @@ class ShopifyService:
                             displayFulfillmentStatus
                             displayFinancialStatus
                             shippingAddress {
-                                country
-                                province
+                                id
+                                firstName
+                                lastName
+                                company
+                                address1
+                                address2
                                 city
+                                province
+                                country
+                                zip
+                                phone
                             }
                             billingAddress {
-                                country
-                                province
+                                id
+                                firstName
+                                lastName
+                                company
+                                address1
+                                address2
                                 city
+                                province
+                                country
+                                zip
+                                phone
                             }
                             customer {
                                 id
@@ -1429,17 +1459,28 @@ class ShopifyService:
             if "line_items" in order_data and order_data.get("line_items"):
                 # New structure with detailed line items
                 for item in order_data.get("line_items", []):
+                    # 提取 SKU - 优先从 variant.sku 获取，如果没有则从 item.sku 获取
+                    variant = item.get("variant", {})
+                    sku = variant.get("sku", "") or item.get("sku", "")
+                    
+                    # 提取 variant_title - 优先从 variant.title 获取，如果没有则从 item.variant_title 获取
+                    variant_title = variant.get("title", "") or item.get("variant_title", "")
+                    
+                    # 提取 vendor - 优先从 product.vendor 获取，如果没有则从 item.vendor 获取
+                    product = item.get("product", {})
+                    vendor = product.get("vendor", "") or item.get("vendor", "")
+                    
                     line_items.append(
                         {
                             "id": item.get("id", ""),
                             "title": item.get("title", ""),
                             "quantity": item.get("quantity", 0),
-                            "sku": item.get("sku", ""),
-                            "variant_title": item.get("variant_title", ""),
-                            "vendor": item.get("vendor", ""),
+                            "sku": sku,
+                            "variant_title": variant_title,
+                            "vendor": vendor,
                             "price": item.get("price", "0"),
                             "currency": item.get("currency", currency),
-                            "product": item.get("product", {}),
+                            "product": product,
                         }
                     )
             elif "line_items_count" in order_data:

@@ -12,6 +12,7 @@ from app.models.product import Product, ProductVariant, ProductMapping, External
 from app.core.logging import RequestLogger
 from typing import List, Dict, Any
 from pydantic import BaseModel
+from typing import Optional
 
 router = APIRouter()
 
@@ -22,11 +23,11 @@ class MappingStatus(BaseModel):
     core_variant_sku: str
     core_variant_name: str
     is_mapped: bool
-    external_product_id: int = None
-    external_variant_id: int = None
-    external_sku: str = None
-    external_name: str = None
-    mapping_id: int = None
+    external_product_id: Optional[int] = None
+    external_variant_id: Optional[int] = None
+    external_sku: Optional[str] = None
+    external_name: Optional[str] = None
+    mapping_id: Optional[int] = None
 
 
 class ProductMappingCheckResponse(BaseModel):
@@ -93,6 +94,22 @@ async def check_scm_order_mapping(
 
     logger.info(f"🔍 检查商品映射: scm_order_id={scm_order_id}, variant_count={len(core_variant_ids)}")
 
+    # 查询外部系统
+    from app.models.external_system import ExternalSystem, ExternalSystemType
+    external_system_result = await db.execute(
+        select(ExternalSystem).where(
+            and_(
+                ExternalSystem.tenant_id == tenant.id,
+                ExternalSystem.system_type == ExternalSystemType.PRINTIFY
+            )
+        )
+    )
+    external_system_obj = external_system_result.scalar_one_or_none()
+    
+    if not external_system_obj:
+        logger.error(f"❌ 未找到 Printify 外部系统: tenant_id={tenant.id}")
+        raise HTTPException(status_code=404, detail="Printify external system not found")
+
     # 查询商品变体信息
     variants_result = await db.execute(
         select(ProductVariant).where(
@@ -111,7 +128,7 @@ async def check_scm_order_mapping(
             and_(
                 ProductMapping.core_variant_id.in_(core_variant_ids),
                 ProductMapping.tenant_id == tenant.id,
-                ProductMapping.external_system == external_system
+                ProductMapping.external_system_id == external_system_obj.id
             )
         )
     )
@@ -142,7 +159,7 @@ async def check_scm_order_mapping(
             external_product_result = await db.execute(
                 select(ExternalProduct).where(
                     and_(
-                        ExternalProduct.id == mapping.external_product_id,
+                        ExternalProduct.external_product_id == mapping.external_product_id,
                         ExternalProduct.tenant_id == tenant.id
                     )
                 )
@@ -150,22 +167,20 @@ async def check_scm_order_mapping(
             external_product = external_product_result.scalar_one_or_none()
             
             mapping_status.append(MappingStatus(
-                core_variant_id=core_variant_id,
-                core_variant_sku=variant.sku,
-                core_variant_name=variant.name,
-                is_mapped=True,
-                external_product_id=mapping.external_product_id,
-                external_variant_id=mapping.external_variant_id,
-                external_sku=external_product.sku if external_product else None,
-                external_name=external_product.name if external_product else None,
-                mapping_id=mapping.id
-            ))
+                       core_variant_id=core_variant_id,
+                       core_variant_sku=variant.sku,
+                       core_variant_name=variant.sku,  # 使用 SKU 作为名称
+                       is_mapped=True,
+                       external_sku=external_product.sku if external_product else "",
+                       external_name=external_product.name if external_product else "",
+                       mapping_id=mapping.id
+                   ))
         else:
             unmapped_items += 1
             mapping_status.append(MappingStatus(
                 core_variant_id=core_variant_id,
                 core_variant_sku=variant.sku,
-                core_variant_name=variant.name,
+                core_variant_name=variant.sku,  # 使用 SKU 作为名称
                 is_mapped=False
             ))
 

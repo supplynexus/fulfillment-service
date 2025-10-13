@@ -33,9 +33,27 @@ export async function POST(request: NextRequest) {
     const bodyString = JSON.stringify(requestBody);
     const backendPath = '/api/v1/shopify-orders/';
     const signatureString = `POST${backendPath}${timestamp}${nonce}${tenantName}${bodyString}`;
+    
+    console.log('🔍 前端签名生成调试信息:', {
+      method: 'POST',
+      path: backendPath,
+      timestamp,
+      nonce,
+      tenantName,
+      bodyString,
+      bodyStringLength: bodyString.length,
+      signatureString,
+      signatureStringLength: signatureString.length,
+    });
 
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
     const signature = generateBackendSignature(privateKey, signatureString, timestamp, nonce, tenantName);
+    
+    console.log('🔍 前端签名生成完成:', {
+      signatureLength: signature.length,
+      signature: signature.substring(0, 50) + '...', // 只显示前50个字符
+      tenantName,
+    });
 
     // 构建后端 URL
     const backendUrl = `${process.env.BACKEND_URL || 'http://localhost:8000'}${backendPath}`;

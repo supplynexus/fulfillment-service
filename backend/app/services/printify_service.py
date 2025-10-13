@@ -96,20 +96,50 @@ class PrintifyService:
 
     async def create_order(
         self, shop_id: str, order_data: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Dict[str, Any]:
         """Create an order in Printify"""
-        try:
+        async def _create_order_operation():
             async with httpx.AsyncClient() as client:
                 response = await client.post(
                     f"{self.base_url}/shops/{shop_id}/orders.json",
                     headers=self.headers,
                     json=order_data,
+                    timeout=30.0
                 )
                 response.raise_for_status()
                 return response.json()
+        
+        try:
+            result = await execute_printify_operation(
+                _create_order_operation,
+                "创建Printify订单"
+            )
+            
+            if result.get("success"):
+                # 提取订单ID
+                order_data = result.get("data", {})
+                order_id = order_data.get("id")
+                
+                return {
+                    "success": True,
+                    "order_id": order_id,
+                    "data": order_data,
+                    "message": "Printify订单创建成功"
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": result.get("message", "创建Printify订单失败"),
+                    "error_code": result.get("error_code"),
+                    "error_details": result.get("error_details")
+                }
         except Exception as e:
-            logger.error(f"Failed to create Printify order: {e}")
-            return None
+            logger.error(f"❌ 创建Printify订单失败: {str(e)}")
+            return {
+                "success": False,
+                "message": f"创建Printify订单失败: {str(e)}",
+                "error_code": "CREATE_ORDER_ERROR"
+            }
 
     async def get_orders(
         self, shop_id: str, limit: int = 50, page: int = 1

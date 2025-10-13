@@ -120,6 +120,23 @@ async def get_shopify_orders(
         # 转换为响应格式
         order_responses = []
         for order in orders:
+            # 处理日期时间格式，确保时区格式正确
+            def format_datetime(dt):
+                if dt is None:
+                    return None
+                # 如果已经是datetime对象，直接返回
+                if isinstance(dt, datetime):
+                    return dt
+                # 如果是字符串，尝试解析并重新格式化
+                if isinstance(dt, str):
+                    try:
+                        from dateutil import parser
+                        parsed_dt = parser.parse(dt)
+                        return parsed_dt
+                    except:
+                        return None
+                return None
+            
             order_responses.append(ShopifyOrderResponse(
                 id=order.id,
                 id_hashid=encode_id(order.id),  # 添加 hashid
@@ -146,9 +163,9 @@ async def get_shopify_orders(
                 fulfillments=order.fulfillments,
                 refunds=order.refunds,
                 raw_data=order.raw_data,
-                created_at=order.created_at,
-                updated_at=order.updated_at,
-                last_synced_at=order.last_synced_at
+                created_at=format_datetime(order.created_at),
+                updated_at=format_datetime(order.updated_at),
+                last_synced_at=format_datetime(order.last_synced_at)
             ))
         
         # 计算分页信息
@@ -680,6 +697,27 @@ async def sync_shopify_order_to_core(
             order_number = await OrderNumberService.generate_order_number(db, tenant.id, "ORD")
             logger.info(f"📝 生成订单编号: {order_number}")
             
+            # 转换 Shopify 地址格式到核心订单格式
+            def convert_shopify_address(shopify_addr):
+                if not shopify_addr:
+                    return {}
+                
+                # 合并 firstName 和 lastName
+                first_name = shopify_addr.get("firstName", "")
+                last_name = shopify_addr.get("lastName", "")
+                full_name = f"{first_name} {last_name}".strip()
+                
+                return {
+                    "name": full_name,
+                    "address1": shopify_addr.get("address1", ""),
+                    "address2": shopify_addr.get("address2", ""),
+                    "city": shopify_addr.get("city", ""),
+                    "province": shopify_addr.get("province", ""),
+                    "country": shopify_addr.get("country", ""),
+                    "zip": shopify_addr.get("zip", ""),
+                    "phone": shopify_addr.get("phone", "")
+                }
+            
             core_order = Order(
                 tenant_id=tenant.id,
                 external_system_id=None,  # 暂时不关联外部系统
@@ -695,8 +733,8 @@ async def sync_shopify_order_to_core(
                 customer_email=shopify_order.customer_data.get("email", "") if shopify_order.customer_data else "",
                 customer_name=shopify_order.customer_data.get("name", "") if shopify_order.customer_data else "",
                 customer_phone=None,
-                shipping_address=shopify_order.shipping_address or {},
-                billing_address=shopify_order.billing_address or {},
+                shipping_address=convert_shopify_address(shopify_order.shipping_address),
+                billing_address=convert_shopify_address(shopify_order.billing_address),
                 shopify_raw_data=shopify_order.raw_data,
                 external_data=shopify_order.raw_data,
                 order_date=shopify_order.created_at

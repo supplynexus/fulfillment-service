@@ -38,6 +38,20 @@ interface ScmOrderDetailsProps {
   orderId: string;
 }
 
+interface SourceOrderInfo {
+  id: number;
+  order_number?: string;
+  external_order_id?: string;
+  external_order_number?: string;
+  external_order_name?: string;
+  status: string;
+  total_amount: number;
+  currency: string;
+  customer_email: string;
+  customer_name?: string;
+  created_at: string;
+}
+
 interface ScmOrder {
   id: number;
   tenant_id: number;
@@ -66,6 +80,8 @@ interface ScmOrder {
   last_retry_at?: string;
   created_at: string;
   updated_at?: string;
+  // 源订单信息
+  source_orders: SourceOrderInfo[];
 }
 
 export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
@@ -82,6 +98,7 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
   const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
   const [generatingPrintify, setGeneratingPrintify] = useState(false);
   const [printifyError, setPrintifyError] = useState<string | null>(null);
+  const [printifySuccess, setPrintifySuccess] = useState<string | null>(null);
 
   useEffect(() => {
     fetchOrderDetails();
@@ -95,6 +112,7 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
       console.log(`🔍 正在获取SCM订单详情: /api/scm-orders/${orderId}`);
       const response = await frontendApi.get(`/api/scm-orders/${orderId}`);
       console.log('✅ SCM订单详情获取成功:', response.data);
+      console.log('📦 商品清单数据:', response.data.line_items);
       setOrder(response.data);
     } catch (err: any) {
       console.error('❌ Failed to fetch SCM order details:', err);
@@ -113,7 +131,7 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
   };
 
   const checkProductMapping = async () => {
-    if (!order) return;
+    if (!order) return null;
     
     try {
       setCheckingMapping(true);
@@ -123,9 +141,12 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
       
       console.log('商品映射检查结果:', response.data);
       
+      return response.data;
+      
     } catch (error: any) {
       console.error('检查商品映射失败:', error);
       setFulfillmentError(error?.response?.data?.detail || '检查商品映射失败');
+      return null;
     } finally {
       setCheckingMapping(false);
     }
@@ -134,21 +155,27 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
   const handleFulfillToPrintify = async () => {
     if (!order) return;
     
-    // 先检查商品映射
-    if (!mappingStatus) {
-      await checkProductMapping();
-      return;
-    }
-    
-    // 检查是否所有商品都已映射
-    if (!mappingStatus.can_fulfill) {
-      setFulfillmentError(`无法发货：${mappingStatus.unmapped_items} 个商品未映射到 Printify`);
-      return;
-    }
-    
     try {
       setFulfilling(true);
       setFulfillmentError(null);
+      
+      // 先检查商品映射
+      let currentMappingStatus = mappingStatus;
+      if (!currentMappingStatus) {
+        console.log('🔍 开始检查商品映射...');
+        currentMappingStatus = await checkProductMapping();
+        console.log('🔍 映射状态获取结果:', currentMappingStatus);
+      }
+      
+      // 检查是否所有商品都已映射
+      console.log('🔍 检查映射状态:', { mappingStatus: currentMappingStatus, can_fulfill: currentMappingStatus?.can_fulfill });
+      if (!currentMappingStatus?.can_fulfill) {
+        console.log('❌ 商品映射检查失败，无法发货');
+        setFulfillmentError(`无法发货：${currentMappingStatus?.unmapped_items || 0} 个商品未映射到 Printify`);
+        return;
+      }
+      
+      console.log('✅ 商品映射检查通过，开始发货流程');
       
       const response = await frontendApi.post(`/api/scm-orders/${orderId}/fulfill`, {
         fulfillment_channel: 'printify',
@@ -196,6 +223,7 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
     try {
       setGeneratingPrintify(true);
       setPrintifyError(null);
+      setPrintifySuccess(null);
       
       // 获取选中的商品
       const selectedLineItems = Array.from(selectedItems).map(index => order.line_items[index]);
@@ -207,8 +235,21 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
       
       console.log('Printify 订单生成成功:', response.data);
       
+      // 显示成功消息
+      const printifyOrderId = response.data?.printify_order_id || response.data?.id;
+      if (printifyOrderId) {
+        setPrintifySuccess(`Printify 订单生成成功！订单ID: ${printifyOrderId}`);
+      } else {
+        setPrintifySuccess('Printify 订单生成成功！');
+      }
+      
       // 刷新订单详情以获取最新状态
       await fetchOrderDetails();
+      
+      // 3秒后清除成功消息
+      setTimeout(() => {
+        setPrintifySuccess(null);
+      }, 3000);
       
     } catch (error: any) {
       console.error('生成 Printify 订单失败:', error);
@@ -304,7 +345,7 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
             <ArrowBackIcon />
           </IconButton>
           <Typography variant="h4" component="h1">
-            SCM 订单详情 #{order.id}
+            SCM 订单详情 {orderId}
           </Typography>
         </Box>
         <Box>
@@ -415,8 +456,8 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
                   <Typography variant="body2" color="text.secondary">
                     SCM 订单ID:
                   </Typography>
-                  <Typography variant="body2" fontWeight="medium">
-                    #{order.id}
+                  <Typography variant="body2" fontWeight="medium" fontFamily="monospace">
+                    {orderId}
                   </Typography>
                 </Box>
                 {order.scm_order_number && (
@@ -426,24 +467,6 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
                     </Typography>
                     <Typography variant="body2" fontWeight="medium">
                       {order.scm_order_number}
-                    </Typography>
-                  </Box>
-                )}
-                <Box display="flex" justifyContent="space-between">
-                  <Typography variant="body2" color="text.secondary">
-                    目标系统:
-                  </Typography>
-                  <Typography variant="body2" fontWeight="medium">
-                    {order.target_system_type}
-                  </Typography>
-                </Box>
-                {order.target_system_id && (
-                  <Box display="flex" justifyContent="space-between">
-                    <Typography variant="body2" color="text.secondary">
-                      目标系统ID:
-                    </Typography>
-                    <Typography variant="body2" fontWeight="medium">
-                      {order.target_system_id}
                     </Typography>
                   </Box>
                 )}
@@ -550,6 +573,79 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
             </CardContent>
           </Card>
         </Stack>
+
+        {/* Source Orders Information */}
+        {order.source_orders && order.source_orders.length > 0 && (
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                源订单信息
+              </Typography>
+              <TableContainer component={Paper} variant="outlined">
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>订单编号</TableCell>
+                      <TableCell>外部订单号</TableCell>
+                      <TableCell>状态</TableCell>
+                      <TableCell align="right">金额</TableCell>
+                      <TableCell>客户邮箱</TableCell>
+                      <TableCell>创建时间</TableCell>
+                      <TableCell>操作</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {order.source_orders.map((sourceOrder: SourceOrderInfo) => (
+                      <TableRow key={sourceOrder.id}>
+                        <TableCell>
+                          <Typography variant="body2" fontWeight="medium">
+                            {sourceOrder.order_number || `#${sourceOrder.id}`}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2" fontFamily="monospace">
+                            {sourceOrder.external_order_number || sourceOrder.external_order_name || 'N/A'}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            label={sourceOrder.status}
+                            color={getStatusColor(sourceOrder.status) as any}
+                            size="small"
+                          />
+                        </TableCell>
+                        <TableCell align="right">
+                          <Typography variant="body2">
+                            {formatCurrency(sourceOrder.total_amount, sourceOrder.currency)}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2">
+                            {sourceOrder.customer_email}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2">
+                            {formatDate(sourceOrder.created_at)}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={() => router.push(`/orders/${sourceOrder.id}`)}
+                          >
+                            查看详情
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </CardContent>
+          </Card>
+        )}
 
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={3}>
           {/* Shipping Address */}
@@ -816,6 +912,13 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
               </Alert>
             )}
             
+            {/* Printify 成功提示 */}
+            {printifySuccess && (
+              <Alert severity="success" sx={{ mb: 2 }} onClose={() => setPrintifySuccess(null)}>
+                {printifySuccess}
+              </Alert>
+            )}
+            
             {order.line_items && order.line_items.length > 0 ? (
               <TableContainer component={Paper} variant="outlined">
                 <Table>
@@ -837,57 +940,64 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {order.line_items.map((item: any, index: number) => (
-                      <TableRow key={index}>
-                        <TableCell padding="checkbox">
-                          <Checkbox
-                            checked={selectedItems.has(index)}
-                            onChange={() => handleSelectItem(index)}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="body2" fontWeight="medium">
-                            {item.metadata?.title || item.title || `商品 ${index + 1}`}
-                          </Typography>
-                          {item.metadata?.variant_label && (
-                            <Typography variant="caption" color="text.secondary">
-                              {item.metadata.variant_label}
+                    {order.line_items.map((item: any, index: number) => {
+                      const sku = item.sku || item.metadata?.sku || 'N/A';
+                      const variantLabel = item.metadata?.variant_label || 'N/A';
+                      const quantity = item.quantity || 1;
+                      const displayPrice = item.price || item.metadata?.price || 0;
+                      const currency = order.currency || 'USD';
+                      
+                      return (
+                        <TableRow key={index}>
+                          <TableCell padding="checkbox">
+                            <Checkbox
+                              checked={selectedItems.has(index)}
+                              onChange={() => handleSelectItem(index)}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" fontWeight="medium">
+                              {item.metadata?.title || item.title || `商品 ${index + 1}`}
                             </Typography>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="body2" fontFamily="monospace">
-                            {item.metadata?.sku || item.sku || 'N/A'}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="body2" color="text.secondary">
-                            {item.metadata?.variant_label || item.variant_title || 'N/A'}
-                          </Typography>
-                        </TableCell>
-                        <TableCell align="right">
-                          <Typography variant="body2">
-                            {item.quantity || 1}
-                          </Typography>
-                        </TableCell>
-                        <TableCell align="right">
-                          <Typography variant="body2">
-                            {formatCurrency(
-                              (item.metadata?.price || item.cost || item.price || 0) / 100, 
-                              item.currency || order.currency
+                            {item.metadata?.variant_label && (
+                              <Typography variant="caption" color="text.secondary">
+                                {item.metadata.variant_label}
+                              </Typography>
                             )}
-                          </Typography>
-                        </TableCell>
-                        <TableCell align="right">
-                          <Typography variant="body2" fontWeight="medium">
-                            {formatCurrency(
-                              ((item.metadata?.price || item.cost || item.price || 0) / 100) * (item.quantity || 1),
-                              item.currency || order.currency
+                            {variantLabel && variantLabel !== 'N/A' && (
+                              <Typography variant="caption" color="text.secondary">
+                                {variantLabel}
+                              </Typography>
                             )}
-                          </Typography>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" fontFamily="monospace">
+                              {sku}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" color="text.secondary">
+                              {variantLabel}
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="right">
+                            <Typography variant="body2">
+                              {quantity}
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="right">
+                            <Typography variant="body2">
+                              {formatCurrency(displayPrice, currency)}
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="right">
+                            <Typography variant="body2" fontWeight="medium">
+                              {formatCurrency(displayPrice * quantity, currency)}
+                            </Typography>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </TableContainer>

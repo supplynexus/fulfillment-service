@@ -310,3 +310,4 @@ deployment/docker/redis/data-*/
 
 # Virtual environment
 .venv/
+environment.local
