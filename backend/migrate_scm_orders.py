@@ -103,3 +103,10 @@ async def migrate_scm_orders():
 
 if __name__ == "__main__":
     asyncio.run(migrate_scm_orders())
+
+
+
+
+
+
+

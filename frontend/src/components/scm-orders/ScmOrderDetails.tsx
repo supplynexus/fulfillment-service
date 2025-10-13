@@ -98,6 +98,7 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
   const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
   const [generatingPrintify, setGeneratingPrintify] = useState(false);
   const [printifyError, setPrintifyError] = useState<string | null>(null);
+  const [printifySuccess, setPrintifySuccess] = useState<string | null>(null);
 
   useEffect(() => {
     fetchOrderDetails();
@@ -130,7 +131,7 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
   };
 
   const checkProductMapping = async () => {
-    if (!order) return;
+    if (!order) return null;
     
     try {
       setCheckingMapping(true);
@@ -140,9 +141,12 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
       
       console.log('商品映射检查结果:', response.data);
       
+      return response.data;
+      
     } catch (error: any) {
       console.error('检查商品映射失败:', error);
       setFulfillmentError(error?.response?.data?.detail || '检查商品映射失败');
+      return null;
     } finally {
       setCheckingMapping(false);
     }
@@ -151,21 +155,27 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
   const handleFulfillToPrintify = async () => {
     if (!order) return;
     
-    // 先检查商品映射
-    if (!mappingStatus) {
-      await checkProductMapping();
-      return;
-    }
-    
-    // 检查是否所有商品都已映射
-    if (!mappingStatus.can_fulfill) {
-      setFulfillmentError(`无法发货：${mappingStatus.unmapped_items} 个商品未映射到 Printify`);
-      return;
-    }
-    
     try {
       setFulfilling(true);
       setFulfillmentError(null);
+      
+      // 先检查商品映射
+      let currentMappingStatus = mappingStatus;
+      if (!currentMappingStatus) {
+        console.log('🔍 开始检查商品映射...');
+        currentMappingStatus = await checkProductMapping();
+        console.log('🔍 映射状态获取结果:', currentMappingStatus);
+      }
+      
+      // 检查是否所有商品都已映射
+      console.log('🔍 检查映射状态:', { mappingStatus: currentMappingStatus, can_fulfill: currentMappingStatus?.can_fulfill });
+      if (!currentMappingStatus?.can_fulfill) {
+        console.log('❌ 商品映射检查失败，无法发货');
+        setFulfillmentError(`无法发货：${currentMappingStatus?.unmapped_items || 0} 个商品未映射到 Printify`);
+        return;
+      }
+      
+      console.log('✅ 商品映射检查通过，开始发货流程');
       
       const response = await frontendApi.post(`/api/scm-orders/${orderId}/fulfill`, {
         fulfillment_channel: 'printify',
@@ -213,6 +223,7 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
     try {
       setGeneratingPrintify(true);
       setPrintifyError(null);
+      setPrintifySuccess(null);
       
       // 获取选中的商品
       const selectedLineItems = Array.from(selectedItems).map(index => order.line_items[index]);
@@ -224,8 +235,21 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
       
       console.log('Printify 订单生成成功:', response.data);
       
+      // 显示成功消息
+      const printifyOrderId = response.data?.printify_order_id || response.data?.id;
+      if (printifyOrderId) {
+        setPrintifySuccess(`Printify 订单生成成功！订单ID: ${printifyOrderId}`);
+      } else {
+        setPrintifySuccess('Printify 订单生成成功！');
+      }
+      
       // 刷新订单详情以获取最新状态
       await fetchOrderDetails();
+      
+      // 3秒后清除成功消息
+      setTimeout(() => {
+        setPrintifySuccess(null);
+      }, 3000);
       
     } catch (error: any) {
       console.error('生成 Printify 订单失败:', error);
@@ -321,7 +345,7 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
             <ArrowBackIcon />
           </IconButton>
           <Typography variant="h4" component="h1">
-            SCM 订单详情 #{order.id}
+            SCM 订单详情 {orderId}
           </Typography>
         </Box>
         <Box>
@@ -432,8 +456,8 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
                   <Typography variant="body2" color="text.secondary">
                     SCM 订单ID:
                   </Typography>
-                  <Typography variant="body2" fontWeight="medium">
-                    #{order.id}
+                  <Typography variant="body2" fontWeight="medium" fontFamily="monospace">
+                    {orderId}
                   </Typography>
                 </Box>
                 {order.scm_order_number && (
@@ -885,6 +909,13 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
             {printifyError && (
               <Alert severity="error" sx={{ mb: 2 }} onClose={() => setPrintifyError(null)}>
                 {printifyError}
+              </Alert>
+            )}
+            
+            {/* Printify 成功提示 */}
+            {printifySuccess && (
+              <Alert severity="success" sx={{ mb: 2 }} onClose={() => setPrintifySuccess(null)}>
+                {printifySuccess}
               </Alert>
             )}
             
