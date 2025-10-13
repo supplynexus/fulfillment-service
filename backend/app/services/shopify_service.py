@@ -98,14 +98,30 @@ class ShopifyService:
                                 }
                             }
                             shippingAddress {
-                                country
-                                province
+                                id
+                                firstName
+                                lastName
+                                company
+                                address1
+                                address2
                                 city
+                                province
+                                country
+                                zip
+                                phone
                             }
                             billingAddress {
-                                country
-                                province
+                                id
+                                firstName
+                                lastName
+                                company
+                                address1
+                                address2
                                 city
+                                province
+                                country
+                                zip
+                                phone
                             }
                             lineItems(first: 50) {
                                 edges {
@@ -783,14 +799,30 @@ class ShopifyService:
                             displayFulfillmentStatus
                             displayFinancialStatus
                             shippingAddress {
-                                country
-                                province
+                                id
+                                firstName
+                                lastName
+                                company
+                                address1
+                                address2
                                 city
+                                province
+                                country
+                                zip
+                                phone
                             }
                             billingAddress {
-                                country
-                                province
+                                id
+                                firstName
+                                lastName
+                                company
+                                address1
+                                address2
                                 city
+                                province
+                                country
+                                zip
+                                phone
                             }
                             customer {
                                 id

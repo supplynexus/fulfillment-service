@@ -697,6 +697,27 @@ async def sync_shopify_order_to_core(
             order_number = await OrderNumberService.generate_order_number(db, tenant.id, "ORD")
             logger.info(f"📝 生成订单编号: {order_number}")
             
+            # 转换 Shopify 地址格式到核心订单格式
+            def convert_shopify_address(shopify_addr):
+                if not shopify_addr:
+                    return {}
+                
+                # 合并 firstName 和 lastName
+                first_name = shopify_addr.get("firstName", "")
+                last_name = shopify_addr.get("lastName", "")
+                full_name = f"{first_name} {last_name}".strip()
+                
+                return {
+                    "name": full_name,
+                    "address1": shopify_addr.get("address1", ""),
+                    "address2": shopify_addr.get("address2", ""),
+                    "city": shopify_addr.get("city", ""),
+                    "province": shopify_addr.get("province", ""),
+                    "country": shopify_addr.get("country", ""),
+                    "zip": shopify_addr.get("zip", ""),
+                    "phone": shopify_addr.get("phone", "")
+                }
+            
             core_order = Order(
                 tenant_id=tenant.id,
                 external_system_id=None,  # 暂时不关联外部系统
@@ -712,8 +733,8 @@ async def sync_shopify_order_to_core(
                 customer_email=shopify_order.customer_data.get("email", "") if shopify_order.customer_data else "",
                 customer_name=shopify_order.customer_data.get("name", "") if shopify_order.customer_data else "",
                 customer_phone=None,
-                shipping_address=shopify_order.shipping_address or {},
-                billing_address=shopify_order.billing_address or {},
+                shipping_address=convert_shopify_address(shopify_order.shipping_address),
+                billing_address=convert_shopify_address(shopify_order.billing_address),
                 shopify_raw_data=shopify_order.raw_data,
                 external_data=shopify_order.raw_data,
                 order_date=shopify_order.created_at

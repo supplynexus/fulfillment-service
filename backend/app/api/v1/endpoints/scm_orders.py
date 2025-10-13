@@ -4,6 +4,7 @@ SCM Orders API endpoints
 
 from typing import List, Optional
 import time
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -294,7 +295,8 @@ async def fulfill_scm_order(
             # 发送到 Printify
             fulfillment_result = await fulfillment_service.create_fulfillment_order(
                 scm_order=scm_order,
-                tenant=tenant
+                tenant=tenant,
+                db=db
             )
             
             # 更新SCM订单状态
@@ -473,10 +475,15 @@ async def create_scm_order(
                 }
             )
 
+    # 生成 SCM 订单编号
+    from app.services.order_number_service import OrderNumberService
+    scm_order_number = await OrderNumberService.generate_scm_order_number(db, tenant.id)
+    
     # 创建SCM订单
     scm_order = SCMOrder(
         tenant_id=tenant.id,
         # 核心SCM订单不直接绑定外部系统
+        scm_order_number=scm_order_number,
         routing_strategy=scm_order_data.routing_strategy,
         line_items=normalized_items,
         # 不记录金额
@@ -1515,6 +1522,72 @@ async def generate_printify_order(
         from app.services.printify_fulfillment_service import PrintifyFulfillmentService
         fulfillment_service = PrintifyFulfillmentService()
         
+        # 为选中的商品添加商品映射信息
+        enhanced_selected_items = []
+        for item in selected_items:
+            # 如果商品已经有 core_variant_id，直接使用
+            if item.get('core_variant_id'):
+                enhanced_selected_items.append(item)
+                continue
+            
+            # 尝试通过 SKU 查找商品映射
+            sku = item.get('metadata', {}).get('sku')
+            if sku:
+                from app.models.product import ProductVariant
+                from app.models.product import ProductMapping
+                from app.models.external_system import ExternalSystem, ExternalSystemType
+                from sqlalchemy import and_
+                
+                # 查找核心变体
+                variant_result = await db.execute(
+                    select(ProductVariant).where(
+                        and_(
+                            ProductVariant.tenant_id == tenant.id,
+                            ProductVariant.sku == sku
+                        )
+                    )
+                )
+                core_variant = variant_result.scalar_one_or_none()
+                
+                if core_variant:
+                    # 查找 Printify 商品映射
+                    external_system_result = await db.execute(
+                        select(ExternalSystem).where(
+                            and_(
+                                ExternalSystem.tenant_id == tenant.id,
+                                ExternalSystem.system_type == ExternalSystemType.PRINTIFY
+                            )
+                        )
+                    )
+                    external_system = external_system_result.scalar_one_or_none()
+                    
+                    if external_system:
+                        mapping_result = await db.execute(
+                            select(ProductMapping).where(
+                                and_(
+                                    ProductMapping.core_variant_id == core_variant.id,
+                                    ProductMapping.tenant_id == tenant.id,
+                                    ProductMapping.external_system_id == external_system.id
+                                )
+                            )
+                        )
+                        mapping = mapping_result.scalar_one_or_none()
+                        
+                        if mapping:
+                            # 创建增强的行项目数据
+                            enhanced_item = item.copy()
+                            enhanced_item['core_product_id'] = core_variant.product_id
+                            enhanced_item['core_variant_id'] = core_variant.id
+                            enhanced_item['external_product_id'] = mapping.external_product_id
+                            enhanced_item['external_variant_id'] = mapping.external_variant_id
+                            enhanced_selected_items.append(enhanced_item)
+                            logger.info(f"✅ 为商品 {sku} 添加了商品映射信息")
+                            continue
+            
+            # 如果没有找到映射，使用原始数据
+            enhanced_selected_items.append(item)
+            logger.warning(f"⚠️ 商品 {sku} 没有找到商品映射信息")
+        
         # 创建包含选中商品的临时 SCM 订单对象
         temp_scm_order = SCMOrder(
             id=scm_order.id,
@@ -1524,7 +1597,7 @@ async def generate_printify_order(
             status=scm_order.status,
             fulfillment_status=scm_order.fulfillment_status,
             routing_strategy=scm_order.routing_strategy,
-            line_items=selected_items,  # 只包含选中的商品
+            line_items=enhanced_selected_items,  # 使用增强的行项目数据
             currency=scm_order.currency,
             customer_email=scm_order.customer_email,
             customer_name=scm_order.customer_name,
@@ -1588,4 +1661,3 @@ async def generate_printify_order(
         import traceback
         logger.error(f"   异常堆栈: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Failed to generate Printify order: {str(e)}")
->>>>>>> origin/develop
