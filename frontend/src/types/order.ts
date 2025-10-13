@@ -1,5 +1,7 @@
 export interface Order {
-  id: number;
+  id?: number; // 保留原始ID（可选）
+  id_hashid: string; // 添加hashid字段
+  order_number: string; // 添加订单编号字段
   shopify_order_id?: string;
   external_order_id?: string;
   external_order_name?: string;
@@ -72,8 +74,8 @@ export interface BillingAddress extends ShippingAddress {}
 
 export interface LineItem {
   id: string;
-  variant_id: string;
-  product_id: string;
+  variant_id?: string;
+  product_id?: string;
   title: string;
   variant_title?: string;
   quantity: number;
@@ -81,4 +83,13 @@ export interface LineItem {
   sku?: string;
   vendor?: string;
   properties?: { [key: string]: any };
+  // 核心系统ID
+  core_product_id?: string;
+  core_variant_id?: string;
+  // 外部系统ID
+  external_product_id?: string;
+  external_variant_id?: string;
+  // 其他字段
+  fulfillment_status?: string;
+  item_metadata?: { [key: string]: any };
 }

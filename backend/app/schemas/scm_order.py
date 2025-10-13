@@ -34,6 +34,24 @@ class SCMOrderCreate(BaseModel):
     shopify_order_id: Optional[str] = None
 
 
+class SourceOrderInfo(BaseModel):
+    """源订单信息"""
+    id: int
+    order_number: Optional[str] = None
+    external_order_id: Optional[str] = None
+    external_order_number: Optional[str] = None
+    external_order_name: Optional[str] = None
+    status: str
+    total_amount: float
+    currency: str
+    customer_email: str
+    customer_name: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class SCMOrderResponse(BaseModel):
     """SCM订单响应 schema"""
 
@@ -66,6 +84,8 @@ class SCMOrderResponse(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime] = None
     fulfilled_at: Optional[datetime] = None
+    # 源订单信息
+    source_orders: List[SourceOrderInfo] = []
 
     class Config:
         from_attributes = True

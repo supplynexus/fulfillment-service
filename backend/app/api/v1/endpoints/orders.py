@@ -206,6 +206,7 @@ async def get_order(
                 "sku": item.sku,
                 "variant_title": item.variant_title,
                 "quantity": item.quantity,
+                "price": float(item.unit_price) if item.unit_price else 0.0,  # 使用price字段
                 "unit_price": float(item.unit_price) if item.unit_price else 0.0,
                 "total_price": float(item.total_price) if item.total_price else 0.0,
                 "core_product_id": item.core_product_id,

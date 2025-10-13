@@ -140,19 +140,76 @@ async def get_scm_order(
     """
     获取SCM订单详情
     """
+    from app.core.logging import get_logger
+    from app.schemas.scm_order import SourceOrderInfo
+    
+    logger = get_logger(__name__)
     tenant, user = auth
 
-    result = await db.execute(
-        select(SCMOrder).where(
-            SCMOrder.id == scm_order_id, SCMOrder.tenant_id == tenant.id
+    try:
+        logger.info(f"🔍 开始获取SCM订单详情: scm_order_id={scm_order_id}, tenant_id={tenant.id}")
+
+        # 查询SCM订单
+        result = await db.execute(
+            select(SCMOrder).where(
+                SCMOrder.id == scm_order_id, SCMOrder.tenant_id == tenant.id
+            )
         )
-    )
-    scm_order = result.scalar_one_or_none()
+        scm_order = result.scalar_one_or_none()
 
-    if not scm_order:
-        raise HTTPException(status_code=404, detail="SCM order not found")
+        if not scm_order:
+            logger.error(f"❌ SCM订单不存在: scm_order_id={scm_order_id}")
+            raise HTTPException(status_code=404, detail="SCM order not found")
 
-    return SCMOrderResponse.from_orm(scm_order)
+        logger.info(f"✅ SCM订单查询成功: scm_order_id={scm_order_id}")
+
+        # 查询源订单信息
+        source_orders = []
+        if scm_order.source_order_id:
+            # 单个源订单（兼容旧版本）
+            logger.info(f"🔍 查询单个源订单: source_order_id={scm_order.source_order_id}")
+            source_result = await db.execute(
+                select(Order).where(
+                    Order.id == scm_order.source_order_id, 
+                    Order.tenant_id == tenant.id
+                )
+            )
+            source_order = source_result.scalar_one_or_none()
+            if source_order:
+                source_orders.append(SourceOrderInfo.from_orm(source_order))
+                logger.info(f"✅ 单个源订单查询成功: order_id={source_order.id}, order_number={source_order.order_number}")
+        else:
+            # 多个源订单（新版本）
+            logger.info(f"🔍 查询多个源订单: scm_order_id={scm_order_id}")
+            from app.models.scm_order import ScmOrderSource
+            source_result = await db.execute(
+                select(Order, ScmOrderSource).join(
+                    ScmOrderSource, Order.id == ScmOrderSource.source_order_id
+                ).where(
+                    ScmOrderSource.scm_order_id == scm_order_id,
+                    ScmOrderSource.tenant_id == tenant.id
+                )
+            )
+            for order_row, scm_source_row in source_result.fetchall():
+                source_orders.append(SourceOrderInfo.from_orm(order_row))
+                logger.info(f"✅ 源订单查询成功: order_id={order_row.id}, order_number={order_row.order_number}")
+
+        logger.info(f"✅ 源订单查询完成: 共找到 {len(source_orders)} 个源订单")
+
+        # 构建响应
+        response_data = SCMOrderResponse.from_orm(scm_order)
+        response_data.source_orders = source_orders
+        
+        logger.info(f"✅ SCM订单详情获取成功: scm_order_id={scm_order_id}")
+        return response_data
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 获取SCM订单详情失败: scm_order_id={scm_order_id}, error={str(e)}")
+        import traceback
+        logger.error(f"   异常堆栈: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 @router.get("/order/{order_id}", response_model=List[SCMOrderResponse])
@@ -218,7 +275,7 @@ async def create_scm_order(
     if missing:
         raise HTTPException(status_code=404, detail=f"Source orders not found: {missing}")
 
-    # 规范化行项目：基于 core_product_id/core_variant_id 生成展示元数据
+            # 规范化行项目：基于 core_product_id/core_variant_id 生成展示元数据
     normalized_items = []
     for raw in scm_order_data.line_items:
         try:
@@ -231,6 +288,7 @@ async def create_scm_order(
             variant_label = None
             image_url = None
 
+            # 首先尝试从核心产品获取信息
             if core_variant_id:
                 v_res = await db.execute(
                     select(ProductVariant).where(
@@ -254,6 +312,24 @@ async def create_scm_order(
                 if product:
                     display_title = product.title
 
+            # 如果核心产品信息不可用，回退到 item_metadata 中的信息
+            item_metadata = raw.get("item_metadata", {}) if isinstance(raw, dict) else {}
+            if not display_title:
+                display_title = item_metadata.get("title")
+            if not display_sku:
+                display_sku = item_metadata.get("sku")
+            if not variant_label:
+                variant_label = item_metadata.get("variant_title")
+            
+            # 处理价格信息
+            price = item_metadata.get("price") or item_metadata.get("cost")
+            if price is not None:
+                # 确保价格是数字格式
+                try:
+                    price = float(price)
+                except (ValueError, TypeError):
+                    price = None
+
             normalized_items.append(
                 {
                     "core_product_id": core_product_id,
@@ -262,13 +338,10 @@ async def create_scm_order(
                     "metadata": {
                         "sku": display_sku,
                         "title": display_title,
-                        "variant_label": raw.get("item_metadata", {}).get("variant_title")
-                        if isinstance(raw, dict)
-                        else None,
+                        "variant_label": variant_label,
                         "image_url": image_url,
-                        "source_line_item_id": raw.get("item_metadata", {}).get("source_line_item_id")
-                        if isinstance(raw, dict)
-                        else None,
+                        "price": price,
+                        "source_line_item_id": item_metadata.get("source_line_item_id"),
                     },
                 }
             )

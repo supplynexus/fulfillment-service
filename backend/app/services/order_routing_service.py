@@ -216,12 +216,87 @@ class OrderRoutingService:
 
         return True
 
+    async def _normalize_line_items_for_scm(
+        self, line_items: List[Dict[str, Any]], tenant_id: int
+    ) -> List[Dict[str, Any]]:
+        """规范化 line_items 用于 SCM 订单存储"""
+        from app.models.product_new import Product, ProductVariant
+        
+        normalized_items = []
+        
+        for item in line_items:
+            try:
+                # 提取基本信息
+                title = item.get("title", "")
+                variant_title = item.get("variant_title", "")
+                sku = item.get("sku", "")
+                quantity = int(item.get("quantity", 1))
+                price = float(item.get("price", 0))
+                
+                # 尝试查找对应的产品和变体
+                core_product_id = None
+                core_variant_id = None
+                
+                if sku:
+                    # 通过 SKU 查找变体
+                    variant_result = await self.db.execute(
+                        select(ProductVariant).where(
+                            ProductVariant.sku == sku,
+                            ProductVariant.tenant_id == tenant_id
+                        )
+                    )
+                    variant = variant_result.scalar_one_or_none()
+                    if variant:
+                        core_variant_id = variant.id
+                        core_product_id = variant.product_id
+                
+                # 构建规范化项目
+                normalized_item = {
+                    "core_product_id": core_product_id,
+                    "core_variant_id": core_variant_id,
+                    "quantity": max(1, quantity),
+                    "metadata": {
+                        "sku": sku,
+                        "title": title,
+                        "variant_label": variant_title,
+                        "price": price,
+                        "source_line_item_id": item.get("id"),
+                        "vendor": item.get("vendor"),
+                        "product_type": item.get("product_type"),
+                    }
+                }
+                
+                normalized_items.append(normalized_item)
+                
+            except Exception as e:
+                logger.error(f"规范化商品项目失败: {item}, 错误: {str(e)}")
+                # 添加基本的商品信息
+                normalized_items.append({
+                    "core_product_id": None,
+                    "core_variant_id": None,
+                    "quantity": int(item.get("quantity", 1)),
+                    "metadata": {
+                        "sku": item.get("sku", ""),
+                        "title": item.get("title", "未知商品"),
+                        "variant_label": item.get("variant_title", ""),
+                        "price": float(item.get("price", 0)),
+                        "source_line_item_id": item.get("id"),
+                    }
+                })
+        
+        return normalized_items
+
     async def _create_scm_order(
         self, order: Order, decision: Dict[str, Any], tenant_id: int
     ) -> SCMOrder:
         """创建SCM订单"""
         # 生成SCM订单号
         scm_order_number = await self._generate_scm_order_number(tenant_id)
+
+        # 规范化 line_items
+        normalized_line_items = await self._normalize_line_items_for_scm(
+            decision["line_items"], tenant_id
+        )
 
         # 计算总金额
         total_amount = sum(
@@ -237,7 +312,7 @@ class OrderRoutingService:
             scm_order_number=scm_order_number,
             status=SCMOrderStatus.CREATED.value,
             routing_strategy=decision["routing_metadata"].get("strategy"),
-            line_items=decision["line_items"],
+            line_items=normalized_line_items,
             total_amount=total_amount,
             currency=order.currency,
             customer_email=order.customer_email,

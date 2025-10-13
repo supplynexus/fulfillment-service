@@ -4,6 +4,7 @@ Shopify Orders CRUD API endpoints
 """
 
 from typing import List, Optional, Dict, Any
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_
@@ -119,6 +120,23 @@ async def get_shopify_orders(
         # 转换为响应格式
         order_responses = []
         for order in orders:
+            # 处理日期时间格式，确保时区格式正确
+            def format_datetime(dt):
+                if dt is None:
+                    return None
+                # 如果已经是datetime对象，直接返回
+                if isinstance(dt, datetime):
+                    return dt
+                # 如果是字符串，尝试解析并重新格式化
+                if isinstance(dt, str):
+                    try:
+                        from dateutil import parser
+                        parsed_dt = parser.parse(dt)
+                        return parsed_dt
+                    except:
+                        return None
+                return None
+            
             order_responses.append(ShopifyOrderResponse(
                 id=order.id,
                 id_hashid=encode_id(order.id),  # 添加 hashid
@@ -145,9 +163,9 @@ async def get_shopify_orders(
                 fulfillments=order.fulfillments,
                 refunds=order.refunds,
                 raw_data=order.raw_data,
-                created_at=order.created_at,
-                updated_at=order.updated_at,
-                last_synced_at=order.last_synced_at
+                created_at=format_datetime(order.created_at),
+                updated_at=format_datetime(order.updated_at),
+                last_synced_at=format_datetime(order.last_synced_at)
             ))
         
         # 计算分页信息
@@ -284,10 +302,58 @@ async def create_shopify_order(
         existing_order = existing_result.scalar_one_or_none()
         
         if existing_order:
-            logger.error(f"❌ Shopify 订单已存在: {order_data.shopify_order_id}")
-            raise HTTPException(status_code=400, detail="Shopify order already exists")
+            logger.info(f"🔄 Shopify 订单已存在，返回现有订单: {order_data.shopify_order_id}")
+            
+            # 直接返回现有订单，不进行更新以避免异步问题
+            # 处理日期时间格式，确保时区格式正确
+            def format_datetime(dt):
+                if dt is None:
+                    return None
+                # 如果已经是datetime对象，直接返回
+                if isinstance(dt, datetime):
+                    return dt
+                # 如果是字符串，尝试解析并重新格式化
+                if isinstance(dt, str):
+                    try:
+                        from dateutil import parser
+                        parsed_dt = parser.parse(dt)
+                        return parsed_dt
+                    except:
+                        return None
+                return None
+            
+            return ShopifyOrderResponse(
+                id=existing_order.id,
+                id_hashid=encode_id(existing_order.id),
+                tenant_id=existing_order.tenant_id,
+                shopify_order_id=existing_order.shopify_order_id,
+                name=existing_order.name,
+                confirmation_number=existing_order.confirmation_number,
+                financial_status=existing_order.financial_status,
+                fulfillment_status=existing_order.fulfillment_status,
+                confirmed=existing_order.confirmed,
+                closed=existing_order.closed,
+                cancelled=existing_order.cancelled,
+                currency_code=existing_order.currency_code,
+                total_price=float(existing_order.total_price) if existing_order.total_price else None,
+                subtotal_price=float(existing_order.subtotal_price) if existing_order.subtotal_price else None,
+                total_tax=float(existing_order.total_tax) if existing_order.total_tax else None,
+                total_shipping=float(existing_order.total_shipping) if existing_order.total_shipping else None,
+                tags=existing_order.tags,
+                note=existing_order.note,
+                customer_data=existing_order.customer_data,
+                billing_address=existing_order.billing_address,
+                shipping_address=existing_order.shipping_address,
+                line_items=existing_order.line_items,
+                fulfillments=existing_order.fulfillments,
+                refunds=existing_order.refunds,
+                raw_data=existing_order.raw_data,
+                created_at=format_datetime(existing_order.created_at),
+                updated_at=format_datetime(existing_order.updated_at),
+                last_synced_at=format_datetime(existing_order.last_synced_at)
+            )
         
-        # 创建订单
+        # 创建新订单
         order = ShopifyOrder(
             tenant_id=tenant.id,
             shopify_order_id=order_data.shopify_order_id,
