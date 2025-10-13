@@ -391,7 +391,7 @@ async def create_scm_order(
     if missing:
         raise HTTPException(status_code=404, detail=f"Source orders not found: {missing}")
 
-    # 规范化行项目：基于 core_product_id/core_variant_id 生成展示元数据
+            # 规范化行项目：基于 core_product_id/core_variant_id 生成展示元数据
     normalized_items = []
     for raw in scm_order_data.line_items:
         try:
@@ -404,6 +404,7 @@ async def create_scm_order(
             variant_label = None
             image_url = None
 
+            # 首先尝试从核心产品获取信息
             if core_variant_id:
                 v_res = await db.execute(
                     select(ProductVariant).where(
@@ -427,6 +428,24 @@ async def create_scm_order(
                 if product:
                     display_title = product.title
 
+            # 如果核心产品信息不可用，回退到 item_metadata 中的信息
+            item_metadata = raw.get("item_metadata", {}) if isinstance(raw, dict) else {}
+            if not display_title:
+                display_title = item_metadata.get("title")
+            if not display_sku:
+                display_sku = item_metadata.get("sku")
+            if not variant_label:
+                variant_label = item_metadata.get("variant_title")
+            
+            # 处理价格信息
+            price = item_metadata.get("price") or item_metadata.get("cost")
+            if price is not None:
+                # 确保价格是数字格式
+                try:
+                    price = float(price)
+                except (ValueError, TypeError):
+                    price = None
+
             normalized_items.append(
                 {
                     "core_product_id": core_product_id,
@@ -435,13 +454,10 @@ async def create_scm_order(
                     "metadata": {
                         "sku": display_sku,
                         "title": display_title,
-                        "variant_label": raw.get("item_metadata", {}).get("variant_title")
-                        if isinstance(raw, dict)
-                        else None,
+                        "variant_label": variant_label,
                         "image_url": image_url,
-                        "source_line_item_id": raw.get("item_metadata", {}).get("source_line_item_id")
-                        if isinstance(raw, dict)
-                        else None,
+                        "price": price,
+                        "source_line_item_id": item_metadata.get("source_line_item_id"),
                     },
                 }
             )

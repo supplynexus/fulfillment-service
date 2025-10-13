@@ -43,8 +43,8 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedItemIds, setSelectedItemIds] = useState<Set<number>>(new Set());
-  const [quantityByItemId, setQuantityByItemId] = useState<Record<number, number>>({});
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
+  const [quantityByItemId, setQuantityByItemId] = useState<Record<string, number>>({});
   const [creatingScm, setCreatingScm] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -75,7 +75,7 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
     fetchOrderDetails();
   };
 
-  const toggleSelectItem = (id: number, defaultQty: number) => {
+  const toggleSelectItem = (id: string, defaultQty: number) => {
     setSelectedItemIds(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -85,7 +85,7 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
     setQuantityByItemId(prev => ({ ...prev, [id]: prev[id] ?? defaultQty ?? 1 }));
   };
 
-  const updateQty = (id: number, value: number) => {
+  const updateQty = (id: string, value: number) => {
     setQuantityByItemId(prev => ({ ...prev, [id]: Math.max(1, Number(value) || 1) }));
   };
 
@@ -109,6 +109,8 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
             sku: it.sku || null,
             title: it.title || null,
             variant_title: it.variant_title || null,
+            price: it.price || null,
+            cost: it.cost || null,
           },
         }));
 
@@ -232,7 +234,7 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
             <ArrowBackIcon />
           </IconButton>
           <Typography variant='h4' component='h1'>
-            订单详情 #{order.id}
+            订单详情 #{order.order_number || order.id_hashid || order.id}
           </Typography>
         </Box>
         <Box>
@@ -309,10 +311,20 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
                     {order.external_order_id || order.shopify_order_id}
                   </Typography>
                 </Box>
-                {order.shopify_order_number && (
+                {order.order_number && (
                   <Box display='flex' justifyContent='space-between'>
                     <Typography variant='body2' color='text.secondary'>
                       订单号:
+                    </Typography>
+                    <Typography variant='body2' fontWeight='medium'>
+                      {order.order_number}
+                    </Typography>
+                  </Box>
+                )}
+                {order.shopify_order_number && (
+                  <Box display='flex' justifyContent='space-between'>
+                    <Typography variant='body2' color='text.secondary'>
+                      Shopify订单号:
                     </Typography>
                     <Typography variant='body2' fontWeight='medium'>
                       {order.shopify_order_number}
@@ -567,9 +579,37 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
                         </Box>
                       </TableCell>
                       <TableCell>
-                        <Typography variant='body2'>
-                          {item.sku || '-'}
-                        </Typography>
+                        <Box>
+                          {item.sku ? (
+                            <Typography variant='body2' fontWeight='medium'>
+                              SKU: {item.sku}
+                            </Typography>
+                          ) : (
+                            <Typography variant='body2' color='text.secondary'>
+                              SKU: 无
+                            </Typography>
+                          )}
+                          {item.core_product_id && (
+                            <Typography variant='caption' color='primary' display='block'>
+                              核心商品: {item.core_product_id}
+                            </Typography>
+                          )}
+                          {item.core_variant_id && (
+                            <Typography variant='caption' color='primary' display='block'>
+                              核心变体: {item.core_variant_id}
+                            </Typography>
+                          )}
+                          {item.external_product_id && (
+                            <Typography variant='caption' color='text.secondary' display='block'>
+                              外部商品: {item.external_product_id}
+                            </Typography>
+                          )}
+                          {item.external_variant_id && (
+                            <Typography variant='caption' color='text.secondary' display='block'>
+                              外部变体: {item.external_variant_id}
+                            </Typography>
+                          )}
+                        </Box>
                       </TableCell>
                       <TableCell align='right'>
                           {selectedItemIds.has(item.id) ? (

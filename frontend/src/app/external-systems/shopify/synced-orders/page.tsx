@@ -745,6 +745,67 @@ const SyncedShopifyOrdersPage: React.FC = () => {
                       </Stack>
                     </Grid>
                   </Grid>
+                  
+                  {/* 商品列表 */}
+                  {selectedOrder.line_items && selectedOrder.line_items.length > 0 && (
+                    <Box sx={{ mt: 3 }}>
+                      <Typography variant="h6" gutterBottom>
+                        商品列表
+                      </Typography>
+                      <TableContainer component={Paper} variant="outlined">
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>商品名称</TableCell>
+                              <TableCell>变体</TableCell>
+                              <TableCell align="right">数量</TableCell>
+                              <TableCell align="right">单价</TableCell>
+                              <TableCell align="right">小计</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {selectedOrder.line_items.map((item: any, index: number) => (
+                              <TableRow key={index}>
+                                <TableCell>
+                                  <Typography variant="body2" fontWeight="medium">
+                                    {item.title}
+                                  </Typography>
+                                  {item.sku && (
+                                    <Typography variant="caption" color="text.secondary">
+                                      SKU: {item.sku}
+                                    </Typography>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  <Typography variant="body2" color="text.secondary">
+                                    {item.variant?.title || 'N/A'}
+                                  </Typography>
+                                </TableCell>
+                                <TableCell align="right">
+                                  <Typography variant="body2">
+                                    {item.quantity}
+                                  </Typography>
+                                </TableCell>
+                                <TableCell align="right">
+                                  <Typography variant="body2">
+                                    {formatPrice(item.price, item.currency || selectedOrder.currency_code)}
+                                  </Typography>
+                                </TableCell>
+                                <TableCell align="right">
+                                  <Typography variant="body2" fontWeight="medium">
+                                    {formatPrice(
+                                      (parseFloat(item.price) * item.quantity).toString(),
+                                      item.currency || selectedOrder.currency_code
+                                    )}
+                                  </Typography>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    </Box>
+                  )}
                 </Box>
               )}
             </DialogContent>

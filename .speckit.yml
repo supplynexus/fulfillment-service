@@ -1,0 +1,104 @@
+# SupplyNexus 项目 Speckit 配置
+version: 1.0
+project: supplynexus-fulfillment-service
+description: "SupplyNexus 履约服务 - 多平台订单管理和产品同步系统"
+
+# 项目结构
+structure:
+  backend:
+    path: "backend/"
+    type: "python-fastapi"
+    rules:
+      - "所有 API 端点必须包含详细的错误处理和日志记录"
+      - "使用 Pydantic 进行数据验证"
+      - "数据库操作必须使用异步模式"
+      - "敏感数据必须加密存储"
+  
+  frontend:
+    path: "frontend/"
+    type: "nextjs-typescript"
+    rules:
+      - "使用 TypeScript 严格模式"
+      - "所有 API 调用必须包含错误处理"
+      - "组件必须支持错误边界"
+      - "禁止使用 any 类型"
+
+# 铁律配置
+constitution:
+  file: ".specify/constitution.md"
+  rules:
+    - name: "test-first-development"
+      description: "测试优先开发"
+      pattern: "**/*.py"
+      check: "test_files_exist"
+    
+    - name: "error-handling"
+      description: "错误处理和日志记录"
+      pattern: "backend/app/api/**/*.py"
+      check: "has_logging_and_error_handling"
+    
+    - name: "data-security"
+      description: "数据安全规范"
+      pattern: "**/*.py"
+      check: "no_hardcoded_secrets"
+    
+    - name: "api-consistency"
+      description: "API 一致性"
+      pattern: "frontend/src/app/api/**/*.ts"
+      check: "api_paths_consistent"
+    
+    - name: "code-quality"
+      description: "代码质量"
+      pattern: "frontend/src/**/*.ts"
+      check: "no_any_types"
+    
+    - name: "performance"
+      description: "性能监控"
+      pattern: "**/*.py"
+      check: "no_n_plus_one_queries"
+    
+    - name: "security"
+      description: "安全扫描"
+      pattern: "**/*.json"
+      check: "no_vulnerable_dependencies"
+    
+    - name: "documentation"
+      description: "文档完整性"
+      pattern: "backend/app/main.py"
+      check: "has_openapi_docs"
+
+# 检查脚本
+scripts:
+  quick-check: ".specify/scripts/powershell/quick-check.ps1"
+  full-check: ".specify/scripts/powershell/enforce-constitution.ps1"
+  setup-hooks: ".specify/scripts/powershell/setup-git-hooks.ps1"
+
+# 测试配置
+testing:
+  backend:
+    command: "python -m pytest backend/tests/"
+    coverage: 80
+    pattern: "backend/tests/**/*.py"
+  
+  frontend:
+    command: "npm test"
+    coverage: 80
+    pattern: "frontend/src/**/*.test.*"
+
+# 安全配置
+security:
+  scan-dependencies: true
+  check-secrets: true
+  audit-level: "moderate"
+
+# 性能配置
+performance:
+  api-timeout: 2000
+  page-load-time: 3000
+  check-n-plus-one: true
+
+# 文档配置
+documentation:
+  api-docs: true
+  code-comments: true
+  readme-required: true

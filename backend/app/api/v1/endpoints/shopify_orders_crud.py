@@ -120,6 +120,23 @@ async def get_shopify_orders(
         # 转换为响应格式
         order_responses = []
         for order in orders:
+            # 处理日期时间格式，确保时区格式正确
+            def format_datetime(dt):
+                if dt is None:
+                    return None
+                # 如果已经是datetime对象，直接返回
+                if isinstance(dt, datetime):
+                    return dt
+                # 如果是字符串，尝试解析并重新格式化
+                if isinstance(dt, str):
+                    try:
+                        from dateutil import parser
+                        parsed_dt = parser.parse(dt)
+                        return parsed_dt
+                    except:
+                        return None
+                return None
+            
             order_responses.append(ShopifyOrderResponse(
                 id=order.id,
                 id_hashid=encode_id(order.id),  # 添加 hashid
@@ -146,9 +163,9 @@ async def get_shopify_orders(
                 fulfillments=order.fulfillments,
                 refunds=order.refunds,
                 raw_data=order.raw_data,
-                created_at=order.created_at,
-                updated_at=order.updated_at,
-                last_synced_at=order.last_synced_at
+                created_at=format_datetime(order.created_at),
+                updated_at=format_datetime(order.updated_at),
+                last_synced_at=format_datetime(order.last_synced_at)
             ))
         
         # 计算分页信息
