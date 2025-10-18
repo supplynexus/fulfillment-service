@@ -341,7 +341,7 @@ export function ProductEdit({ productHashId }: ProductEditProps) {
           <Typography variant='h6' gutterBottom>
             基本信息
           </Typography>
-          <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={3}>
+          <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
             <Box sx={{ width: { xs: "100%", md: "50%" } }}>
               <TextField
                 fullWidth
@@ -676,7 +676,7 @@ export function ProductEdit({ productHashId }: ProductEditProps) {
       >
         <DialogTitle>{editingVariant ? '编辑变体' : '添加变体'}</DialogTitle>
         <DialogContent>
-          <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2} sx={{ mt: 1 }}>
+          <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} sx={{ mt: 1 }}>
             <Box sx={{ width: { xs: "100%", md: "50%" } }}>
               <TextField
                 fullWidth
@@ -795,7 +795,7 @@ export function ProductEdit({ productHashId }: ProductEditProps) {
       >
         <DialogTitle>{editingDimension ? '编辑维度' : '添加维度'}</DialogTitle>
         <DialogContent>
-          <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2} sx={{ mt: 1 }}>
+          <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} sx={{ mt: 1 }}>
             <Box sx={{ width: { xs: "100%", md: "50%" } }}>
               <TextField
                 fullWidth

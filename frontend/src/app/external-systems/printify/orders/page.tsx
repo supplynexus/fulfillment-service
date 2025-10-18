@@ -484,9 +484,9 @@ function PrintifyOrdersPage() {
                 <Typography variant='h6' gutterBottom>
                   选择店铺
                 </Typography>
-                <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2}>
+                <Grid container spacing={2}>
                   {stores.map(store => (
-                    <Grid key={store.id_hashid} size={{ xs: 12, sm: 6, md: 4 }}>
+                    <Grid key={store.id_hashid} item xs={12} sm={6} md={4}>
                       <Card
                         variant={
                           selectedStore?.id_hashid === store.id_hashid
@@ -521,9 +521,9 @@ function PrintifyOrdersPage() {
                           </Box>
                         </CardContent>
                       </Card>
-                    </Box>
+                    </Grid>
                   ))}
-                </Box>
+                </Grid>
               </CardContent>
             </Card>
           )}
@@ -531,7 +531,7 @@ function PrintifyOrdersPage() {
           {/* 搜索和过滤 */}
           <Card sx={{ mb: 3 }}>
             <CardContent>
-              <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2} alignItems='center'>
+              <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", alignItems: 'center' }}>
                 <Box sx={{ width: { xs: "100%", sm: "50%", md: "33.33%" } }}>
                   <TextField
                     fullWidth
@@ -748,7 +748,7 @@ function PrintifyOrdersPage() {
                       <Typography variant='h6' gutterBottom>
                         订单信息
                       </Typography>
-                      <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2}>
+                      <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
                         <Box sx={{ width: { xs: "100%", sm: "50%" } }}>
                           <Typography variant='body2' color='text.secondary'>
                             订单ID
@@ -883,7 +883,7 @@ function PrintifyOrdersPage() {
                               <Typography variant='subtitle2' gutterBottom>
                                 包裹 {index + 1}
                               </Typography>
-                              <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2}>
+                              <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
                                 <Box sx={{ width: { xs: "100%", sm: "50%" } }}>
                                   <Typography
                                     variant='body2'

@@ -257,7 +257,7 @@ export function ProductDetail({ productHashId }: ProductDetailProps) {
       {/* 商品基本信息 */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={3}>
+          <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
             <Box sx={{ width: "100%" }} md={3}>
               <Box display='flex' justifyContent='center'>
                 <Avatar
@@ -277,7 +277,7 @@ export function ProductDetail({ productHashId }: ProductDetailProps) {
                 {product.description || '暂无描述'}
               </Typography>
 
-              <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2} sx={{ mb: 2 }}>
+              <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} sx={{ mb: 2 }}>
                 <Box sx={{ width: "50%" }} sm={3}>
                   <Typography variant='caption' color='text.secondary'>
                     状态
@@ -329,7 +329,7 @@ export function ProductDetail({ productHashId }: ProductDetailProps) {
                 </Box>
               </Box>
 
-              <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2}>
+              <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
                 <Box sx={{ width: "50%" }} sm={3}>
                   <Typography variant='caption' color='text.secondary'>
                     Handle
@@ -484,7 +484,7 @@ export function ProductDetail({ productHashId }: ProductDetailProps) {
                         <TableRow>
                           <TableCell colSpan={6} sx={{ py: 0 }}>
                             <Box sx={{ pl: 4, pr: 2, pb: 2 }}>
-                              <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2}>
+                              <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
                                 <Box sx={{ width: "50%" }} sm={3}>
                                   <Typography
                                     variant='caption'

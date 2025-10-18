@@ -238,7 +238,7 @@ export function MappingDetailDialog({
         {/* 映射状态信息 */}
         <Card sx={{ mb: 3 }}>
           <CardContent>
-            <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2} alignItems='center'>
+            <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} alignItems='center'>
               <Box sx={{ width: "100%" }} md={3}>
                 <Typography variant='subtitle2' color='text.secondary'>
                   映射状态
@@ -297,7 +297,7 @@ export function MappingDetailDialog({
           </CardContent>
         </Card>
 
-        <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={3}>
+        <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
           {/* 核心商品信息 */}
           <Box sx={{ width: "100%" }} md={6}>
             <Card>

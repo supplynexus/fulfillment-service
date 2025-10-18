@@ -312,7 +312,7 @@ export function ProductMappingOverview() {
       )}
 
       {/* 平台统计卡片 */}
-      <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={3} mb={3}>
+      <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} mb={3}>
         {stats.map(stat => (
           <Box sx={{ width: "100%" }} md={4} key={stat.platform}>
             <Card

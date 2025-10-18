@@ -267,7 +267,7 @@ export function VariantMappingDialog({
           </Alert>
         )}
 
-        <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={3}>
+        <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
           {/* 核心商品变体 */}
           <Box sx={{ width: "100%" }} md={6}>
             <Card>

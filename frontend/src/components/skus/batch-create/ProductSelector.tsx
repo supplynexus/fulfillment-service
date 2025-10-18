@@ -152,9 +152,9 @@ export default function ProductSelector({
       </Box>
 
       {/* 产品列表 */}
-      <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2}>
+      <Grid container spacing={2}>
         {filteredProducts.map(product => (
-          <Grid size={{ xs: 12, sm: 6, md: 4 }} key={product.id}>
+          <Grid item xs={12} sm={6} md={4} key={product.id}>
             <Card
               sx={{
                 cursor: 'pointer',
@@ -237,9 +237,9 @@ export default function ProductSelector({
                 </Button>
               </CardActions>
             </Card>
-          </Box>
+          </Grid>
         ))}
-      </Box>
+      </Grid>
 
       {/* 空状态 */}
       {filteredProducts.length === 0 && (

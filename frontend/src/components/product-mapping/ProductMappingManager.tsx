@@ -373,7 +373,7 @@ export function ProductMappingManager() {
           <Typography variant='h6' component='h2' mb={2}>
             搜索条件
           </Typography>
-          <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2}>
+          <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
             <Box sx={{ width: "100%" }} md={3}>
               <TextField
                 fullWidth

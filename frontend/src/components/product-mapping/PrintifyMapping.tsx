@@ -931,7 +931,7 @@ export function PrintifyMapping() {
           </Card>
         )}
 
-      <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={3}>
+      <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
         {/* 核心商品列表 */}
         <Box sx={{ width: "100%" }} md={6}>
           <Card>
@@ -1286,7 +1286,7 @@ export function PrintifyMapping() {
         <DialogContent>
           {selectedMapping && (
             <Box>
-              <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2}>
+              <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
                 <Box sx={{ width: "100%" }} md={6}>
                   <Card variant='outlined'>
                     <CardContent>

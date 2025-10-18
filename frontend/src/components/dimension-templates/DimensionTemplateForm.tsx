@@ -152,7 +152,7 @@ export default function DimensionTemplateForm({
     <Box>
       {/* 表单 */}
       <form onSubmit={handleSubmit}>
-        <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={3}>
+        <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
           {/* 基本信息 */}
           <Box sx={{ width: "100%" }}>
             <Paper sx={{ p: 2 }}>
@@ -160,7 +160,7 @@ export default function DimensionTemplateForm({
                 基本信息
               </Typography>
 
-              <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2}>
+              <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
                 <Box sx={{ width: { xs: "100%", sm: "50%" } }}>
                   <TextField
                     fullWidth

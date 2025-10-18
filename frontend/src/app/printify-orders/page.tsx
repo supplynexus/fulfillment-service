@@ -385,7 +385,7 @@ function PrintifyOrdersPage() {
       {/* 搜索和过滤 */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2} alignItems='center'>
+          <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} alignItems='center'>
             <Box sx={{ width: "100%" }} sm={6} md={4}>
               <TextField
                 fullWidth
@@ -563,7 +563,7 @@ function PrintifyOrdersPage() {
                   <Typography variant='h6' gutterBottom>
                     订单信息
                   </Typography>
-                  <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2}>
+                  <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
                     <Box sx={{ width: "100%" }} sm={6}>
                       <Typography variant='body2' color='text.secondary'>
                         订单ID
@@ -632,7 +632,7 @@ function PrintifyOrdersPage() {
                   <Typography variant='h6' gutterBottom>
                     客户信息
                   </Typography>
-                  <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2}>
+                  <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
                     <Box sx={{ width: "100%" }} sm={6}>
                       <Typography variant='body2' color='text.secondary'>
                         姓名
@@ -661,7 +661,7 @@ function PrintifyOrdersPage() {
                     <Typography variant='h6' gutterBottom>
                       物流信息
                     </Typography>
-                    <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2}>
+                    <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
                       <Box sx={{ width: "100%" }} sm={6}>
                         <Typography variant='body2' color='text.secondary'>
                           跟踪号

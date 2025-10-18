@@ -422,7 +422,7 @@ export default function DimensionValueManager({
         <DialogTitle>{editingValue ? '编辑维度值' : '添加维度值'}</DialogTitle>
         <DialogContent>
           <Box sx={{ pt: 1 }}>
-            <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2}>
+            <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
               <Box sx={{ width: { xs: "100%", sm: "50%" } }}>
                 <TextField
                   fullWidth

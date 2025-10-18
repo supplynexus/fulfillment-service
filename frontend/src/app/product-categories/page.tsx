@@ -225,7 +225,7 @@ export default function ProductCategoriesPage() {
           )}
 
           {/* 分类树和详情 */}
-          <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={3}>
+          <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
             {/* 分类树 */}
             <Box sx={{ width: { xs: "100%", md: "50%" } }}>
               <Paper sx={{ p: 2, height: 600 }}>

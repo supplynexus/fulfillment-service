@@ -243,8 +243,8 @@ export default function SkuGenerator({
       </Paper>
 
       {/* 统计信息 */}
-      <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2} sx={{ mb: 3 }}>
-        <Grid size={{ xs: 12, sm: 4 }}>
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={12} sm={4}>
           <Card>
             <CardContent>
               <Typography variant='h6' color='primary'>
@@ -255,8 +255,8 @@ export default function SkuGenerator({
               </Typography>
             </CardContent>
           </Card>
-        </Box>
-        <Grid size={{ xs: 12, sm: 4 }}>
+        </Grid>
+        <Grid item xs={12} sm={4}>
           <Card>
             <CardContent>
               <Typography variant='h6' color='success.main'>
@@ -267,8 +267,8 @@ export default function SkuGenerator({
               </Typography>
             </CardContent>
           </Card>
-        </Box>
-        <Grid size={{ xs: 12, sm: 4 }}>
+        </Grid>
+        <Grid item xs={12} sm={4}>
           <Card>
             <CardContent>
               <Typography variant='h6' color='warning.main'>
@@ -279,8 +279,8 @@ export default function SkuGenerator({
               </Typography>
             </CardContent>
           </Card>
-        </Box>
-      </Box>
+        </Grid>
+      </Grid>
 
       {/* 选择提示 */}
       {selectedCount === 0 && (
@@ -315,9 +315,9 @@ export default function SkuGenerator({
           <Typography variant='subtitle1' sx={{ mb: 2 }}>
             SKU 预览 (前 5 个)
           </Typography>
-          <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={1}>
+          <Grid container spacing={2}>
             {generatedSkus.slice(0, 5).map(sku => (
-              <Grid size={{ xs: 12, sm: 6, md: 4 }} key={sku.id}>
+              <Grid item xs={12} sm={6} md={4} key={sku.id}>
                 <Card variant='outlined'>
                   <CardContent>
                     <Typography variant='body2' fontWeight='medium'>
@@ -331,9 +331,9 @@ export default function SkuGenerator({
                     </Box>
                   </CardContent>
                 </Card>
-              </Box>
+              </Grid>
             ))}
-          </Box>
+          </Grid>
           {generatedSkus.length > 5 && (
             <Typography
               variant='body2'

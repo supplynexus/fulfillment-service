@@ -225,7 +225,7 @@ export function BatchMappingDialog({
           </Alert>
         </Box>
 
-        <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2} sx={{ mb: 3 }}>
+        <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} sx={{ mb: 3 }}>
           <Box sx={{ width: "100%" }} md={6}>
             <Card variant='outlined'>
               <CardContent>

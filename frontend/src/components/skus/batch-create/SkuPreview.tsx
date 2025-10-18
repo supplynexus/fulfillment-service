@@ -366,7 +366,7 @@ export default function SkuPreview({
 
       {/* 维度组合统计 */}
       {selectedDimensions.length > 0 && (
-        <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2}>
+        <Grid container spacing={2}>
           {selectedDimensions.map(dimension => {
             const values = dimension.selectedValues
               .map(valueId => {
@@ -377,7 +377,7 @@ export default function SkuPreview({
               .filter(Boolean) as DimensionValue[];
 
             return (
-              <Grid size={{ xs: 12, sm: 6, md: 4 }} key={dimension.templateId}>
+              <Grid item xs={12} sm={6} md={4} key={dimension.templateId}>
                 <Card>
                   <CardContent>
                     <Typography variant='subtitle1' sx={{ mb: 1 }}>
@@ -403,10 +403,10 @@ export default function SkuPreview({
                     </Box>
                   </CardContent>
                 </Card>
-              </Box>
+              </Grid>
             );
           })}
-        </Box>
+        </Grid>
       )}
 
       {/* 空状态 */}

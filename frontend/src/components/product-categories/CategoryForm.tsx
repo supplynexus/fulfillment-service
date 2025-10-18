@@ -101,7 +101,7 @@ export function CategoryForm({
 
   return (
     <Box component='form' onSubmit={handleSubmit} sx={{ mt: 2 }}>
-      <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={3}>
+      <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
         <Box sx={{ width: "100%" }} sm={6}>
           <TextField
             fullWidth

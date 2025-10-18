@@ -284,7 +284,7 @@ export function ProductMappingDialog({
                   <Typography variant='h6'>Printify商品</Typography>
                 </Box>
 
-                <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2}>
+                <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
                   <Box sx={{ width: { xs: "100%", md: "50%" } }}>
                     <Typography variant='subtitle1' fontWeight='medium'>
                       {printifyProduct.title}

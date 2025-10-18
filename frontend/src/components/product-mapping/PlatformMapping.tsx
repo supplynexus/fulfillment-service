@@ -440,7 +440,7 @@ export function PlatformMapping({ platform }: PlatformMappingProps) {
           </Card>
         )}
 
-      <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={3}>
+      <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
         {/* 核心商品列表 */}
         <Box sx={{ width: "100%" }} md={6}>
           <Card>

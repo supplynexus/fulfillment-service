@@ -493,7 +493,7 @@ const SyncedShopifyOrdersPage: React.FC = () => {
           {/* 搜索和筛选 */}
           <Card sx={{ mb: 3 }}>
             <CardContent>
-              <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2}>
+              <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
                 <Box sx={{ width: { xs: "100%", md: "33.33%" } }}>
                   <TextField
                     fullWidth
@@ -842,7 +842,7 @@ const SyncedShopifyOrdersPage: React.FC = () => {
             <DialogContent>
               {selectedOrder && (
                 <Box>
-                  <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2}>
+                  <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
                     <Box sx={{ width: { xs: "100%", md: "50%" } }}>
                       <Typography variant='h6' gutterBottom>
                         基本信息

@@ -406,7 +406,7 @@ export function CategoryDimensionManager({
                 ))}
               </Select>
             </FormControl>
-            <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2}>
+            <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
               <Box sx={{ width: "50%" }}>
                 <FormControlLabel
                   control={

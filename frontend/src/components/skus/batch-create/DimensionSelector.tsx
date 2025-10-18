@@ -254,7 +254,7 @@ export default function DimensionSelector({
       </Paper>
 
       {/* 维度模板列表 */}
-      <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2}>
+      <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
         {dimensionTemplates.map(template => {
           const isSelected = isDimensionSelected(template.id);
           const selectedDimension = getSelectedDimension(template.id);

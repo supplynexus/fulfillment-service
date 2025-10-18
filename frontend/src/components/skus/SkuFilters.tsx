@@ -93,7 +93,7 @@ export function SkuFilters({ onFiltersChange }: SkuFiltersProps) {
   return (
     <Box>
       {/* 基础筛选器 */}
-      <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2} alignItems='center'>
+      <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} alignItems='center'>
         <Box sx={{ width: { xs: "100%", md: "25%" } }}>
           <TextField
             fullWidth
@@ -191,7 +191,7 @@ export function SkuFilters({ onFiltersChange }: SkuFiltersProps) {
           <Typography variant='subtitle2' sx={{ mb: 2 }}>
             高级筛选选项
           </Typography>
-          <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2}>
+          <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
             {/* 维度筛选 */}
             <Box sx={{ width: { xs: "100%", md: "50%" } }}>
               <Typography variant='body2' sx={{ mb: 1 }}>
