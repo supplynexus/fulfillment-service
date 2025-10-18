@@ -168,6 +168,31 @@ class PrintifyOrderResponse(BaseModel):
     message: str
 
 
+class PrintifyOrderSaveRequest(BaseModel):
+    """保存Printify订单到数据库的请求"""
+    
+    external_order_id: str = Field(..., description="Printify订单ID")
+    external_system_id: str = Field(..., description="外部系统ID (hashid)")
+    status: str = Field(..., description="订单状态")
+    total_price: float = Field(..., description="总价格")
+    currency: str = Field(default="USD", description="货币")
+    customer_email: str = Field(..., description="客户邮箱")
+    customer_name: str = Field(..., description="客户姓名")
+    shipping_address: Dict[str, Any] = Field(..., description="收货地址")
+    billing_address: Optional[Dict[str, Any]] = Field(None, description="账单地址")
+    printify_data: Dict[str, Any] = Field(..., description="Printify原始数据")
+    external_data: Dict[str, Any] = Field(..., description="外部数据")
+    scm_order_id: Optional[int] = Field(None, description="关联的SCM订单ID")
+
+
+class PrintifyOrderSaveResponse(BaseModel):
+    """保存Printify订单响应"""
+    
+    success: bool
+    order_id: Optional[int] = None
+    message: Optional[str] = None
+
+
 @router.post("/orders", response_model=PrintifyOrderResponse)
 async def create_printify_order(
     request: PrintifyOrderRequest,
@@ -458,6 +483,7 @@ async def get_printify_orders_from_db(
                 "tracking_number": order.tracking_number,
                 "tracking_url": order.tracking_url,
                 "carrier": order.carrier,
+                "tracking_company": order.carrier,  # 添加前端期望的字段名
                 "created_at": order.created_at.isoformat() if order.created_at else None,
                 "updated_at": order.updated_at.isoformat() if order.updated_at else None,
                 "shipped_at": order.shipped_at.isoformat() if order.shipped_at else None,
@@ -695,3 +721,396 @@ async def sync_printify_logistics(
             status_code=500,
             detail=f"同步 Printify 订单物流信息失败: {str(e)}"
         )
+
+
+@router.post("/save", response_model=PrintifyOrderSaveResponse)
+async def save_printify_order_to_database(
+    request: PrintifyOrderSaveRequest,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
+) -> PrintifyOrderSaveResponse:
+    """
+    保存从 Printify API 获取的订单到数据库
+    """
+    tenant, user = auth
+
+    logger.info(
+        "🔍 开始保存 Printify 订单到数据库",
+        external_order_id=request.external_order_id,
+        tenant_id=tenant.id,
+        user_id=user.id,
+    )
+
+    try:
+        # 解码外部系统 ID (hashid)
+        from app.core.hashids_utils import decode_id
+        
+        try:
+            external_system_id = decode_id(request.external_system_id)
+            logger.info(f"✅ 外部系统 ID 解码成功: {request.external_system_id} -> {external_system_id}")
+        except Exception as e:
+            logger.error(f"❌ 外部系统 ID 解码失败: {request.external_system_id}, 错误: {str(e)}")
+            return PrintifyOrderSaveResponse(
+                success=False,
+                message=f"无效的外部系统 ID: {str(e)}"
+            )
+
+        # 检查外部系统是否存在
+        external_system = await db.get(ExternalSystem, external_system_id)
+        if not external_system or external_system.tenant_id != tenant.id:
+            logger.error(f"❌ 外部系统不存在或无权限: {external_system_id}")
+            return PrintifyOrderSaveResponse(
+                success=False,
+                message="外部系统不存在或无权限"
+            )
+
+        # 检查订单是否已存在
+        existing_order = await db.execute(
+            select(PrintifyOrder).where(
+                PrintifyOrder.external_order_id == request.external_order_id,
+                PrintifyOrder.tenant_id == tenant.id
+            )
+        )
+        existing_order = existing_order.scalar_one_or_none()
+        
+        if existing_order:
+            # 更新现有订单（除了物流信息）
+            logger.info(f"🔄 更新现有 Printify 订单: {request.external_order_id}")
+            existing_order.external_system_id = external_system_id
+            existing_order.scm_order_id = request.scm_order_id
+            existing_order.status = request.status
+            existing_order.total_price = request.total_price
+            existing_order.currency = request.currency
+            existing_order.customer_email = request.customer_email
+            existing_order.customer_name = request.customer_name
+            existing_order.shipping_address = request.shipping_address
+            existing_order.billing_address = request.billing_address
+            existing_order.printify_data = request.printify_data
+            existing_order.external_data = request.external_data
+            # 注意：不更新物流信息字段（tracking_number, tracking_url, carrier, shipped_at, delivered_at）
+            
+            printify_order = existing_order
+        else:
+            # 创建新的 Printify 订单记录
+            logger.info(f"➕ 创建新的 Printify 订单: {request.external_order_id}")
+            printify_order = PrintifyOrder(
+                tenant_id=tenant.id,
+                external_system_id=external_system_id,
+                external_order_id=request.external_order_id,
+                scm_order_id=request.scm_order_id,
+                status=request.status,
+                total_price=request.total_price,
+                currency=request.currency,
+                customer_email=request.customer_email,
+                customer_name=request.customer_name,
+                shipping_address=request.shipping_address,
+                billing_address=request.billing_address,
+                printify_data=request.printify_data,
+                external_data=request.external_data,
+                tracking_number=request.external_data.get('tracking_number'),
+                tracking_url=request.external_data.get('tracking_url'),
+                carrier=request.external_data.get('carrier'),
+            )
+
+            # 如果有发货信息，设置发货时间
+            if request.external_data.get('shipments') and len(request.external_data['shipments']) > 0:
+                shipment = request.external_data['shipments'][0]
+                if shipment.get('shipped_at'):
+                    from datetime import datetime
+                    try:
+                        printify_order.shipped_at = datetime.fromisoformat(shipment['shipped_at'].replace('Z', '+00:00'))
+                    except:
+                        pass
+                if shipment.get('delivered_at'):
+                    try:
+                        printify_order.delivered_at = datetime.fromisoformat(shipment['delivered_at'].replace('Z', '+00:00'))
+                    except:
+                        pass
+
+            db.add(printify_order)
+
+        await db.commit()
+        await db.refresh(printify_order)
+
+        logger.info(
+            "✅ Printify 订单保存到数据库成功",
+            order_id=printify_order.id,
+            external_order_id=request.external_order_id,
+            tenant_id=tenant.id,
+        )
+
+        return PrintifyOrderSaveResponse(
+            success=True,
+            order_id=printify_order.id,
+            message="订单保存成功"
+        )
+
+    except Exception as e:
+        logger.error("❌ 保存 Printify 订单到数据库失败", error=str(e))
+        import traceback
+        logger.error("   异常堆栈", stack=traceback.format_exc())
+        return PrintifyOrderSaveResponse(
+            success=False,
+            message=f"保存订单失败: {str(e)}"
+        )
+
+
+@router.post("/update-scm-status", response_model=dict)
+async def update_scm_status(
+    request: dict,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
+) -> Any:
+    """
+    更新SCM订单状态 - 将Printify订单的物流信息同步到关联的SCM订单
+    """
+    tenant, user = auth
+    
+    try:
+        order_ids = request.get('order_ids', [])
+        if not order_ids:
+            raise HTTPException(status_code=400, detail="请提供要更新的订单ID列表")
+        
+        logger.info(f"🔄 开始更新SCM订单状态: order_ids={order_ids}, tenant_id={tenant.id}")
+        
+        # 查询选中的Printify订单
+        from app.models.printify_order import PrintifyOrder
+        from app.models.scm_order import SCMOrder
+        from sqlalchemy import select, and_
+        from datetime import datetime
+        
+        printify_orders = await db.execute(
+            select(PrintifyOrder).where(
+                and_(
+                    PrintifyOrder.id.in_(order_ids),
+                    PrintifyOrder.tenant_id == tenant.id,
+                    PrintifyOrder.scm_order_id.isnot(None)
+                )
+            )
+        )
+        orders = printify_orders.scalars().all()
+        
+        if not orders:
+            raise HTTPException(status_code=404, detail="未找到有效的Printify订单")
+        
+        updated_count = 0
+        
+        for order in orders:
+            if not order.scm_order_id:
+                continue
+                
+            # 查询关联的SCM订单
+            scm_order_result = await db.execute(
+                select(SCMOrder).where(
+                    and_(
+                        SCMOrder.id == order.scm_order_id,
+                        SCMOrder.tenant_id == tenant.id
+                    )
+                )
+            )
+            scm_order = scm_order_result.scalar_one_or_none()
+            
+            if not scm_order:
+                logger.warning(f"⚠️ 未找到关联的SCM订单: printify_order_id={order.id}, scm_order_id={order.scm_order_id}")
+                continue
+            
+            # 更新SCM订单的物流信息
+            updated = False
+            
+            # 更新跟踪号
+            if order.tracking_number and scm_order.tracking_number != order.tracking_number:
+                scm_order.tracking_number = order.tracking_number
+                updated = True
+                logger.info(f"✅ 更新跟踪号: {order.tracking_number}")
+            
+            # 更新跟踪URL
+            if order.tracking_url and scm_order.tracking_url != order.tracking_url:
+                scm_order.tracking_url = order.tracking_url
+                updated = True
+                logger.info(f"✅ 更新跟踪URL: {order.tracking_url}")
+            
+            # 更新承运商
+            if order.carrier and scm_order.carrier != order.carrier:
+                scm_order.carrier = order.carrier
+                updated = True
+                logger.info(f"✅ 更新承运商: {order.carrier}")
+            
+            # 更新发货时间
+            if order.shipped_at and not scm_order.shipped_at:
+                scm_order.shipped_at = order.shipped_at
+                updated = True
+                logger.info(f"✅ 更新发货时间: {order.shipped_at}")
+            
+            # 更新送达时间
+            if order.delivered_at and not scm_order.delivered_at:
+                scm_order.delivered_at = order.delivered_at
+                updated = True
+                logger.info(f"✅ 更新送达时间: {order.delivered_at}")
+            
+            # 更新履行状态
+            if order.status == 'shipped' and scm_order.fulfillment_status != 'shipped':
+                scm_order.fulfillment_status = 'shipped'
+                updated = True
+                logger.info(f"✅ 更新履行状态为已发货")
+            elif order.status == 'delivered' and scm_order.fulfillment_status != 'delivered':
+                scm_order.fulfillment_status = 'delivered'
+                updated = True
+                logger.info(f"✅ 更新履行状态为已送达")
+            
+            if updated:
+                scm_order.updated_at = datetime.now()
+                db.add(scm_order)
+                updated_count += 1
+                logger.info(f"✅ SCM订单更新成功: scm_order_id={scm_order.id}, printify_order_id={order.id}")
+        
+        await db.commit()
+        
+        logger.info(f"✅ SCM订单状态更新完成: 共更新了 {updated_count} 个订单")
+        
+        return {
+            "success": True,
+            "message": f"成功更新了 {updated_count} 个SCM订单的物流信息",
+            "updated_count": updated_count
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ 更新SCM订单状态失败: {str(e)}")
+        import traceback
+        logger.error(f"   异常堆栈: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"更新SCM订单状态失败: {str(e)}")
+
+
+@router.post("/update-tracking", response_model=dict)
+async def update_printify_order_tracking(
+    request: dict,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
+) -> Any:
+    """
+    更新Printify订单的物流信息到本地数据库
+    """
+    tenant, user = auth
+    
+    try:
+        external_order_id = request.get('external_order_id')
+        external_system_id_hashid = request.get('external_system_id')
+        tracking_number = request.get('tracking_number')
+        tracking_url = request.get('tracking_url')
+        carrier = request.get('carrier')
+        shipped_at = request.get('shipped_at')
+        delivered_at = request.get('delivered_at')
+        status = request.get('status')
+        
+        if not external_order_id or not external_system_id_hashid:
+            raise HTTPException(status_code=400, detail="缺少必要参数")
+        
+        logger.info(f"🔄 开始更新Printify订单物流信息: external_order_id={external_order_id}, tenant_id={tenant.id}")
+        
+        # 解码外部系统ID
+        from app.core.hashids_utils import decode_id
+        try:
+            external_system_id = decode_id(external_system_id_hashid)
+            logger.info(f"✅ 外部系统ID解码成功: {external_system_id_hashid} -> {external_system_id}")
+        except Exception as e:
+            logger.error(f"❌ 外部系统ID解码失败: {external_system_id_hashid}, 错误: {str(e)}")
+            raise HTTPException(status_code=400, detail=f"无效的外部系统ID: {str(e)}")
+        
+        # 查找Printify订单
+        from sqlalchemy import select, and_
+        
+        printify_order_result = await db.execute(
+            select(PrintifyOrder).where(
+                and_(
+                    PrintifyOrder.external_order_id == external_order_id,
+                    PrintifyOrder.tenant_id == tenant.id,
+                    PrintifyOrder.external_system_id == external_system_id
+                )
+            )
+        )
+        printify_order = printify_order_result.scalar_one_or_none()
+        
+        if not printify_order:
+            logger.warning(f"⚠️ 未找到Printify订单: external_order_id={external_order_id}")
+            return {
+                "success": False,
+                "message": "未找到对应的Printify订单"
+            }
+        
+        # 更新物流信息
+        updated = False
+        
+        # 记录接收到的参数
+        logger.info(f"🔍 接收到的物流信息参数", {
+            "tracking_number": tracking_number,
+            "tracking_url": tracking_url,
+            "carrier": carrier,
+            "shipped_at": shipped_at,
+            "delivered_at": delivered_at,
+            "status": status
+        })
+        
+        # 更新跟踪号（包括 None 值）
+        if printify_order.tracking_number != tracking_number:
+            printify_order.tracking_number = tracking_number
+            updated = True
+            logger.info(f"✅ 更新跟踪号: {tracking_number}")
+        
+        # 更新跟踪URL（包括 None 值）
+        if printify_order.tracking_url != tracking_url:
+            printify_order.tracking_url = tracking_url
+            updated = True
+            logger.info(f"✅ 更新跟踪URL: {tracking_url}")
+        
+        # 更新承运商（包括 None 值）
+        if printify_order.carrier != carrier:
+            printify_order.carrier = carrier
+            updated = True
+            logger.info(f"✅ 更新承运商: {carrier}")
+        
+        # 更新发货时间
+        if shipped_at is not None and not printify_order.shipped_at:
+            try:
+                printify_order.shipped_at = datetime.fromisoformat(shipped_at.replace('Z', '+00:00'))
+                updated = True
+                logger.info(f"✅ 更新发货时间: {shipped_at}")
+            except:
+                pass
+        
+        # 更新送达时间
+        if delivered_at is not None and not printify_order.delivered_at:
+            try:
+                printify_order.delivered_at = datetime.fromisoformat(delivered_at.replace('Z', '+00:00'))
+                updated = True
+                logger.info(f"✅ 更新送达时间: {delivered_at}")
+            except:
+                pass
+        
+        # 更新状态
+        if status is not None and printify_order.status != status:
+            printify_order.status = status
+            updated = True
+            logger.info(f"✅ 更新状态: {status}")
+        
+        if updated:
+            printify_order.updated_at = datetime.now()
+            db.add(printify_order)
+            await db.commit()
+            logger.info(f"✅ Printify订单物流信息更新成功: external_order_id={external_order_id}")
+            return {
+                "success": True,
+                "message": "物流信息更新成功"
+            }
+        else:
+            logger.info(f"ℹ️ 无需更新: external_order_id={external_order_id}")
+            return {
+                "success": True,
+                "message": "物流信息无需更新"
+            }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 更新Printify订单物流信息失败: {str(e)}")
+        import traceback
+        logger.error(f"   异常堆栈: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"更新物流信息失败: {str(e)}")

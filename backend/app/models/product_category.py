@@ -27,7 +27,7 @@ class ProductCategory(Base):
     # 关系
     parent_relations = relationship("ProductCategoryRelation", foreign_keys="ProductCategoryRelation.child_category_id", back_populates="child_category")
     child_relations = relationship("ProductCategoryRelation", foreign_keys="ProductCategoryRelation.parent_category_id", back_populates="parent_category")
-    category_dimensions = relationship("ProductCategoryDimension", back_populates="category")
+    category_dimensions = relationship("ProductCategoryDimension", foreign_keys="ProductCategoryDimension.category_id", back_populates="category")
     category_assignments = relationship("ProductCategoryAssignment", back_populates="category")
 
     # 约束

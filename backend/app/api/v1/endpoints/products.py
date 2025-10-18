@@ -1642,46 +1642,62 @@ async def create_product_mapping(
         
         logger.info(f"✅ 找到外部系统: {external_system.name}")
         
-        # 检查是否已存在相同的映射
+        # 检查是否已存在相同的映射（基于新的唯一约束）
         existing_mapping_stmt = select(ProductMapping).where(
             ProductMapping.tenant_id == tenant.id,
             ProductMapping.core_product_id == core_product_id,
             ProductMapping.core_variant_id == core_variant_id,
-            ProductMapping.external_system_id == external_system_id,
-            ProductMapping.external_product_id == mapping_data.external_product_id,
-            ProductMapping.external_variant_id == mapping_data.external_variant_id
+            ProductMapping.external_system_id == external_system_id
         )
         existing_mapping_result = await db.execute(existing_mapping_stmt)
         existing_mapping = existing_mapping_result.scalar_one_or_none()
         
         if existing_mapping:
-            logger.warning(f"⚠️ 映射已存在: mapping_id={existing_mapping.id}")
-            raise HTTPException(status_code=409, detail="Product mapping already exists")
-        
-        # 创建新的映射
-        product_mapping = ProductMapping(
-            tenant_id=tenant.id,
-            core_product_id=core_product_id,
-            core_variant_id=core_variant_id,
-            external_system_id=external_system_id,
-            external_product_id=mapping_data.external_product_id,
-            external_variant_id=mapping_data.external_variant_id,
-            mapping_type=mapping_data.mapping_type,
-            sync_direction=mapping_data.sync_direction,
-            sync_status=mapping_data.sync_status,
-            sync_config={"manual_mapping": True},
-            field_mappings={
+            logger.warning(f"⚠️ 映射已存在，将更新现有映射: mapping_id={existing_mapping.id}")
+            
+            # 更新现有映射
+            existing_mapping.external_product_id = mapping_data.external_product_id
+            existing_mapping.external_variant_id = mapping_data.external_variant_id
+            existing_mapping.mapping_type = mapping_data.mapping_type
+            existing_mapping.sync_direction = mapping_data.sync_direction
+            existing_mapping.sync_status = mapping_data.sync_status
+            existing_mapping.sync_config = {"manual_mapping": True}
+            existing_mapping.field_mappings = {
                 "title": "title",
                 "sku": "sku",
                 "price": "price"
             }
-        )
-        
-        db.add(product_mapping)
-        await db.commit()
-        await db.refresh(product_mapping)
-        
-        logger.info(f"✅ 商品映射创建成功: mapping_id={product_mapping.id}")
+            
+            await db.commit()
+            await db.refresh(existing_mapping)
+            
+            logger.info(f"✅ 商品映射更新成功: mapping_id={existing_mapping.id}")
+            product_mapping = existing_mapping
+        else:
+            # 创建新的映射
+            product_mapping = ProductMapping(
+                tenant_id=tenant.id,
+                core_product_id=core_product_id,
+                core_variant_id=core_variant_id,
+                external_system_id=external_system_id,
+                external_product_id=mapping_data.external_product_id,
+                external_variant_id=mapping_data.external_variant_id,
+                mapping_type=mapping_data.mapping_type,
+                sync_direction=mapping_data.sync_direction,
+                sync_status=mapping_data.sync_status,
+                sync_config={"manual_mapping": True},
+                field_mappings={
+                    "title": "title",
+                    "sku": "sku",
+                    "price": "price"
+                }
+            )
+            
+            db.add(product_mapping)
+            await db.commit()
+            await db.refresh(product_mapping)
+            
+            logger.info(f"✅ 商品映射创建成功: mapping_id={product_mapping.id}")
         
         # 构建响应
         return ProductMappingResponse(

@@ -2,7 +2,7 @@
 Printify Order model
 """
 
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON, Boolean
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON, Boolean, Numeric
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
@@ -19,7 +19,7 @@ class PrintifyOrder(Base):
     
     # Order information
     status = Column(String(50), nullable=False, default="pending")
-    total_price = Column(String(20), nullable=True)
+    total_price = Column(Numeric(10, 2), nullable=True)
     currency = Column(String(10), nullable=True, default="USD")
     
     # Customer information

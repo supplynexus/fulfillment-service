@@ -968,11 +968,42 @@ async def get_printify_orders(
         orders = orders_result.get("orders", [])
         logger.info(f"✅ Printify 订单列表获取成功: 数量={len(orders)}")
 
+        # 处理订单数据，映射字段名以匹配前端期望
+        processed_orders = []
+        for order in orders:
+            # 提取物流信息
+            shipments = order.get("shipments", [])
+            tracking_number = None
+            tracking_url = None
+            tracking_company = None
+            shipped_at = None
+            delivered_at = None
+            
+            if shipments and len(shipments) > 0:
+                # 取第一个包裹的物流信息
+                first_shipment = shipments[0]
+                tracking_number = first_shipment.get("number")
+                tracking_url = first_shipment.get("url")
+                tracking_company = first_shipment.get("carrier")
+                shipped_at = first_shipment.get("shipped_at")
+                delivered_at = first_shipment.get("delivered_at")
+            
+            # 构建处理后的订单数据
+            processed_order = {
+                **order,  # 保留原始数据
+                "tracking_number": tracking_number,
+                "tracking_url": tracking_url,
+                "tracking_company": tracking_company,
+                "shipped_at": shipped_at,
+                "delivered_at": delivered_at,
+            }
+            processed_orders.append(processed_order)
+
         return {
             "success": True,
             "external_system_id": external_system_hashid,
             "shop_id": shop_id,
-            "orders": orders,
+            "orders": processed_orders,
             "total_count": orders_result.get("total_count", 0),
             "current_page": orders_result.get("current_page", page),
             "per_page": orders_result.get("per_page", limit),
