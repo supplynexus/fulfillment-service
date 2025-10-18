@@ -64,43 +64,67 @@ def upgrade() -> None:
                 print(f"Table {table_name} does not exist, skipping...")
                 continue
                 
-            # 添加 created_by 字段
-            try:
-                op.add_column(table_name, sa.Column('created_by', sa.Integer(), nullable=True))
-                op.create_foreign_key(
-                    f'fk_{table_name}_created_by', 
-                    table_name, 
-                    'users', 
-                    ['created_by'], 
-                    ['id']
-                )
-                print(f"Added created_by to {table_name}")
-            except Exception as e:
-                print(f"Failed to add created_by to {table_name}: {e}")
+            # 添加 created_by 字段（如果不存在）
+            result = connection.execute(sa.text(f"""
+                SELECT column_name FROM information_schema.columns 
+                WHERE table_name = '{table_name}' AND column_name = 'created_by'
+            """))
             
-            # 添加 updated_by 字段
-            try:
-                op.add_column(table_name, sa.Column('updated_by', sa.Integer(), nullable=True))
-                op.create_foreign_key(
-                    f'fk_{table_name}_updated_by', 
-                    table_name, 
-                    'users', 
-                    ['updated_by'], 
-                    ['id']
-                )
-                print(f"Added updated_by to {table_name}")
-            except Exception as e:
-                print(f"Failed to add updated_by to {table_name}: {e}")
+            if not result.fetchone():
+                try:
+                    op.add_column(table_name, sa.Column('created_by', sa.Integer(), nullable=True))
+                    op.create_foreign_key(
+                        f'fk_{table_name}_created_by', 
+                        table_name, 
+                        'users', 
+                        ['created_by'], 
+                        ['id']
+                    )
+                    print(f"Added created_by to {table_name}")
+                except Exception as e:
+                    print(f"Failed to add created_by to {table_name}: {e}")
+            else:
+                print(f"created_by already exists in {table_name}")
             
-            # 添加 is_deleted 字段
-            try:
-                op.add_column(table_name, sa.Column('is_deleted', sa.Boolean(), nullable=True))
-                # 设置默认值
-                op.execute(f"UPDATE {table_name} SET is_deleted = false WHERE is_deleted IS NULL")
-                op.alter_column(table_name, 'is_deleted', nullable=False, server_default=sa.text('false'))
-                print(f"Added is_deleted to {table_name}")
-            except Exception as e:
-                print(f"Failed to add is_deleted to {table_name}: {e}")
+            # 添加 updated_by 字段（如果不存在）
+            result = connection.execute(sa.text(f"""
+                SELECT column_name FROM information_schema.columns 
+                WHERE table_name = '{table_name}' AND column_name = 'updated_by'
+            """))
+            
+            if not result.fetchone():
+                try:
+                    op.add_column(table_name, sa.Column('updated_by', sa.Integer(), nullable=True))
+                    op.create_foreign_key(
+                        f'fk_{table_name}_updated_by', 
+                        table_name, 
+                        'users', 
+                        ['updated_by'], 
+                        ['id']
+                    )
+                    print(f"Added updated_by to {table_name}")
+                except Exception as e:
+                    print(f"Failed to add updated_by to {table_name}: {e}")
+            else:
+                print(f"updated_by already exists in {table_name}")
+            
+            # 添加 is_deleted 字段（如果不存在）
+            result = connection.execute(sa.text(f"""
+                SELECT column_name FROM information_schema.columns 
+                WHERE table_name = '{table_name}' AND column_name = 'is_deleted'
+            """))
+            
+            if not result.fetchone():
+                try:
+                    op.add_column(table_name, sa.Column('is_deleted', sa.Boolean(), nullable=True))
+                    # 设置默认值
+                    op.execute(f"UPDATE {table_name} SET is_deleted = false WHERE is_deleted IS NULL")
+                    op.alter_column(table_name, 'is_deleted', nullable=False, server_default=sa.text('false'))
+                    print(f"Added is_deleted to {table_name}")
+                except Exception as e:
+                    print(f"Failed to add is_deleted to {table_name}: {e}")
+            else:
+                print(f"is_deleted already exists in {table_name}")
             
             # 为没有 is_active 的表添加 is_active 字段
             try:
