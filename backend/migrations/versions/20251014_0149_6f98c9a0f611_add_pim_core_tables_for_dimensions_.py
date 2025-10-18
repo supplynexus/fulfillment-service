@@ -603,45 +603,66 @@ def upgrade() -> None:
         print(f"Index ix_orders_shopify_order_id does not exist, skipping: {e}")
         pass
     # 安全地删除索引（如果存在的话）
-    try:
+    connection = op.get_bind()
+    result = connection.execute(sa.text("""
+        SELECT indexname FROM pg_indexes 
+        WHERE tablename = 'product_mappings' AND indexname = 'uq_pm_core_product'
+    """))
+    
+    if result.fetchone():
         op.drop_index(
             "uq_pm_core_product",
             table_name="product_mappings",
             postgresql_where="(core_variant_id IS NULL)",
         )
-    except Exception as e:
-        print(f"Index uq_pm_core_product does not exist, skipping: {e}")
-        pass
+        print("Index uq_pm_core_product dropped successfully")
+    else:
+        print("Index uq_pm_core_product does not exist, skipping")
     # 安全地删除索引（如果存在的话）
-    try:
+    result = connection.execute(sa.text("""
+        SELECT indexname FROM pg_indexes 
+        WHERE tablename = 'product_mappings' AND indexname = 'uq_pm_core_variant'
+    """))
+    
+    if result.fetchone():
         op.drop_index(
             "uq_pm_core_variant",
             table_name="product_mappings",
             postgresql_where="(core_variant_id IS NOT NULL)",
         )
-    except Exception as e:
-        print(f"Index uq_pm_core_variant does not exist, skipping: {e}")
-        pass
+        print("Index uq_pm_core_variant dropped successfully")
+    else:
+        print("Index uq_pm_core_variant does not exist, skipping")
     # 安全地删除索引（如果存在的话）
-    try:
+    result = connection.execute(sa.text("""
+        SELECT indexname FROM pg_indexes 
+        WHERE tablename = 'product_mappings' AND indexname = 'uq_pm_ext_product'
+    """))
+    
+    if result.fetchone():
         op.drop_index(
             "uq_pm_ext_product",
             table_name="product_mappings",
             postgresql_where="(external_variant_id IS NULL)",
         )
-    except Exception as e:
-        print(f"Index uq_pm_ext_product does not exist, skipping: {e}")
-        pass
+        print("Index uq_pm_ext_product dropped successfully")
+    else:
+        print("Index uq_pm_ext_product does not exist, skipping")
     # 安全地删除索引（如果存在的话）
-    try:
+    result = connection.execute(sa.text("""
+        SELECT indexname FROM pg_indexes 
+        WHERE tablename = 'product_mappings' AND indexname = 'uq_pm_ext_variant'
+    """))
+    
+    if result.fetchone():
         op.drop_index(
             "uq_pm_ext_variant",
             table_name="product_mappings",
             postgresql_where="(external_variant_id IS NOT NULL)",
         )
-    except Exception as e:
-        print(f"Index uq_pm_ext_variant does not exist, skipping: {e}")
-        pass
+        print("Index uq_pm_ext_variant dropped successfully")
+    else:
+        print("Index uq_pm_ext_variant does not exist, skipping")
     # Clean up duplicate data before creating unique constraint
     op.execute("""
         DELETE FROM product_mappings 
