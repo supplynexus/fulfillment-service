@@ -602,26 +602,46 @@ def upgrade() -> None:
         # 索引不存在，记录日志但继续执行
         print(f"Index ix_orders_shopify_order_id does not exist, skipping: {e}")
         pass
-    op.drop_index(
-        "uq_pm_core_product",
-        table_name="product_mappings",
-        postgresql_where="(core_variant_id IS NULL)",
-    )
-    op.drop_index(
-        "uq_pm_core_variant",
-        table_name="product_mappings",
-        postgresql_where="(core_variant_id IS NOT NULL)",
-    )
-    op.drop_index(
-        "uq_pm_ext_product",
-        table_name="product_mappings",
-        postgresql_where="(external_variant_id IS NULL)",
-    )
-    op.drop_index(
-        "uq_pm_ext_variant",
-        table_name="product_mappings",
-        postgresql_where="(external_variant_id IS NOT NULL)",
-    )
+    # 安全地删除索引（如果存在的话）
+    try:
+        op.drop_index(
+            "uq_pm_core_product",
+            table_name="product_mappings",
+            postgresql_where="(core_variant_id IS NULL)",
+        )
+    except Exception as e:
+        print(f"Index uq_pm_core_product does not exist, skipping: {e}")
+        pass
+    # 安全地删除索引（如果存在的话）
+    try:
+        op.drop_index(
+            "uq_pm_core_variant",
+            table_name="product_mappings",
+            postgresql_where="(core_variant_id IS NOT NULL)",
+        )
+    except Exception as e:
+        print(f"Index uq_pm_core_variant does not exist, skipping: {e}")
+        pass
+    # 安全地删除索引（如果存在的话）
+    try:
+        op.drop_index(
+            "uq_pm_ext_product",
+            table_name="product_mappings",
+            postgresql_where="(external_variant_id IS NULL)",
+        )
+    except Exception as e:
+        print(f"Index uq_pm_ext_product does not exist, skipping: {e}")
+        pass
+    # 安全地删除索引（如果存在的话）
+    try:
+        op.drop_index(
+            "uq_pm_ext_variant",
+            table_name="product_mappings",
+            postgresql_where="(external_variant_id IS NOT NULL)",
+        )
+    except Exception as e:
+        print(f"Index uq_pm_ext_variant does not exist, skipping: {e}")
+        pass
     # Clean up duplicate data before creating unique constraint
     op.execute("""
         DELETE FROM product_mappings 
@@ -638,8 +658,18 @@ def upgrade() -> None:
         ["tenant_id", "core_product_id", "external_system_id"],
     )
     op.drop_constraint("uq_products_handle", "products", type_="unique")
-    op.drop_index("ix_scm_orders_printify_order_id", table_name="scm_orders")
-    op.drop_index("ix_scm_orders_shopify_order_id", table_name="scm_orders")
+    # 安全地删除索引（如果存在的话）
+    try:
+        op.drop_index("ix_scm_orders_printify_order_id", table_name="scm_orders")
+    except Exception as e:
+        print(f"Index ix_scm_orders_printify_order_id does not exist, skipping: {e}")
+        pass
+    
+    try:
+        op.drop_index("ix_scm_orders_shopify_order_id", table_name="scm_orders")
+    except Exception as e:
+        print(f"Index ix_scm_orders_shopify_order_id does not exist, skipping: {e}")
+        pass
     op.drop_column("scm_orders", "total_amount")
     op.drop_column("scm_orders", "target_system_type")
     op.drop_column("scm_orders", "external_order_id")
