@@ -4,6 +4,7 @@ Customer schemas
 
 from typing import Optional
 from pydantic import BaseModel, EmailStr
+from app.schemas.base import BaseResponse
 
 
 class CustomerBase(BaseModel):
@@ -36,12 +37,7 @@ class CustomerUpdate(BaseModel):
     auto_fulfillment: Optional[bool] = None
 
 
-class CustomerResponse(CustomerBase):
+class CustomerResponse(CustomerBase, BaseResponse):
     id: int
     is_active: bool
-    created_at: str
-    updated_at: Optional[str]
     owner_id: int
-    
-    class Config:
-        from_attributes = True

@@ -50,7 +50,13 @@ export async function GET(
     });
 
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
-    const signature = generateBackendSignature(privateKey, signatureString, timestamp, nonce, tenantName);
+    const signature = generateBackendSignature(
+      privateKey,
+      signatureString,
+      timestamp,
+      nonce,
+      tenantName
+    );
 
     logger.info('🔍 前端签名生成完成', {
       signatureLength: signature.length,
@@ -75,13 +81,18 @@ export async function GET(
     });
 
     const duration = Date.now() - startTime;
-    logger.requestComplete(request.method, request.url, backendResponse.status, duration);
+    logger.requestComplete(
+      request.method,
+      request.url,
+      backendResponse.status,
+      duration
+    );
 
     if (!backendResponse.ok) {
       const errorData = await backendResponse.json();
-      logger.error('Backend API error', { 
-        status: backendResponse.status, 
-        error: errorData 
+      logger.error('Backend API error', {
+        status: backendResponse.status,
+        error: errorData,
       });
       return NextResponse.json(
         { error: errorData.detail || 'Backend API error' },
@@ -91,12 +102,11 @@ export async function GET(
 
     const data = await backendResponse.json();
     return NextResponse.json(data);
-
   } catch (error: any) {
     const duration = Date.now() - startTime;
-    logger.error('Request failed', { 
-      error: error.message, 
-      duration 
+    logger.error('Request failed', {
+      error: error.message,
+      duration,
     });
     return NextResponse.json(
       { error: error.message || 'Internal server error' },

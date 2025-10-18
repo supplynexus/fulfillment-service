@@ -15,8 +15,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
 import logging
 
+from app.schemas.base import BaseResponse
+
 from app.core.database import get_async_db
-from app.core.tenant_auth_dependency import verify_tenant_auth
+from app.core.jwt_auth_dependency import verify_jwt_auth
 from app.services.product_category_service import ProductCategoryService
 from app.services.product_category_switch_service import ProductCategorySwitchService
 from app.core.logging import get_logger
@@ -43,7 +45,7 @@ class CategoryUpdateRequest(BaseModel):
     is_active: Optional[bool] = Field(None, description="是否激活")
 
 
-class CategoryResponse(BaseModel):
+class CategoryResponse(BaseResponse):
     id: int
     category_code: str
     category_name: str
@@ -51,12 +53,7 @@ class CategoryResponse(BaseModel):
     is_root: bool
     sort_order: int
     is_active: bool
-    created_at: str
-    updated_at: str
     children: Optional[List['CategoryResponse']] = None
-
-    class Config:
-        from_attributes = True
 
 
 class CategoryTreeResponse(BaseModel):
@@ -89,7 +86,7 @@ class CategorySwitchRequest(BaseModel):
 async def create_category(
     request: CategoryCreateRequest,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple = Depends(verify_tenant_auth)
+    auth: tuple = Depends(verify_jwt_auth)
 ) -> CategoryResponse:
     """创建产品分类"""
     tenant, user = auth
@@ -128,7 +125,7 @@ async def create_category(
 async def get_category_tree(
     include_inactive: bool = Query(False, description="是否包含非激活分类"),
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple = Depends(verify_tenant_auth)
+    auth: tuple = Depends(verify_jwt_auth)
 ) -> CategoryTreeResponse:
     """获取分类树"""
     tenant, user = auth
@@ -156,7 +153,7 @@ async def get_category_tree(
 async def get_category(
     category_id: int,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple = Depends(verify_tenant_auth)
+    auth: tuple = Depends(verify_jwt_auth)
 ) -> CategoryResponse:
     """获取单个分类"""
     tenant, user = auth
@@ -188,7 +185,7 @@ async def update_category(
     category_id: int,
     request: CategoryUpdateRequest,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple = Depends(verify_tenant_auth)
+    auth: tuple = Depends(verify_jwt_auth)
 ) -> CategoryResponse:
     """更新分类"""
     tenant, user = auth
@@ -222,7 +219,7 @@ async def delete_category(
     category_id: int,
     force: bool = Query(False, description="是否强制删除"),
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple = Depends(verify_tenant_auth)
+    auth: tuple = Depends(verify_jwt_auth)
 ) -> Dict[str, Any]:
     """删除分类"""
     tenant, user = auth
@@ -257,7 +254,7 @@ async def delete_category(
 async def get_category_path(
     category_id: int,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple = Depends(verify_tenant_auth)
+    auth: tuple = Depends(verify_jwt_auth)
 ) -> CategoryPathResponse:
     """获取分类路径"""
     tenant, user = auth
@@ -285,7 +282,7 @@ async def get_category_path(
 async def add_category_relation(
     request: CategoryRelationRequest,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple = Depends(verify_tenant_auth)
+    auth: tuple = Depends(verify_jwt_auth)
 ) -> Dict[str, Any]:
     """添加分类关系"""
     tenant, user = auth
@@ -320,7 +317,7 @@ async def remove_category_relation(
     parent_category_id: int = Query(..., description="父分类ID"),
     child_category_id: int = Query(..., description="子分类ID"),
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple = Depends(verify_tenant_auth)
+    auth: tuple = Depends(verify_jwt_auth)
 ) -> Dict[str, Any]:
     """移除分类关系"""
     tenant, user = auth
@@ -352,7 +349,7 @@ async def remove_category_relation(
 async def analyze_category_switch(
     request: CategorySwitchAnalysisRequest,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple = Depends(verify_tenant_auth)
+    auth: tuple = Depends(verify_jwt_auth)
 ) -> Dict[str, Any]:
     """分析分类切换影响"""
     tenant, user = auth
@@ -388,7 +385,7 @@ async def analyze_category_switch(
 async def execute_category_switch(
     request: CategorySwitchRequest,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple = Depends(verify_tenant_auth)
+    auth: tuple = Depends(verify_jwt_auth)
 ) -> Dict[str, Any]:
     """执行分类切换"""
     tenant, user = auth
@@ -429,7 +426,7 @@ async def execute_category_switch(
 async def get_category_dimensions(
     category_id: int,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple = Depends(verify_tenant_auth)
+    auth: tuple = Depends(verify_jwt_auth)
 ) -> List[Dict[str, Any]]:
     """获取分类的维度"""
     tenant, user = auth

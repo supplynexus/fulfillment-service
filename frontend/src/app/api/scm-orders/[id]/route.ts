@@ -16,21 +16,27 @@ export async function GET(
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       frontendLogger.error('❌ 缺少或无效的授权头');
-      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 });
+      return NextResponse.json(
+        { error: 'Missing or invalid authorization header' },
+        { status: 401 }
+      );
     }
 
     const frontendToken = authHeader.substring(7);
-    
+
     // 验证前端 JWT token
     let decodedToken;
     try {
       decodedToken = jwtUtilsServer.verifyToken(frontendToken);
-      frontendLogger.info('✅ JWT 验证成功', { userId: decodedToken.sub, tenantName: decodedToken.tenant_name });
+      frontendLogger.info('✅ JWT 验证成功', {
+        userId: decodedToken.sub,
+        tenantName: decodedToken.tenant_name,
+      });
     } catch (error: any) {
       frontendLogger.error('❌ JWT 验证失败', { error: error.message });
       return NextResponse.json({ error: 'Invalid JWT token' }, { status: 401 });
     }
-    
+
     const { tenant_name: tenantName, sub: userId } = decodedToken;
 
     // 生成后端签名
@@ -40,11 +46,20 @@ export async function GET(
     const signatureString = `GET${backendPath}${timestamp}${nonce}${tenantName}`;
 
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
-    const signature = generateBackendSignature(privateKey, signatureString, timestamp, nonce, tenantName);
+    const signature = generateBackendSignature(
+      privateKey,
+      signatureString,
+      timestamp,
+      nonce,
+      tenantName
+    );
 
     // 构建后端 URL
     const backendUrl = `${process.env.BACKEND_URL || 'http://localhost:8000'}${backendPath}`;
-    frontendLogger.info('➡️ 转发获取请求到后端', { backendUrl, scmOrderHashid });
+    frontendLogger.info('➡️ 转发获取请求到后端', {
+      backendUrl,
+      scmOrderHashid,
+    });
 
     // 调用后端 API
     const backendResponse = await fetch(backendUrl, {
@@ -61,9 +76,15 @@ export async function GET(
 
     if (!backendResponse.ok) {
       const errorText = await backendResponse.text();
-      frontendLogger.error('❌ 后端 API 错误', { status: backendResponse.status, errorText });
+      frontendLogger.error('❌ 后端 API 错误', {
+        status: backendResponse.status,
+        errorText,
+      });
       return NextResponse.json(
-        { error: `Backend API error: ${backendResponse.status}`, detail: errorText },
+        {
+          error: `Backend API error: ${backendResponse.status}`,
+          detail: errorText,
+        },
         { status: backendResponse.status }
       );
     }
@@ -71,9 +92,10 @@ export async function GET(
     const data = await backendResponse.json();
     frontendLogger.info('✅ SCM 订单详情获取成功', { scmOrderHashid });
     return NextResponse.json(data);
-
   } catch (error: any) {
-    frontendLogger.error('❌ 获取 SCM 订单详情 API 错误', { error: error.message });
+    frontendLogger.error('❌ 获取 SCM 订单详情 API 错误', {
+      error: error.message,
+    });
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }
@@ -93,21 +115,27 @@ export async function DELETE(
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       frontendLogger.error('❌ 缺少或无效的授权头');
-      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 });
+      return NextResponse.json(
+        { error: 'Missing or invalid authorization header' },
+        { status: 401 }
+      );
     }
 
     const frontendToken = authHeader.substring(7);
-    
+
     // 验证前端 JWT token
     let decodedToken;
     try {
       decodedToken = jwtUtilsServer.verifyToken(frontendToken);
-      frontendLogger.info('✅ JWT 验证成功', { userId: decodedToken.sub, tenantName: decodedToken.tenant_name });
+      frontendLogger.info('✅ JWT 验证成功', {
+        userId: decodedToken.sub,
+        tenantName: decodedToken.tenant_name,
+      });
     } catch (error: any) {
       frontendLogger.error('❌ JWT 验证失败', { error: error.message });
       return NextResponse.json({ error: 'Invalid JWT token' }, { status: 401 });
     }
-    
+
     const { tenant_name: tenantName, sub: userId } = decodedToken;
 
     // 生成后端签名
@@ -117,11 +145,20 @@ export async function DELETE(
     const signatureString = `DELETE${backendPath}${timestamp}${nonce}${tenantName}`;
 
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
-    const signature = generateBackendSignature(privateKey, signatureString, timestamp, nonce, tenantName);
+    const signature = generateBackendSignature(
+      privateKey,
+      signatureString,
+      timestamp,
+      nonce,
+      tenantName
+    );
 
     // 构建后端 URL
     const backendUrl = `${process.env.BACKEND_URL || 'http://localhost:8000'}${backendPath}`;
-    frontendLogger.info('➡️ 转发删除请求到后端', { backendUrl, scmOrderHashid });
+    frontendLogger.info('➡️ 转发删除请求到后端', {
+      backendUrl,
+      scmOrderHashid,
+    });
 
     // 调用后端 API
     const backendResponse = await fetch(backendUrl, {
@@ -138,17 +175,25 @@ export async function DELETE(
 
     if (!backendResponse.ok) {
       const errorText = await backendResponse.text();
-      frontendLogger.error('❌ 后端 API 错误', { status: backendResponse.status, errorText });
+      frontendLogger.error('❌ 后端 API 错误', {
+        status: backendResponse.status,
+        errorText,
+      });
       return NextResponse.json(
-        { error: `Backend API error: ${backendResponse.status}`, detail: errorText },
+        {
+          error: `Backend API error: ${backendResponse.status}`,
+          detail: errorText,
+        },
         { status: backendResponse.status }
       );
     }
 
     const data = await backendResponse.json();
-    frontendLogger.info('✅ SCM 订单删除成功', { scmOrderHashid, response: data });
+    frontendLogger.info('✅ SCM 订单删除成功', {
+      scmOrderHashid,
+      response: data,
+    });
     return NextResponse.json(data);
-
   } catch (error: any) {
     frontendLogger.error('❌ 删除 SCM 订单 API 错误', { error: error.message });
     return NextResponse.json(

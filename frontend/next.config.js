@@ -11,7 +11,7 @@ const envFiles = [
   '.env.development',
   '.env',
   'environment.local',
-  'environment.example'
+  'environment.example',
 ];
 
 let envPath = null;
@@ -28,10 +28,10 @@ for (const file of envFiles) {
 
 if (envPath) {
   console.log(`📁 Environment file: ${envPath}`);
-  
+
   const envContent = fs.readFileSync(envPath, 'utf8');
   const envVars = {};
-  
+
   envContent.split('\n').forEach(line => {
     const trimmed = line.trim();
     if (trimmed && !trimmed.startsWith('#')) {
@@ -42,11 +42,15 @@ if (envPath) {
       }
     }
   });
-  
+
   console.log('🔧 Environment variables:');
   Object.entries(envVars).forEach(([key, value]) => {
     // 隐藏敏感信息
-    if (key.toLowerCase().includes('key') || key.toLowerCase().includes('secret') || key.toLowerCase().includes('password')) {
+    if (
+      key.toLowerCase().includes('key') ||
+      key.toLowerCase().includes('secret') ||
+      key.toLowerCase().includes('password')
+    ) {
       console.log(`   ${key}: ${'*'.repeat(Math.min(value.length, 8))}`);
     } else {
       console.log(`   ${key}: ${value}`);
@@ -59,20 +63,28 @@ if (envPath) {
 // 显示当前环境信息
 console.log('🌐 Current environment:');
 console.log(`   NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
-console.log(`   NEXT_PUBLIC_ENVIRONMENT: ${process.env.NEXT_PUBLIC_ENVIRONMENT || 'local'}`);
+console.log(
+  `   NEXT_PUBLIC_ENVIRONMENT: ${process.env.NEXT_PUBLIC_ENVIRONMENT || 'local'}`
+);
 
 // 显示 keys 目录信息
 console.log('🔑 Keys directory information:');
 const keysDirFromEnv = process.env.FRONTEND_KEYS_DIRECTORY;
-const keysDir = keysDirFromEnv 
-  ? (path.isAbsolute(keysDirFromEnv) ? keysDirFromEnv : path.resolve(process.cwd(), keysDirFromEnv))
+const keysDir = keysDirFromEnv
+  ? path.isAbsolute(keysDirFromEnv)
+    ? keysDirFromEnv
+    : path.resolve(process.cwd(), keysDirFromEnv)
   : path.resolve(process.cwd(), 'keys');
 
-console.log(`   FRONTEND_KEYS_DIRECTORY: ${keysDirFromEnv || '(not set, using default)'}`);
+console.log(
+  `   FRONTEND_KEYS_DIRECTORY: ${keysDirFromEnv || '(not set, using default)'}`
+);
 console.log(`   Resolved keys directory: ${keysDir}`);
 
 if (fs.existsSync(keysDir)) {
-  const keyFiles = fs.readdirSync(keysDir).filter(file => file.endsWith('.pem'));
+  const keyFiles = fs
+    .readdirSync(keysDir)
+    .filter(file => file.endsWith('.pem'));
   if (keyFiles.length > 0) {
     console.log('   Available key files:');
     keyFiles.forEach(file => {
@@ -87,9 +99,15 @@ if (fs.existsSync(keysDir)) {
 
 // 显示 JWT key 路径
 console.log('🔐 JWT key paths:');
-const jwtPrivatePath = process.env.FRONTEND_JWT_PRIVATE_KEY_PATH || './keys/frontend_jwt_private_key.pem';
-const jwtPublicPath = process.env.FRONTEND_JWT_PUBLIC_KEY_PATH || './keys/frontend_jwt_public_key.pem';
-console.log(`   JWT Private Key: ${path.resolve(process.cwd(), jwtPrivatePath)}`);
+const jwtPrivatePath =
+  process.env.FRONTEND_JWT_PRIVATE_KEY_PATH ||
+  './keys/frontend_jwt_private_key.pem';
+const jwtPublicPath =
+  process.env.FRONTEND_JWT_PUBLIC_KEY_PATH ||
+  './keys/frontend_jwt_public_key.pem';
+console.log(
+  `   JWT Private Key: ${path.resolve(process.cwd(), jwtPrivatePath)}`
+);
 console.log(`   JWT Public Key: ${path.resolve(process.cwd(), jwtPublicPath)}`);
 
 console.log('=====================================');
@@ -97,8 +115,10 @@ console.log('=====================================');
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   env: {
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
-    NEXT_PUBLIC_APP_NAME: process.env.NEXT_PUBLIC_APP_NAME || 'SupplyNexus Fulfillment Service',
+    NEXT_PUBLIC_API_URL:
+      process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
+    NEXT_PUBLIC_APP_NAME:
+      process.env.NEXT_PUBLIC_APP_NAME || 'SupplyNexus Fulfillment Service',
   },
   // Removed incorrect API mapping - Next.js should have its own API routes
   // async rewrites() {
@@ -120,7 +140,7 @@ const nextConfig = {
   },
   // Enable strict mode for better dev experience
   reactStrictMode: true,
-  
+
   // Temporarily disable ESLint and TypeScript during build
   eslint: {
     ignoreDuringBuilds: true,
@@ -128,7 +148,7 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  
+
   // Webpack configuration for path aliases
   webpack: (config, { buildId, dev, isServer, defaultLoaders, webpack }) => {
     config.resolve.alias = {
@@ -137,7 +157,7 @@ const nextConfig = {
     };
     return config;
   },
-  
+
   // Security headers
   async headers() {
     return [
@@ -164,10 +184,10 @@ const nextConfig = {
       },
     ];
   },
-  
+
   // Output configuration for Docker
   output: 'standalone',
-  
+
   // Experimental features
   experimental: {
     // Removed outputFileTracingRoot as it's no longer needed in Next.js 15

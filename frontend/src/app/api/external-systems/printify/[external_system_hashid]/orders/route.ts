@@ -66,8 +66,7 @@ export async function GET(
       externalSystemHashid: external_system_hashid,
     });
 
-    const backendApiUrl =
-      process.env.BACKEND_API_URL || 'http://backend:8000';
+    const backendApiUrl = process.env.BACKEND_API_URL || 'http://backend:8000';
     const backendEndpoint = `${backendApiUrl}${backendPath}`;
 
     logger.info('Forwarding request to backend', { backendEndpoint });

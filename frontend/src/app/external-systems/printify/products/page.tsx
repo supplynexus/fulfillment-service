@@ -316,19 +316,21 @@ function PrintifyProductsPage() {
         storeId: selectedStore.id_hashid,
       });
 
-      const response = await frontendApi.post('/api/printify-sync/sync-products', {
-        external_system_id_hashid: selectedStore.id_hashid,
-        product_ids: [product.id], // 只同步当前商品
-      });
+      const response = await frontendApi.post(
+        '/api/printify-sync/sync-products',
+        {
+          external_system_id_hashid: selectedStore.id_hashid,
+          product_ids: [product.id], // 只同步当前商品
+        }
+      );
 
       frontendLogger.info('✅ Printify 商品同步成功', response.data);
 
       // 刷新商品列表
       await fetchProducts(selectedStore);
-      
+
       // 获取同步状态
       await fetchSyncStatus();
-
     } catch (error) {
       frontendLogger.error('❌ Printify 商品同步失败', {
         error: String(error),
@@ -417,16 +419,37 @@ function PrintifyProductsPage() {
                   ))}
                 </Box>
                 {syncStatus && (
-                  <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
-                    <Typography variant="subtitle2" gutterBottom>
+                  <Box
+                    sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}
+                  >
+                    <Typography variant='subtitle2' gutterBottom>
                       同步状态
                     </Typography>
                     <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                      <Chip label={`总计: ${syncStatus.total_products}`} size="small" />
-                      <Chip label={`已同步: ${syncStatus.synced_products}`} size="small" color="success" />
-                      <Chip label={`待处理: ${syncStatus.pending_products}`} size="small" color="warning" />
-                      <Chip label={`错误: ${syncStatus.error_products}`} size="small" color="error" />
-                      <Chip label={`同步率: ${syncStatus.sync_rate}%`} size="small" color="info" />
+                      <Chip
+                        label={`总计: ${syncStatus.total_products}`}
+                        size='small'
+                      />
+                      <Chip
+                        label={`已同步: ${syncStatus.synced_products}`}
+                        size='small'
+                        color='success'
+                      />
+                      <Chip
+                        label={`待处理: ${syncStatus.pending_products}`}
+                        size='small'
+                        color='warning'
+                      />
+                      <Chip
+                        label={`错误: ${syncStatus.error_products}`}
+                        size='small'
+                        color='error'
+                      />
+                      <Chip
+                        label={`同步率: ${syncStatus.sync_rate}%`}
+                        size='small'
+                        color='info'
+                      />
                     </Box>
                   </Box>
                 )}
@@ -725,22 +748,27 @@ function PrintifyProductsPage() {
                                   <TableCell>${variant.price}</TableCell>
                                   <TableCell>
                                     <Chip
-                                      label="启用"
-                                      color="success"
+                                      label='启用'
+                                      color='success'
                                       size='small'
                                     />
                                   </TableCell>
                                 </TableRow>
                               ))}
-                            {selectedProduct.variants.filter(v => v.is_enabled).length > 10 && (
+                            {selectedProduct.variants.filter(v => v.is_enabled)
+                              .length > 10 && (
                               <TableRow>
                                 <TableCell colSpan={3} align='center'>
                                   ... 还有{' '}
-                                  {selectedProduct.variants.filter(v => v.is_enabled).length - 10} 个启用的变体
+                                  {selectedProduct.variants.filter(
+                                    v => v.is_enabled
+                                  ).length - 10}{' '}
+                                  个启用的变体
                                 </TableCell>
                               </TableRow>
                             )}
-                            {selectedProduct.variants.filter(v => v.is_enabled).length === 0 && (
+                            {selectedProduct.variants.filter(v => v.is_enabled)
+                              .length === 0 && (
                               <TableRow>
                                 <TableCell colSpan={3} align='center'>
                                   暂无启用的变体
@@ -756,18 +784,18 @@ function PrintifyProductsPage() {
               )}
             </DialogContent>
             <DialogActions>
-              <Button 
-                variant="outlined" 
+              <Button
+                variant='outlined'
                 startIcon={<SyncIcon />}
                 onClick={() => handleSyncProduct(selectedProduct!)}
                 disabled={syncing}
-                color="primary"
+                color='primary'
                 sx={{ mr: 1 }}
               >
                 {syncing ? '同步中...' : '同步到本地'}
               </Button>
-              <Button 
-                variant="outlined" 
+              <Button
+                variant='outlined'
                 startIcon={<LinkIcon />}
                 onClick={() => setOpenMappingDialog(true)}
                 sx={{ mr: 1 }}
@@ -783,7 +811,7 @@ function PrintifyProductsPage() {
             open={openMappingDialog}
             onClose={() => setOpenMappingDialog(false)}
             printifyProduct={selectedProduct}
-            onMappingCreated={(mapping) => {
+            onMappingCreated={mapping => {
               frontendLogger.info('✅ 商品映射创建成功', mapping);
               setOpenMappingDialog(false);
             }}

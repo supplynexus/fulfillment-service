@@ -185,40 +185,55 @@ interface ProductMapping {
 
 export function PrintifyMapping() {
   const [coreProducts, setCoreProducts] = useState<CoreProduct[]>([]);
-  const [printifyProducts, setPrintifyProducts] = useState<PrintifyProduct[]>([]);
+  const [printifyProducts, setPrintifyProducts] = useState<PrintifyProduct[]>(
+    []
+  );
   const [printifyStores, setPrintifyStores] = useState<PrintifyStore[]>([]);
-  const [selectedStore, setSelectedStore] = useState<PrintifyStore | null>(null);
+  const [selectedStore, setSelectedStore] = useState<PrintifyStore | null>(
+    null
+  );
   const [mappings, setMappings] = useState<ProductMapping[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+
   // 搜索和筛选状态
   const [coreSearchTerm, setCoreSearchTerm] = useState('');
   const [printifySearchTerm, setPrintifySearchTerm] = useState('');
-  const [selectedCoreProducts, setSelectedCoreProducts] = useState<string[]>([]);
-  const [selectedPrintifyProducts, setSelectedPrintifyProducts] = useState<number[]>([]);
-  
+  const [selectedCoreProducts, setSelectedCoreProducts] = useState<string[]>(
+    []
+  );
+  const [selectedPrintifyProducts, setSelectedPrintifyProducts] = useState<
+    number[]
+  >([]);
+
   // 映射对话框状态
   const [mappingDialogOpen, setMappingDialogOpen] = useState(false);
-  const [mappingStatus, setMappingStatus] = useState<'active' | 'pending'>('active');
-  const [selectedCoreProduct, setSelectedCoreProduct] = useState<CoreProduct | null>(null);
-  const [selectedPrintifyProduct, setSelectedPrintifyProduct] = useState<PrintifyProduct | null>(null);
-  
+  const [mappingStatus, setMappingStatus] = useState<'active' | 'pending'>(
+    'active'
+  );
+  const [selectedCoreProduct, setSelectedCoreProduct] =
+    useState<CoreProduct | null>(null);
+  const [selectedPrintifyProduct, setSelectedPrintifyProduct] =
+    useState<PrintifyProduct | null>(null);
+
   // 详情对话框状态
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
-  const [selectedMapping, setSelectedMapping] = useState<ProductMapping | null>(null);
-  
+  const [selectedMapping, setSelectedMapping] = useState<ProductMapping | null>(
+    null
+  );
+
   // 变体映射对话框状态
-  const [variantMappingDialogOpen, setVariantMappingDialogOpen] = useState(false);
+  const [variantMappingDialogOpen, setVariantMappingDialogOpen] =
+    useState(false);
   const [printifySystemId, setPrintifySystemId] = useState<string>('');
-  
+
   // 批量映射对话框状态
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
-  
+
   // 同步状态
   const [syncing, setSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<any>(null);
-  
+
   // 分页状态
   const [corePage, setCorePage] = useState(1);
   const [printifyPage, setPrintifyPage] = useState(1);
@@ -229,7 +244,7 @@ export function PrintifyMapping() {
   const fetchCoreProducts = useCallback(async () => {
     try {
       frontendLogger.info('🔍 开始获取核心商品列表');
-      
+
       const response = await frontendApi.get('/api/products', {
         params: {
           page: corePage,
@@ -261,9 +276,9 @@ export function PrintifyMapping() {
   const fetchPrintifyStores = useCallback(async () => {
     try {
       frontendLogger.info('🔍 开始获取 Printify 店铺列表');
-      
+
       const response = await frontendApi.get('/api/external-systems', {
-        params: { system_type: 'PRINTIFY' }
+        params: { system_type: 'PRINTIFY' },
       });
 
       if (response.data && response.data.external_systems) {
@@ -333,7 +348,7 @@ export function PrintifyMapping() {
   const fetchMappings = useCallback(async () => {
     try {
       frontendLogger.info('🔍 开始获取商品映射关系');
-      
+
       const response = await frontendApi.get('/api/products/mappings/', {
         params: {
           page: mappingPage,
@@ -390,38 +405,48 @@ export function PrintifyMapping() {
   }, [fetchData]);
 
   // 过滤商品
-  const filteredCoreProducts = coreProducts.filter(product =>
-    product.title.toLowerCase().includes(coreSearchTerm.toLowerCase()) ||
-    product.vendor.toLowerCase().includes(coreSearchTerm.toLowerCase())
+  const filteredCoreProducts = coreProducts.filter(
+    product =>
+      product.title.toLowerCase().includes(coreSearchTerm.toLowerCase()) ||
+      product.vendor.toLowerCase().includes(coreSearchTerm.toLowerCase())
   );
 
-  const filteredPrintifyProducts = printifyProducts.filter(product =>
-    product.title.toLowerCase().includes(printifySearchTerm.toLowerCase()) ||
-    (product.description && product.description.toLowerCase().includes(printifySearchTerm.toLowerCase())) ||
-    product.tags.some(tag => tag.toLowerCase().includes(printifySearchTerm.toLowerCase()))
+  const filteredPrintifyProducts = printifyProducts.filter(
+    product =>
+      product.title.toLowerCase().includes(printifySearchTerm.toLowerCase()) ||
+      (product.description &&
+        product.description
+          .toLowerCase()
+          .includes(printifySearchTerm.toLowerCase())) ||
+      product.tags.some(tag =>
+        tag.toLowerCase().includes(printifySearchTerm.toLowerCase())
+      )
   );
 
   // 检查商品是否已映射
-  const isProductMapped = (coreProductId: string, printifyProductId: string) => {
+  const isProductMapped = (
+    coreProductId: string,
+    printifyProductId: string
+  ) => {
     return mappings.some(
-      mapping => 
-        mapping.core_product_id.toString() === coreProductId && 
+      mapping =>
+        mapping.core_product_id.toString() === coreProductId &&
         mapping.external_product_id === printifyProductId
     );
   };
 
   // 选择商品
   const handleCoreProductSelect = (productId: string) => {
-    setSelectedCoreProducts(prev => 
-      prev.includes(productId) 
+    setSelectedCoreProducts(prev =>
+      prev.includes(productId)
         ? prev.filter(id => id !== productId)
         : [...prev, productId]
     );
   };
 
   const handlePrintifyProductSelect = (productId: number) => {
-    setSelectedPrintifyProducts(prev => 
-      prev.includes(productId) 
+    setSelectedPrintifyProducts(prev =>
+      prev.includes(productId)
         ? prev.filter(id => id !== productId)
         : [...prev, productId]
     );
@@ -429,25 +454,39 @@ export function PrintifyMapping() {
 
   // 创建映射
   const handleCreateMapping = () => {
-    if (selectedCoreProducts.length === 0 || selectedPrintifyProducts.length === 0) {
+    if (
+      selectedCoreProducts.length === 0 ||
+      selectedPrintifyProducts.length === 0
+    ) {
       setError('请选择要映射的商品');
       return;
     }
-    
+
     // 如果选择了多个商品，显示批量映射对话框
-    if (selectedCoreProducts.length > 1 || selectedPrintifyProducts.length > 1) {
+    if (
+      selectedCoreProducts.length > 1 ||
+      selectedPrintifyProducts.length > 1
+    ) {
       setBatchDialogOpen(true);
     } else {
-      const coreProduct = coreProducts.find(p => p.id_hashid === selectedCoreProducts[0]);
-      const printifyProduct = printifyProducts.find(p => p.id === selectedPrintifyProducts[0]);
-      
+      const coreProduct = coreProducts.find(
+        p => p.id_hashid === selectedCoreProducts[0]
+      );
+      const printifyProduct = printifyProducts.find(
+        p => p.id === selectedPrintifyProducts[0]
+      );
+
       if (coreProduct && printifyProduct) {
         setSelectedCoreProduct(coreProduct);
         setSelectedPrintifyProduct(printifyProduct);
-        
+
         // 检查是否有变体，如果有则显示变体映射对话框
-        if (coreProduct.variants && coreProduct.variants.length > 0 && 
-            printifyProduct.variants && printifyProduct.variants.length > 0) {
+        if (
+          coreProduct.variants &&
+          coreProduct.variants.length > 0 &&
+          printifyProduct.variants &&
+          printifyProduct.variants.length > 0
+        ) {
           setVariantMappingDialogOpen(true);
         } else {
           setMappingDialogOpen(true);
@@ -467,10 +506,13 @@ export function PrintifyMapping() {
       });
 
       // 获取Printify外部系统ID
-      const externalSystemsResponse = await frontendApi.get('/api/external-systems', {
-        params: { system_type: 'PRINTIFY' }
-      });
-      
+      const externalSystemsResponse = await frontendApi.get(
+        '/api/external-systems',
+        {
+          params: { system_type: 'PRINTIFY' },
+        }
+      );
+
       const printifySystem = externalSystemsResponse.data.external_systems?.[0];
       if (!printifySystem) {
         throw new Error('未找到Printify外部系统配置');
@@ -488,7 +530,10 @@ export function PrintifyMapping() {
       };
 
       // 调用后端API创建映射
-      const response = await frontendApi.post('/api/products/mappings/', mappingData);
+      const response = await frontendApi.post(
+        '/api/products/mappings/',
+        mappingData
+      );
 
       frontendLogger.info('✅ 商品映射创建成功', {
         coreProduct: selectedCoreProduct.title,
@@ -497,7 +542,7 @@ export function PrintifyMapping() {
 
       // 刷新数据
       await fetchData();
-      
+
       setMappingDialogOpen(false);
       setSelectedCoreProducts([]);
       setSelectedPrintifyProducts([]);
@@ -522,7 +567,7 @@ export function PrintifyMapping() {
 
       // 刷新数据
       await fetchData();
-      
+
       setVariantMappingDialogOpen(false);
       setSelectedCoreProducts([]);
       setSelectedPrintifyProducts([]);
@@ -540,11 +585,11 @@ export function PrintifyMapping() {
   const handleRemoveMapping = async (mappingId: string) => {
     try {
       frontendLogger.info('🗑️ 开始删除商品映射', { mappingId });
-      
+
       await frontendApi.delete(`/api/products/mappings/${mappingId}`);
-      
+
       frontendLogger.info('✅ 商品映射删除成功', { mappingId });
-      
+
       // 刷新数据
       await fetchData();
     } catch (error) {
@@ -563,7 +608,10 @@ export function PrintifyMapping() {
   };
 
   // 批量映射确认
-  const handleBatchMappingConfirm = async (mappings: any[], status: 'active' | 'pending') => {
+  const handleBatchMappingConfirm = async (
+    mappings: any[],
+    status: 'active' | 'pending'
+  ) => {
     try {
       frontendLogger.info('🔗 开始批量创建映射', {
         count: mappings.length,
@@ -572,11 +620,11 @@ export function PrintifyMapping() {
 
       // 刷新数据
       await fetchData();
-      
+
       setBatchDialogOpen(false);
       setSelectedCoreProducts([]);
       setSelectedPrintifyProducts([]);
-      
+
       frontendLogger.info('✅ 批量映射创建成功', {
         count: mappings.length,
       });
@@ -596,7 +644,10 @@ export function PrintifyMapping() {
   };
 
   // 更新映射状态
-  const handleUpdateMappingStatus = async (mappingId: string, newStatus: string) => {
+  const handleUpdateMappingStatus = async (
+    mappingId: string,
+    newStatus: string
+  ) => {
     try {
       frontendLogger.info('🔄 开始更新映射状态', {
         mappingId,
@@ -659,18 +710,20 @@ export function PrintifyMapping() {
         storeName: selectedStore.name,
       });
 
-      const response = await frontendApi.post('/api/printify-sync/sync-products', {
-        external_system_id_hashid: selectedStore.id_hashid,
-      });
+      const response = await frontendApi.post(
+        '/api/printify-sync/sync-products',
+        {
+          external_system_id_hashid: selectedStore.id_hashid,
+        }
+      );
 
       frontendLogger.info('✅ Printify 商品同步成功', response.data);
 
       // 刷新商品列表
       await fetchPrintifyProducts(selectedStore);
-      
+
       // 获取同步状态
       await fetchSyncStatus();
-
     } catch (error) {
       frontendLogger.error('❌ Printify 商品同步失败', {
         error: String(error),
@@ -704,7 +757,9 @@ export function PrintifyMapping() {
   // 获取商品主图
   const getProductImage = (product: PrintifyProduct) => {
     const defaultImage = product.images.find(img => img.is_default);
-    return defaultImage?.src || product.images[0]?.src || '/placeholder-product.png';
+    return (
+      defaultImage?.src || product.images[0]?.src || '/placeholder-product.png'
+    );
   };
 
   // 获取商品价格范围
@@ -719,7 +774,12 @@ export function PrintifyMapping() {
 
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+      <Box
+        display='flex'
+        justifyContent='center'
+        alignItems='center'
+        minHeight='400px'
+      >
         <CircularProgress />
       </Box>
     );
@@ -727,17 +787,22 @@ export function PrintifyMapping() {
 
   return (
     <Box>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Box display="flex" alignItems="center" gap={2}>
+      <Box
+        display='flex'
+        justifyContent='space-between'
+        alignItems='center'
+        mb={3}
+      >
+        <Box display='flex' alignItems='center' gap={2}>
           <Avatar sx={{ bgcolor: '#96BF47' }}>
             <PrintifyIcon />
           </Avatar>
-          <Typography variant="h4" component="h1">
+          <Typography variant='h4' component='h1'>
             Printify 商品映射
           </Typography>
         </Box>
         <Button
-          variant="outlined"
+          variant='outlined'
           startIcon={<RefreshIcon />}
           onClick={fetchData}
           disabled={loading}
@@ -747,7 +812,7 @@ export function PrintifyMapping() {
       </Box>
 
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
+        <Alert severity='error' sx={{ mb: 2 }}>
           {error}
         </Alert>
       )}
@@ -756,17 +821,22 @@ export function PrintifyMapping() {
       {printifyStores.length > 0 && (
         <Card sx={{ mb: 3 }}>
           <CardContent>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="h6">
-                选择 Printify 店铺
-              </Typography>
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                mb: 2,
+              }}
+            >
+              <Typography variant='h6'>选择 Printify 店铺</Typography>
               {selectedStore && (
                 <Button
-                  variant="outlined"
+                  variant='outlined'
                   startIcon={<SyncIcon />}
                   onClick={handleSyncPrintifyProducts}
                   disabled={syncing}
-                  color="primary"
+                  color='primary'
                 >
                   {syncing ? '同步中...' : '同步商品到本地'}
                 </Button>
@@ -777,23 +847,50 @@ export function PrintifyMapping() {
                 <Chip
                   key={store.id_hashid}
                   label={store.name}
-                  color={selectedStore?.id_hashid === store.id_hashid ? 'primary' : 'default'}
+                  color={
+                    selectedStore?.id_hashid === store.id_hashid
+                      ? 'primary'
+                      : 'default'
+                  }
                   onClick={() => setSelectedStore(store)}
-                  variant={selectedStore?.id_hashid === store.id_hashid ? 'filled' : 'outlined'}
+                  variant={
+                    selectedStore?.id_hashid === store.id_hashid
+                      ? 'filled'
+                      : 'outlined'
+                  }
                 />
               ))}
             </Box>
             {syncStatus && (
               <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
-                <Typography variant="subtitle2" gutterBottom>
+                <Typography variant='subtitle2' gutterBottom>
                   同步状态
                 </Typography>
                 <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                  <Chip label={`总计: ${syncStatus.total_products}`} size="small" />
-                  <Chip label={`已同步: ${syncStatus.synced_products}`} size="small" color="success" />
-                  <Chip label={`待处理: ${syncStatus.pending_products}`} size="small" color="warning" />
-                  <Chip label={`错误: ${syncStatus.error_products}`} size="small" color="error" />
-                  <Chip label={`同步率: ${syncStatus.sync_rate}%`} size="small" color="info" />
+                  <Chip
+                    label={`总计: ${syncStatus.total_products}`}
+                    size='small'
+                  />
+                  <Chip
+                    label={`已同步: ${syncStatus.synced_products}`}
+                    size='small'
+                    color='success'
+                  />
+                  <Chip
+                    label={`待处理: ${syncStatus.pending_products}`}
+                    size='small'
+                    color='warning'
+                  />
+                  <Chip
+                    label={`错误: ${syncStatus.error_products}`}
+                    size='small'
+                    color='error'
+                  />
+                  <Chip
+                    label={`同步率: ${syncStatus.sync_rate}%`}
+                    size='small'
+                    color='info'
+                  />
                 </Box>
               </Box>
             )}
@@ -802,43 +899,55 @@ export function PrintifyMapping() {
       )}
 
       {/* 映射操作区域 */}
-      {selectedCoreProducts.length > 0 && selectedPrintifyProducts.length > 0 && (
-        <Card sx={{ mb: 3, bgcolor: 'primary.light', color: 'primary.contrastText' }}>
-          <CardContent>
-            <Box display="flex" justifyContent="space-between" alignItems="center">
-              <Typography variant="h6">
-                已选择 {selectedCoreProducts.length} 个核心商品 和 {selectedPrintifyProducts.length} 个 Printify 商品
-              </Typography>
-              <Button
-                variant="contained"
-                startIcon={<LinkIcon />}
-                onClick={handleCreateMapping}
-                sx={{ bgcolor: 'white', color: 'primary.main' }}
+      {selectedCoreProducts.length > 0 &&
+        selectedPrintifyProducts.length > 0 && (
+          <Card
+            sx={{
+              mb: 3,
+              bgcolor: 'primary.light',
+              color: 'primary.contrastText',
+            }}
+          >
+            <CardContent>
+              <Box
+                display='flex'
+                justifyContent='space-between'
+                alignItems='center'
               >
-                创建映射
-              </Button>
-            </Box>
-          </CardContent>
-        </Card>
-      )}
+                <Typography variant='h6'>
+                  已选择 {selectedCoreProducts.length} 个核心商品 和{' '}
+                  {selectedPrintifyProducts.length} 个 Printify 商品
+                </Typography>
+                <Button
+                  variant='contained'
+                  startIcon={<LinkIcon />}
+                  onClick={handleCreateMapping}
+                  sx={{ bgcolor: 'white', color: 'primary.main' }}
+                >
+                  创建映射
+                </Button>
+              </Box>
+            </CardContent>
+          </Card>
+        )}
 
-      <Grid container spacing={3}>
+      <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
         {/* 核心商品列表 */}
-        <Grid item xs={12} md={6}>
+        <Box sx={{ width: "100%" }} md={6}>
           <Card>
             <CardContent>
-              <Typography variant="h6" component="h2" mb={2}>
+              <Typography variant='h6' component='h2' mb={2}>
                 核心商品
               </Typography>
-              
+
               <TextField
                 fullWidth
-                placeholder="搜索核心商品..."
+                placeholder='搜索核心商品...'
                 value={coreSearchTerm}
-                onChange={(e) => setCoreSearchTerm(e.target.value)}
+                onChange={e => setCoreSearchTerm(e.target.value)}
                 InputProps={{
                   startAdornment: (
-                    <InputAdornment position="start">
+                    <InputAdornment position='start'>
                       <SearchIcon />
                     </InputAdornment>
                   ),
@@ -846,11 +955,15 @@ export function PrintifyMapping() {
                 sx={{ mb: 2 }}
               />
 
-              <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 400 }}>
+              <TableContainer
+                component={Paper}
+                variant='outlined'
+                sx={{ maxHeight: 400 }}
+              >
                 <Table stickyHeader>
                   <TableHead>
                     <TableRow>
-                      <TableCell padding="checkbox">选择</TableCell>
+                      <TableCell padding='checkbox'>选择</TableCell>
                       <TableCell>商品名称</TableCell>
                       <TableCell>供应商</TableCell>
                       <TableCell>状态</TableCell>
@@ -858,21 +971,25 @@ export function PrintifyMapping() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {filteredCoreProducts.map((product) => (
+                    {filteredCoreProducts.map(product => (
                       <TableRow key={product.id_hashid} hover>
-                        <TableCell padding="checkbox">
+                        <TableCell padding='checkbox'>
                           <Checkbox
-                            checked={selectedCoreProducts.includes(product.id_hashid)}
-                            onChange={() => handleCoreProductSelect(product.id_hashid)}
+                            checked={selectedCoreProducts.includes(
+                              product.id_hashid
+                            )}
+                            onChange={() =>
+                              handleCoreProductSelect(product.id_hashid)
+                            }
                           />
                         </TableCell>
                         <TableCell>
-                          <Typography variant="body2" fontWeight="medium">
+                          <Typography variant='body2' fontWeight='medium'>
                             {product.title}
                           </Typography>
                         </TableCell>
                         <TableCell>
-                          <Typography variant="body2">
+                          <Typography variant='body2'>
                             {product.vendor}
                           </Typography>
                         </TableCell>
@@ -880,11 +997,11 @@ export function PrintifyMapping() {
                           <Chip
                             label={product.status}
                             color={product.is_active ? 'success' : 'default'}
-                            size="small"
+                            size='small'
                           />
                         </TableCell>
                         <TableCell>
-                          <Typography variant="body2">
+                          <Typography variant='body2'>
                             {product.variants?.length || 0}
                           </Typography>
                         </TableCell>
@@ -895,24 +1012,24 @@ export function PrintifyMapping() {
               </TableContainer>
             </CardContent>
           </Card>
-        </Grid>
+        </Box>
 
         {/* Printify 商品列表 */}
-        <Grid item xs={12} md={6}>
+        <Box sx={{ width: "100%" }} md={6}>
           <Card>
             <CardContent>
-              <Typography variant="h6" component="h2" mb={2}>
+              <Typography variant='h6' component='h2' mb={2}>
                 Printify 商品
               </Typography>
-              
+
               <TextField
                 fullWidth
-                placeholder="搜索 Printify 商品..."
+                placeholder='搜索 Printify 商品...'
                 value={printifySearchTerm}
-                onChange={(e) => setPrintifySearchTerm(e.target.value)}
+                onChange={e => setPrintifySearchTerm(e.target.value)}
                 InputProps={{
                   startAdornment: (
-                    <InputAdornment position="start">
+                    <InputAdornment position='start'>
                       <SearchIcon />
                     </InputAdornment>
                   ),
@@ -920,11 +1037,15 @@ export function PrintifyMapping() {
                 sx={{ mb: 2 }}
               />
 
-              <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 400 }}>
+              <TableContainer
+                component={Paper}
+                variant='outlined'
+                sx={{ maxHeight: 400 }}
+              >
                 <Table stickyHeader>
                   <TableHead>
                     <TableRow>
-                      <TableCell padding="checkbox">选择</TableCell>
+                      <TableCell padding='checkbox'>选择</TableCell>
                       <TableCell>商品名称</TableCell>
                       <TableCell>价格</TableCell>
                       <TableCell>变体数</TableCell>
@@ -932,26 +1053,30 @@ export function PrintifyMapping() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {filteredPrintifyProducts.map((product) => (
+                    {filteredPrintifyProducts.map(product => (
                       <TableRow key={product.id} hover>
-                        <TableCell padding="checkbox">
+                        <TableCell padding='checkbox'>
                           <Checkbox
-                            checked={selectedPrintifyProducts.includes(product.id)}
-                            onChange={() => handlePrintifyProductSelect(product.id)}
+                            checked={selectedPrintifyProducts.includes(
+                              product.id
+                            )}
+                            onChange={() =>
+                              handlePrintifyProductSelect(product.id)
+                            }
                           />
                         </TableCell>
                         <TableCell>
-                          <Typography variant="body2" fontWeight="medium">
+                          <Typography variant='body2' fontWeight='medium'>
                             {product.title}
                           </Typography>
                         </TableCell>
                         <TableCell>
-                          <Typography variant="body2">
+                          <Typography variant='body2'>
                             {getProductPriceRange(product)}
                           </Typography>
                         </TableCell>
                         <TableCell>
-                          <Typography variant="body2">
+                          <Typography variant='body2'>
                             {product.variants.length}
                           </Typography>
                         </TableCell>
@@ -959,7 +1084,7 @@ export function PrintifyMapping() {
                           <Chip
                             label={product.visible ? '可见' : '隐藏'}
                             color={product.visible ? 'success' : 'default'}
-                            size="small"
+                            size='small'
                           />
                         </TableCell>
                       </TableRow>
@@ -969,18 +1094,18 @@ export function PrintifyMapping() {
               </TableContainer>
             </CardContent>
           </Card>
-        </Grid>
-      </Grid>
+        </Box>
+      </Box>
 
       {/* 现有映射列表 */}
       {mappings.length > 0 && (
         <Card sx={{ mt: 3 }}>
           <CardContent>
-            <Typography variant="h6" component="h2" mb={2}>
+            <Typography variant='h6' component='h2' mb={2}>
               现有映射关系
             </Typography>
-            
-            <TableContainer component={Paper} variant="outlined">
+
+            <TableContainer component={Paper} variant='outlined'>
               <Table>
                 <TableHead>
                   <TableRow>
@@ -992,64 +1117,92 @@ export function PrintifyMapping() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {mappings.map((mapping) => (
+                  {mappings.map(mapping => (
                     <TableRow key={mapping.id} hover>
                       <TableCell>
-                        <Typography variant="body2" fontWeight="medium">
+                        <Typography variant='body2' fontWeight='medium'>
                           {mapping.core_product_title}
                         </Typography>
                       </TableCell>
                       <TableCell>
-                        <Typography variant="body2">
+                        <Typography variant='body2'>
                           {mapping.printify_product_title}
                         </Typography>
                       </TableCell>
                       <TableCell>
                         <Chip
-                          label={mapping.sync_status === 'active' ? '活跃' : mapping.sync_status === 'pending' ? '待处理' : '错误'}
-                          color={mapping.sync_status === 'active' ? 'success' : mapping.sync_status === 'pending' ? 'warning' : 'error'}
-                          size="small"
+                          label={
+                            mapping.sync_status === 'active'
+                              ? '活跃'
+                              : mapping.sync_status === 'pending'
+                                ? '待处理'
+                                : '错误'
+                          }
+                          color={
+                            mapping.sync_status === 'active'
+                              ? 'success'
+                              : mapping.sync_status === 'pending'
+                                ? 'warning'
+                                : 'error'
+                          }
+                          size='small'
                         />
                       </TableCell>
                       <TableCell>
-                        <Typography variant="body2">
-                          {new Date(mapping.created_at).toLocaleDateString('zh-CN')}
+                        <Typography variant='body2'>
+                          {new Date(mapping.created_at).toLocaleDateString(
+                            'zh-CN'
+                          )}
                         </Typography>
                       </TableCell>
                       <TableCell>
-                        <Box display="flex" gap={1}>
-                          <Tooltip title="查看详情">
-                            <IconButton 
-                              size="small"
+                        <Box display='flex' gap={1}>
+                          <Tooltip title='查看详情'>
+                            <IconButton
+                              size='small'
                               onClick={() => handleViewMappingDetail(mapping)}
                             >
                               <ViewIcon />
                             </IconButton>
                           </Tooltip>
-                          <Tooltip title="同步映射">
-                            <IconButton 
-                              size="small"
-                              onClick={() => handleSyncMapping(mapping.id_hashid)}
+                          <Tooltip title='同步映射'>
+                            <IconButton
+                              size='small'
+                              onClick={() =>
+                                handleSyncMapping(mapping.id_hashid)
+                              }
                             >
                               <SyncIcon />
                             </IconButton>
                           </Tooltip>
-                          <Tooltip title="更新状态">
-                            <IconButton 
-                              size="small"
+                          <Tooltip title='更新状态'>
+                            <IconButton
+                              size='small'
                               onClick={() => {
-                                const newStatus = mapping.sync_status === 'active' ? 'pending' : 'active';
-                                handleUpdateMappingStatus(mapping.id_hashid, newStatus);
+                                const newStatus =
+                                  mapping.sync_status === 'active'
+                                    ? 'pending'
+                                    : 'active';
+                                handleUpdateMappingStatus(
+                                  mapping.id_hashid,
+                                  newStatus
+                                );
                               }}
                             >
-                              {mapping.sync_status === 'active' ? <InactiveIcon /> : <ActiveIcon />}
+                              {mapping.sync_status === 'active' ? (
+                                <InactiveIcon />
+                              ) : (
+                                <ActiveIcon />
+                              )}
                             </IconButton>
                           </Tooltip>
-                          <Tooltip title="删除映射">
-                            <IconButton 
-                              size="small" 
-                              color="error"
-                              onClick={() => handleRemoveMapping(mapping.id_hashid)}
+                          <Tooltip title='删除映射'>
+                            <IconButton
+                              size='small'
+                              color='error'
+                              onClick={() =>
+                                handleRemoveMapping(mapping.id_hashid)
+                              }
                             >
                               <DeleteIcon />
                             </IconButton>
@@ -1066,100 +1219,112 @@ export function PrintifyMapping() {
       )}
 
       {/* 映射确认对话框 */}
-      <Dialog open={mappingDialogOpen} onClose={() => setMappingDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog
+        open={mappingDialogOpen}
+        onClose={() => setMappingDialogOpen(false)}
+        maxWidth='sm'
+        fullWidth
+      >
         <DialogTitle>确认创建映射</DialogTitle>
         <DialogContent>
-          <Typography variant="body2" mb={2}>
+          <Typography variant='body2' mb={2}>
             您即将创建核心商品与 Printify 商品的映射关系。
           </Typography>
-          
+
           {selectedCoreProduct && (
             <Box mb={2}>
-              <Typography variant="subtitle2" gutterBottom>
+              <Typography variant='subtitle2' gutterBottom>
                 核心商品：
               </Typography>
-              <Typography variant="body2">
+              <Typography variant='body2'>
                 {selectedCoreProduct.title}
               </Typography>
             </Box>
           )}
-          
+
           {selectedPrintifyProduct && (
             <Box mb={2}>
-              <Typography variant="subtitle2" gutterBottom>
+              <Typography variant='subtitle2' gutterBottom>
                 Printify 商品：
               </Typography>
-              <Typography variant="body2">
+              <Typography variant='body2'>
                 {selectedPrintifyProduct.title}
               </Typography>
             </Box>
           )}
-          
+
           <FormControl fullWidth sx={{ mt: 2 }}>
             <InputLabel>映射状态</InputLabel>
             <Select
               value={mappingStatus}
-              onChange={(e) => setMappingStatus(e.target.value as 'active' | 'pending')}
-              label="映射状态"
+              onChange={e =>
+                setMappingStatus(e.target.value as 'active' | 'pending')
+              }
+              label='映射状态'
             >
-              <MenuItem value="active">活跃</MenuItem>
-              <MenuItem value="pending">待处理</MenuItem>
+              <MenuItem value='active'>活跃</MenuItem>
+              <MenuItem value='pending'>待处理</MenuItem>
             </Select>
           </FormControl>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setMappingDialogOpen(false)}>取消</Button>
-          <Button onClick={handleConfirmMapping} variant="contained">
+          <Button onClick={handleConfirmMapping} variant='contained'>
             确认创建
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* 映射详情对话框 */}
-      <Dialog open={detailDialogOpen} onClose={() => setDetailDialogOpen(false)} maxWidth="md" fullWidth>
+      <Dialog
+        open={detailDialogOpen}
+        onClose={() => setDetailDialogOpen(false)}
+        maxWidth='md'
+        fullWidth
+      >
         <DialogTitle>映射详情</DialogTitle>
         <DialogContent>
           {selectedMapping && (
             <Box>
-              <Grid container spacing={2}>
-                <Grid item xs={12} md={6}>
-                  <Card variant="outlined">
+              <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
+                <Box sx={{ width: "100%" }} md={6}>
+                  <Card variant='outlined'>
                     <CardContent>
-                      <Typography variant="h6" gutterBottom>
+                      <Typography variant='h6' gutterBottom>
                         核心商品
                       </Typography>
-                      <Typography variant="body2" fontWeight="medium">
+                      <Typography variant='body2' fontWeight='medium'>
                         {selectedMapping.core_product_title}
                       </Typography>
-                      <Typography variant="body2" color="text.secondary">
+                      <Typography variant='body2' color='text.secondary'>
                         SKU: {selectedMapping.core_variant_sku || 'N/A'}
                       </Typography>
                     </CardContent>
                   </Card>
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <Card variant="outlined">
+                </Box>
+                <Box sx={{ width: "100%" }} md={6}>
+                  <Card variant='outlined'>
                     <CardContent>
-                      <Typography variant="h6" gutterBottom>
+                      <Typography variant='h6' gutterBottom>
                         Printify 商品
                       </Typography>
-                      <Typography variant="body2" fontWeight="medium">
+                      <Typography variant='body2' fontWeight='medium'>
                         {selectedMapping.printify_product_title}
                       </Typography>
-                      <Typography variant="body2" color="text.secondary">
+                      <Typography variant='body2' color='text.secondary'>
                         SKU: {selectedMapping.printify_variant_sku || 'N/A'}
                       </Typography>
                     </CardContent>
                   </Card>
-                </Grid>
-              </Grid>
-              
+                </Box>
+              </Box>
+
               <Box mt={2}>
-                <Typography variant="h6" gutterBottom>
+                <Typography variant='h6' gutterBottom>
                   映射信息
                 </Typography>
-                <TableContainer component={Paper} variant="outlined">
-                  <Table size="small">
+                <TableContainer component={Paper} variant='outlined'>
+                  <Table size='small'>
                     <TableBody>
                       <TableRow>
                         <TableCell>映射类型</TableCell>
@@ -1174,18 +1339,30 @@ export function PrintifyMapping() {
                         <TableCell>
                           <Chip
                             label={selectedMapping.sync_status}
-                            color={selectedMapping.sync_status === 'active' ? 'success' : 'warning'}
-                            size="small"
+                            color={
+                              selectedMapping.sync_status === 'active'
+                                ? 'success'
+                                : 'warning'
+                            }
+                            size='small'
                           />
                         </TableCell>
                       </TableRow>
                       <TableRow>
                         <TableCell>创建时间</TableCell>
-                        <TableCell>{new Date(selectedMapping.created_at).toLocaleString('zh-CN')}</TableCell>
+                        <TableCell>
+                          {new Date(selectedMapping.created_at).toLocaleString(
+                            'zh-CN'
+                          )}
+                        </TableCell>
                       </TableRow>
                       <TableRow>
                         <TableCell>更新时间</TableCell>
-                        <TableCell>{new Date(selectedMapping.updated_at).toLocaleString('zh-CN')}</TableCell>
+                        <TableCell>
+                          {new Date(selectedMapping.updated_at).toLocaleString(
+                            'zh-CN'
+                          )}
+                        </TableCell>
                       </TableRow>
                     </TableBody>
                   </Table>
@@ -1195,25 +1372,36 @@ export function PrintifyMapping() {
           )}
         </DialogContent>
         <DialogActions>
-          <Button 
+          <Button
             onClick={() => {
               if (selectedMapping) {
-                const newStatus = selectedMapping.sync_status === 'active' ? 'pending' : 'active';
+                const newStatus =
+                  selectedMapping.sync_status === 'active'
+                    ? 'pending'
+                    : 'active';
                 handleUpdateMappingStatus(selectedMapping.id_hashid, newStatus);
               }
             }}
-            startIcon={selectedMapping?.sync_status === 'active' ? <InactiveIcon /> : <ActiveIcon />}
+            startIcon={
+              selectedMapping?.sync_status === 'active' ? (
+                <InactiveIcon />
+              ) : (
+                <ActiveIcon />
+              )
+            }
           >
-            {selectedMapping?.sync_status === 'active' ? '设为待处理' : '设为活跃'}
+            {selectedMapping?.sync_status === 'active'
+              ? '设为待处理'
+              : '设为活跃'}
           </Button>
-          <Button 
+          <Button
             onClick={() => {
               if (selectedMapping) {
                 handleSyncMapping(selectedMapping.id_hashid);
               }
             }}
             startIcon={<SyncIcon />}
-            variant="outlined"
+            variant='outlined'
           >
             同步映射
           </Button>
@@ -1225,9 +1413,13 @@ export function PrintifyMapping() {
       <BatchMappingDialog
         open={batchDialogOpen}
         onClose={() => setBatchDialogOpen(false)}
-        coreProducts={selectedCoreProducts.map(id => coreProducts.find(p => p.id_hashid === id)!).filter(Boolean)}
-        externalProducts={selectedPrintifyProducts.map(id => printifyProducts.find(p => p.id === id)!).filter(Boolean)}
-        platform="Printify"
+        coreProducts={selectedCoreProducts
+          .map(id => coreProducts.find(p => p.id_hashid === id)!)
+          .filter(Boolean)}
+        externalProducts={selectedPrintifyProducts
+          .map(id => printifyProducts.find(p => p.id === id)!)
+          .filter(Boolean)}
+        platform='Printify'
         onConfirm={handleBatchMappingConfirm}
         onCancel={handleBatchMappingCancel}
       />

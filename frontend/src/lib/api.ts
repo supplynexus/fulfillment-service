@@ -13,6 +13,64 @@ export const frontendApi = axios.create({
   },
 });
 
+// Create axios instance for backend API calls
+export const backendApi = axios.create({
+  baseURL: process.env.NEXT_PUBLIC_BACKEND_API_URL || 'http://localhost:8000',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Request interceptor to add auth token for backend API
+backendApi.interceptors.request.use(
+  async config => {
+    try {
+      console.log('🔍 BackendApi请求拦截器开始:', {
+        url: config.url,
+        method: config.method,
+        baseURL: config.baseURL,
+        headers: config.headers,
+      });
+      // 使用token管理器获取有效的access token
+      const accessToken = await tokenManager.getValidAccessToken();
+      console.log('🔍 获取到的access token:', {
+        hasToken: !!accessToken,
+        tokenLength: accessToken?.length,
+        tokenPrefix: accessToken?.substring(0, 20) + '...',
+      });
+      if (accessToken) {
+        config.headers.Authorization = `Bearer ${accessToken}`;
+        console.log('🔍 已添加Authorization头:', {
+          headerLength: config.headers.Authorization?.length,
+          fullHeader: config.headers.Authorization,
+        });
+      } else {
+        console.warn('⚠️ 没有获取到access token');
+      }
+      console.log('🔍 最终请求配置:', {
+        url: config.url,
+        method: config.method,
+        headers: config.headers,
+      });
+    } catch (error) {
+      console.error(
+        '❌ Failed to get valid access token for backend API:',
+        error
+      );
+      // 如果获取token失败，清除所有token并重定向到登录页
+      tokenManager.clearTokens();
+      if (typeof window !== 'undefined') {
+        window.location.href = '/auth/login';
+      }
+    }
+    return config;
+  },
+  error => {
+    console.error('❌ BackendApi请求拦截器错误:', error);
+    return Promise.reject(error);
+  }
+);
+
 // Request interceptor to add auth token for frontend API
 frontendApi.interceptors.request.use(
   async config => {

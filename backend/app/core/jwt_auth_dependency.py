@@ -26,6 +26,7 @@ async def verify_jwt_auth(
     """
     Verify JWT Bearer token authentication and return tenant and user
     """
+    logger.info(f"🔍 JWT认证开始: method={request.method}, path={request.url.path}, auth_header_length={len(authorization) if authorization else 0}")
     try:
         # Extract token from Authorization header
         if not authorization.startswith("Bearer "):

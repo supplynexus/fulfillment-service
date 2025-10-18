@@ -8,12 +8,14 @@ const logger = createLogger('api.printify-stores');
 
 export async function GET(request: NextRequest) {
   const startTime = Date.now();
-  
+
   try {
     logger.requestStart(request.method, request.url);
 
     // 获取前端 JWT token
-    const frontendToken = request.headers.get('authorization')?.replace('Bearer ', '');
+    const frontendToken = request.headers
+      .get('authorization')
+      ?.replace('Bearer ', '');
     if (!frontendToken) {
       logger.error('缺少前端 JWT token');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -22,7 +24,7 @@ export async function GET(request: NextRequest) {
     // 验证前端 JWT token
     const decodedToken = jwtUtilsServer.verifyToken(frontendToken);
     const { tenant_name: tenantName, sub: userId } = decodedToken;
-    
+
     logger.info('前端 JWT 验证成功', { tenantName, userId });
 
     // 生成后端签名
@@ -30,9 +32,15 @@ export async function GET(request: NextRequest) {
     const nonce = Math.random().toString(36).substring(2, 15);
     const backendPath = '/api/v1/printify/stores';
     const signatureString = `GET${backendPath}${timestamp}${nonce}${tenantName}`;
-    
+
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
-    const signature = generateBackendSignature(privateKey, signatureString, timestamp, nonce, tenantName);
+    const signature = generateBackendSignature(
+      privateKey,
+      signatureString,
+      timestamp,
+      nonce,
+      tenantName
+    );
 
     // 调用后端 API
     const backendUrl = `${process.env.BACKEND_API_URL}${backendPath}`;
@@ -54,26 +62,31 @@ export async function GET(request: NextRequest) {
     const duration = Date.now() - startTime;
 
     if (backendResponse.ok) {
-      logger.requestComplete(request.method, request.url, backendResponse.status, duration);
+      logger.requestComplete(
+        request.method,
+        request.url,
+        backendResponse.status,
+        duration
+      );
       return NextResponse.json(responseData);
     } else {
-      logger.error('后端 API 调用失败', { 
-        status: backendResponse.status, 
-        error: responseData 
+      logger.error('后端 API 调用失败', {
+        status: backendResponse.status,
+        error: responseData,
       });
       return NextResponse.json(
-        { error: 'Failed to fetch Printify stores' }, 
+        { error: 'Failed to fetch Printify stores' },
         { status: backendResponse.status }
       );
     }
   } catch (error: any) {
     const duration = Date.now() - startTime;
-    logger.error('获取 Printify 店铺列表失败', { 
+    logger.error('获取 Printify 店铺列表失败', {
       error: error.message,
-      duration 
+      duration,
     });
     return NextResponse.json(
-      { error: 'Internal server error' }, 
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }

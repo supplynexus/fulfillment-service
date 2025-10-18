@@ -169,7 +169,7 @@ export function MappingDetailDialog({
 
   const handleRefresh = async () => {
     if (!mapping || !onRefresh) return;
-    
+
     setLoading(true);
     try {
       await onRefresh(mapping.id);
@@ -197,33 +197,33 @@ export function MappingDetailDialog({
   }
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
+    <Dialog open={open} onClose={onClose} maxWidth='lg' fullWidth>
       <DialogTitle>
-        <Box display="flex" justifyContent="space-between" alignItems="center">
-          <Box display="flex" alignItems="center" gap={2}>
+        <Box display='flex' justifyContent='space-between' alignItems='center'>
+          <Box display='flex' alignItems='center' gap={2}>
             <Avatar sx={{ bgcolor: getPlatformColor(platform) }}>
               {getPlatformIcon(platform)}
             </Avatar>
             <Box>
-              <Typography variant="h6">商品映射详情</Typography>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant='h6'>商品映射详情</Typography>
+              <Typography variant='body2' color='text.secondary'>
                 {platform} 平台映射关系
               </Typography>
             </Box>
           </Box>
-          <Box display="flex" gap={1}>
-            <Tooltip title="刷新状态">
+          <Box display='flex' gap={1}>
+            <Tooltip title='刷新状态'>
               <IconButton onClick={handleRefresh} disabled={loading}>
                 <RefreshIcon />
               </IconButton>
             </Tooltip>
-            <Tooltip title="编辑映射">
+            <Tooltip title='编辑映射'>
               <IconButton onClick={handleEdit}>
                 <EditIcon />
               </IconButton>
             </Tooltip>
-            <Tooltip title="删除映射">
-              <IconButton onClick={handleDelete} color="error">
+            <Tooltip title='删除映射'>
+              <IconButton onClick={handleDelete} color='error'>
                 <UnlinkIcon />
               </IconButton>
             </Tooltip>
@@ -238,54 +238,57 @@ export function MappingDetailDialog({
         {/* 映射状态信息 */}
         <Card sx={{ mb: 3 }}>
           <CardContent>
-            <Grid container spacing={2} alignItems="center">
-              <Grid item xs={12} md={3}>
-                <Typography variant="subtitle2" color="text.secondary">
+            <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} alignItems='center'>
+              <Box sx={{ width: "100%" }} md={3}>
+                <Typography variant='subtitle2' color='text.secondary'>
                   映射状态
                 </Typography>
                 <Chip
                   label={getStatusText(mapping.status)}
                   color={getStatusColor(mapping.status) as any}
-                  size="small"
+                  size='small'
                 />
-              </Grid>
-              <Grid item xs={12} md={3}>
-                <Typography variant="subtitle2" color="text.secondary">
+              </Box>
+              <Box sx={{ width: "100%" }} md={3}>
+                <Typography variant='subtitle2' color='text.secondary'>
                   创建时间
                 </Typography>
-                <Typography variant="body2">
+                <Typography variant='body2'>
                   {formatDate(mapping.created_at)}
                 </Typography>
-              </Grid>
-              <Grid item xs={12} md={3}>
-                <Typography variant="subtitle2" color="text.secondary">
+              </Box>
+              <Box sx={{ width: "100%" }} md={3}>
+                <Typography variant='subtitle2' color='text.secondary'>
                   最后更新
                 </Typography>
-                <Typography variant="body2">
+                <Typography variant='body2'>
                   {mapping.updated_at ? formatDate(mapping.updated_at) : '-'}
                 </Typography>
-              </Grid>
-              <Grid item xs={12} md={3}>
-                <Typography variant="subtitle2" color="text.secondary">
+              </Box>
+              <Box sx={{ width: "100%" }} md={3}>
+                <Typography variant='subtitle2' color='text.secondary'>
                   最后同步
                 </Typography>
-                <Typography variant="body2">
-                  {mapping.last_synced_at ? formatDate(mapping.last_synced_at) : '-'}
+                <Typography variant='body2'>
+                  {mapping.last_synced_at
+                    ? formatDate(mapping.last_synced_at)
+                    : '-'}
                 </Typography>
-              </Grid>
-            </Grid>
+              </Box>
+            </Box>
 
             {mapping.error_message && (
-              <Alert severity="error" sx={{ mt: 2 }}>
-                <Typography variant="body2">
-                  <strong>错误信息：</strong>{mapping.error_message}
+              <Alert severity='error' sx={{ mt: 2 }}>
+                <Typography variant='body2'>
+                  <strong>错误信息：</strong>
+                  {mapping.error_message}
                 </Typography>
               </Alert>
             )}
 
             {mapping.status === 'pending' && (
               <Box sx={{ mt: 2 }}>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
+                <Typography variant='body2' color='text.secondary' gutterBottom>
                   同步进度
                 </Typography>
                 <LinearProgress />
@@ -294,57 +297,65 @@ export function MappingDetailDialog({
           </CardContent>
         </Card>
 
-        <Grid container spacing={3}>
+        <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
           {/* 核心商品信息 */}
-          <Grid item xs={12} md={6}>
+          <Box sx={{ width: "100%" }} md={6}>
             <Card>
               <CardContent>
-                <Typography variant="h6" gutterBottom>
+                <Typography variant='h6' gutterBottom>
                   核心商品
                 </Typography>
-                
-                <Box display="flex" alignItems="center" gap={2} mb={2}>
+
+                <Box display='flex' alignItems='center' gap={2} mb={2}>
                   {coreProduct.images && coreProduct.images.length > 0 && (
                     <Avatar
                       src={coreProduct.images[0]}
-                      variant="rounded"
+                      variant='rounded'
                       sx={{ width: 60, height: 60 }}
                     />
                   )}
                   <Box>
-                    <Typography variant="h6" component="div">
+                    <Typography variant='h6' component='div'>
                       {coreProduct.title}
                     </Typography>
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant='body2' color='text.secondary'>
                       {coreProduct.vendor} • {coreProduct.product_type}
                     </Typography>
                   </Box>
                 </Box>
 
                 <Box mb={2}>
-                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                  <Typography
+                    variant='subtitle2'
+                    color='text.secondary'
+                    gutterBottom
+                  >
                     商品状态
                   </Typography>
-                  <Box display="flex" gap={1}>
+                  <Box display='flex' gap={1}>
                     <Chip
                       label={coreProduct.status}
                       color={coreProduct.is_active ? 'success' : 'default'}
-                      size="small"
+                      size='small'
                     />
                     <Chip
                       label={coreProduct.is_available ? '可用' : '不可用'}
                       color={coreProduct.is_available ? 'success' : 'error'}
-                      size="small"
+                      size='small'
                     />
                   </Box>
                 </Box>
 
                 {coreProduct.description && (
                   <Box mb={2}>
-                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                    <Typography
+                      variant='subtitle2'
+                      color='text.secondary'
+                      gutterBottom
+                    >
                       商品描述
                     </Typography>
-                    <Typography variant="body2">
+                    <Typography variant='body2'>
                       {coreProduct.description}
                     </Typography>
                   </Box>
@@ -352,15 +363,19 @@ export function MappingDetailDialog({
 
                 {coreProduct.tags && coreProduct.tags.length > 0 && (
                   <Box mb={2}>
-                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                    <Typography
+                      variant='subtitle2'
+                      color='text.secondary'
+                      gutterBottom
+                    >
                       标签
                     </Typography>
-                    <Box display="flex" gap={0.5} flexWrap="wrap">
+                    <Box display='flex' gap={0.5} flexWrap='wrap'>
                       {coreProduct.tags.map((tag, index) => (
                         <Chip
                           key={index}
                           label={tag.name || tag}
-                          size="small"
+                          size='small'
                           color={tag.is_primary ? 'primary' : 'default'}
                         />
                       ))}
@@ -370,11 +385,19 @@ export function MappingDetailDialog({
 
                 {coreProduct.variants && coreProduct.variants.length > 0 && (
                   <Box>
-                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                    <Typography
+                      variant='subtitle2'
+                      color='text.secondary'
+                      gutterBottom
+                    >
                       变体信息 ({coreProduct.variants.length})
                     </Typography>
-                    <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 200 }}>
-                      <Table size="small">
+                    <TableContainer
+                      component={Paper}
+                      variant='outlined'
+                      sx={{ maxHeight: 200 }}
+                    >
+                      <Table size='small'>
                         <TableHead>
                           <TableRow>
                             <TableCell>SKU</TableCell>
@@ -383,18 +406,22 @@ export function MappingDetailDialog({
                           </TableRow>
                         </TableHead>
                         <TableBody>
-                          {coreProduct.variants.slice(0, 3).map((variant, index) => (
-                            <TableRow key={index}>
-                              <TableCell>{variant.sku || '-'}</TableCell>
-                              <TableCell>${variant.price || 0}</TableCell>
-                              <TableCell>{variant.inventory_quantity || 0}</TableCell>
-                            </TableRow>
-                          ))}
+                          {coreProduct.variants
+                            .slice(0, 3)
+                            .map((variant, index) => (
+                              <TableRow key={index}>
+                                <TableCell>{variant.sku || '-'}</TableCell>
+                                <TableCell>${variant.price || 0}</TableCell>
+                                <TableCell>
+                                  {variant.inventory_quantity || 0}
+                                </TableCell>
+                              </TableRow>
+                            ))}
                         </TableBody>
                       </Table>
                     </TableContainer>
                     {coreProduct.variants.length > 3 && (
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography variant='caption' color='text.secondary'>
                         还有 {coreProduct.variants.length - 3} 个变体...
                       </Typography>
                     )}
@@ -402,46 +429,54 @@ export function MappingDetailDialog({
                 )}
               </CardContent>
             </Card>
-          </Grid>
+          </Box>
 
           {/* 外部商品信息 */}
-          <Grid item xs={12} md={6}>
+          <Box sx={{ width: "100%" }} md={6}>
             <Card>
               <CardContent>
-                <Typography variant="h6" gutterBottom>
+                <Typography variant='h6' gutterBottom>
                   {platform} 商品
                 </Typography>
-                
-                <Box display="flex" alignItems="center" gap={2} mb={2}>
-                  {externalProduct.images && externalProduct.images.length > 0 && (
-                    <Avatar
-                      src={externalProduct.images[0]}
-                      variant="rounded"
-                      sx={{ width: 60, height: 60 }}
-                    />
-                  )}
+
+                <Box display='flex' alignItems='center' gap={2} mb={2}>
+                  {externalProduct.images &&
+                    externalProduct.images.length > 0 && (
+                      <Avatar
+                        src={externalProduct.images[0]}
+                        variant='rounded'
+                        sx={{ width: 60, height: 60 }}
+                      />
+                    )}
                   <Box>
-                    <Typography variant="h6" component="div">
+                    <Typography variant='h6' component='div'>
                       {externalProduct.title}
                     </Typography>
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant='body2' color='text.secondary'>
                       {externalProduct.vendor} • {externalProduct.product_type}
                     </Typography>
                   </Box>
                 </Box>
 
                 <Box mb={2}>
-                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                  <Typography
+                    variant='subtitle2'
+                    color='text.secondary'
+                    gutterBottom
+                  >
                     价格信息
                   </Typography>
-                  <Box display="flex" gap={2}>
-                    <Typography variant="h6" color="primary">
+                  <Box display='flex' gap={2}>
+                    <Typography variant='h6' color='primary'>
                       ${externalProduct.price}
                     </Typography>
                     {externalProduct.compare_at_price && (
-                      <Typography 
-                        variant="body2" 
-                        sx={{ textDecoration: 'line-through', color: 'text.secondary' }}
+                      <Typography
+                        variant='body2'
+                        sx={{
+                          textDecoration: 'line-through',
+                          color: 'text.secondary',
+                        }}
                       >
                         ${externalProduct.compare_at_price}
                       </Typography>
@@ -450,74 +485,99 @@ export function MappingDetailDialog({
                 </Box>
 
                 <Box mb={2}>
-                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                  <Typography
+                    variant='subtitle2'
+                    color='text.secondary'
+                    gutterBottom
+                  >
                     库存信息
                   </Typography>
-                  <Typography variant="body2">
+                  <Typography variant='body2'>
                     可用库存: {externalProduct.inventory_quantity}
                   </Typography>
                   {externalProduct.sku && (
-                    <Typography variant="body2">
+                    <Typography variant='body2'>
                       SKU: {externalProduct.sku}
                     </Typography>
                   )}
                 </Box>
 
                 <Box mb={2}>
-                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                  <Typography
+                    variant='subtitle2'
+                    color='text.secondary'
+                    gutterBottom
+                  >
                     商品状态
                   </Typography>
                   <Chip
                     label={externalProduct.status}
-                    color={externalProduct.status === 'active' ? 'success' : 'default'}
-                    size="small"
+                    color={
+                      externalProduct.status === 'active'
+                        ? 'success'
+                        : 'default'
+                    }
+                    size='small'
                   />
                 </Box>
 
-                {externalProduct.variants && externalProduct.variants.length > 0 && (
-                  <Box>
-                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                      变体信息 ({externalProduct.variants.length})
-                    </Typography>
-                    <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 200 }}>
-                      <Table size="small">
-                        <TableHead>
-                          <TableRow>
-                            <TableCell>SKU</TableCell>
-                            <TableCell>价格</TableCell>
-                            <TableCell>库存</TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {externalProduct.variants.slice(0, 3).map((variant, index) => (
-                            <TableRow key={index}>
-                              <TableCell>{variant.sku || '-'}</TableCell>
-                              <TableCell>${variant.price || 0}</TableCell>
-                              <TableCell>{variant.inventory_quantity || 0}</TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
-                    {externalProduct.variants.length > 3 && (
-                      <Typography variant="caption" color="text.secondary">
-                        还有 {externalProduct.variants.length - 3} 个变体...
+                {externalProduct.variants &&
+                  externalProduct.variants.length > 0 && (
+                    <Box>
+                      <Typography
+                        variant='subtitle2'
+                        color='text.secondary'
+                        gutterBottom
+                      >
+                        变体信息 ({externalProduct.variants.length})
                       </Typography>
-                    )}
-                  </Box>
-                )}
+                      <TableContainer
+                        component={Paper}
+                        variant='outlined'
+                        sx={{ maxHeight: 200 }}
+                      >
+                        <Table size='small'>
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>SKU</TableCell>
+                              <TableCell>价格</TableCell>
+                              <TableCell>库存</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {externalProduct.variants
+                              .slice(0, 3)
+                              .map((variant, index) => (
+                                <TableRow key={index}>
+                                  <TableCell>{variant.sku || '-'}</TableCell>
+                                  <TableCell>${variant.price || 0}</TableCell>
+                                  <TableCell>
+                                    {variant.inventory_quantity || 0}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                      {externalProduct.variants.length > 3 && (
+                        <Typography variant='caption' color='text.secondary'>
+                          还有 {externalProduct.variants.length - 3} 个变体...
+                        </Typography>
+                      )}
+                    </Box>
+                  )}
               </CardContent>
             </Card>
-          </Grid>
-        </Grid>
+          </Box>
+        </Box>
       </DialogContent>
 
       <DialogActions>
         <Button onClick={onClose}>关闭</Button>
-        <Button onClick={handleEdit} variant="outlined">
+        <Button onClick={handleEdit} variant='outlined'>
           编辑映射
         </Button>
-        <Button onClick={handleDelete} color="error" variant="outlined">
+        <Button onClick={handleDelete} color='error' variant='outlined'>
           删除映射
         </Button>
       </DialogActions>

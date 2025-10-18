@@ -14,7 +14,7 @@ export interface Product {
   seo?: any;
   created_at: string;
   updated_at?: string;
-  
+
   // 关联数据
   dimensions: ProductDimension[];
   variants: ProductVariant[];

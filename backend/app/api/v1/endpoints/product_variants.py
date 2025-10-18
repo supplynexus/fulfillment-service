@@ -13,10 +13,13 @@ from typing import List, Optional, Dict, Any, Tuple
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
+from datetime import datetime
 import logging
 
+from app.schemas.base import BaseResponse
+
 from app.core.database import get_async_db
-from app.core.tenant_auth_dependency import verify_tenant_auth
+from app.core.jwt_auth_dependency import verify_jwt_auth
 from app.services.product_variant_service import ProductVariantService
 from app.core.logging import get_logger
 
@@ -49,21 +52,14 @@ class VariantUpdateRequest(BaseModel):
     is_active: Optional[bool] = Field(None, description="是否激活")
 
 
-class VariantResponse(BaseModel):
+class VariantResponse(BaseResponse):
     id: int
     product_id: int
-    sku: str
-    name: Optional[str]
-    description: Optional[str]
+    sku: Optional[str]
     price: Optional[float]
     cost_price: Optional[float]
     weight: Optional[float]
     is_active: bool
-    created_at: str
-    updated_at: str
-
-    class Config:
-        from_attributes = True
 
 
 class VariantSearchRequest(BaseModel):
@@ -120,7 +116,7 @@ class VariantStatisticsResponse(BaseModel):
 async def create_variant(
     request: VariantCreateRequest,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple = Depends(verify_tenant_auth)
+    auth: tuple = Depends(verify_jwt_auth)
 ) -> VariantResponse:
     """创建SKU"""
     tenant, user = auth
@@ -162,7 +158,7 @@ async def create_variant(
 async def get_variant(
     variant_id: int,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple = Depends(verify_tenant_auth)
+    auth: tuple = Depends(verify_jwt_auth)
 ) -> VariantResponse:
     """获取单个SKU"""
     tenant, user = auth
@@ -192,7 +188,7 @@ async def update_variant(
     variant_id: int,
     request: VariantUpdateRequest,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple = Depends(verify_tenant_auth)
+    auth: tuple = Depends(verify_jwt_auth)
 ) -> VariantResponse:
     """更新SKU"""
     tenant, user = auth
@@ -223,7 +219,7 @@ async def update_variant(
 async def delete_variant(
     variant_id: int,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple = Depends(verify_tenant_auth)
+    auth: tuple = Depends(verify_jwt_auth)
 ) -> Dict[str, Any]:
     """删除SKU"""
     tenant, user = auth
@@ -261,7 +257,7 @@ async def search_variants(
     page: int = Query(1, description="页码"),
     page_size: int = Query(100, description="每页数量"),
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple = Depends(verify_tenant_auth)
+    auth: tuple = Depends(verify_jwt_auth)
 ) -> VariantSearchResponse:
     """搜索SKU"""
     tenant, user = auth
@@ -325,7 +321,7 @@ async def get_product_variants(
     product_id: int,
     include_inactive: bool = Query(False, description="是否包含非激活SKU"),
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple = Depends(verify_tenant_auth)
+    auth: tuple = Depends(verify_jwt_auth)
 ) -> List[VariantResponse]:
     """获取产品的所有SKU"""
     tenant, user = auth
@@ -353,7 +349,7 @@ async def get_product_variants(
 async def preview_cartesian_product(
     request: CartesianProductPreviewRequest,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple = Depends(verify_tenant_auth)
+    auth: tuple = Depends(verify_jwt_auth)
 ) -> CartesianProductPreviewResponse:
     """预览笛卡尔积组合"""
     tenant, user = auth
@@ -382,7 +378,7 @@ async def preview_cartesian_product(
 async def create_cartesian_product_variants(
     request: CartesianProductRequest,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple = Depends(verify_tenant_auth)
+    auth: tuple = Depends(verify_jwt_auth)
 ) -> List[VariantResponse]:
     """使用笛卡尔积创建多个SKU"""
     tenant, user = auth
@@ -422,7 +418,7 @@ async def create_cartesian_product_variants(
 async def create_variant_dimension(
     request: VariantDimensionRequest,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple = Depends(verify_tenant_auth)
+    auth: tuple = Depends(verify_jwt_auth)
 ) -> Dict[str, Any]:
     """为SKU创建维度值"""
     tenant, user = auth
@@ -456,7 +452,7 @@ async def create_variant_dimension(
 async def get_variant_dimensions(
     variant_id: int,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple = Depends(verify_tenant_auth)
+    auth: tuple = Depends(verify_jwt_auth)
 ) -> List[Dict[str, Any]]:
     """获取SKU的所有维度值"""
     tenant, user = auth
@@ -496,7 +492,7 @@ async def get_variant_dimensions(
 @router.get("/statistics", response_model=VariantStatisticsResponse)
 async def get_variant_statistics(
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple = Depends(verify_tenant_auth)
+    auth: tuple = Depends(verify_jwt_auth)
 ) -> VariantStatisticsResponse:
     """获取SKU统计信息"""
     tenant, user = auth

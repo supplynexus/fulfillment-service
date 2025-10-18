@@ -8,11 +8,14 @@ export async function POST(request: NextRequest) {
     // 获取前端 JWT token
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 });
+      return NextResponse.json(
+        { error: 'Missing or invalid authorization header' },
+        { status: 401 }
+      );
     }
 
     const frontendToken = authHeader.substring(7);
-    
+
     // 验证前端 JWT token
     let decodedToken;
     try {
@@ -21,7 +24,7 @@ export async function POST(request: NextRequest) {
       console.error('JWT verification failed:', error);
       return NextResponse.json({ error: 'Invalid JWT token' }, { status: 401 });
     }
-    
+
     const { tenant_name: tenantName, sub: userId } = decodedToken;
 
     // 获取请求体
@@ -33,7 +36,7 @@ export async function POST(request: NextRequest) {
     const bodyString = JSON.stringify(requestBody);
     const backendPath = '/api/v1/shopify-orders/';
     const signatureString = `POST${backendPath}${timestamp}${nonce}${tenantName}${bodyString}`;
-    
+
     console.log('🔍 前端签名生成调试信息:', {
       method: 'POST',
       path: backendPath,
@@ -47,8 +50,14 @@ export async function POST(request: NextRequest) {
     });
 
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
-    const signature = generateBackendSignature(privateKey, signatureString, timestamp, nonce, tenantName);
-    
+    const signature = generateBackendSignature(
+      privateKey,
+      signatureString,
+      timestamp,
+      nonce,
+      tenantName
+    );
+
     console.log('🔍 前端签名生成完成:', {
       signatureLength: signature.length,
       signature: signature.substring(0, 50) + '...', // 只显示前50个字符
@@ -83,7 +92,6 @@ export async function POST(request: NextRequest) {
 
     const data = await backendResponse.json();
     return NextResponse.json(data);
-
   } catch (error: any) {
     console.error('Shopify orders API error:', error);
     return NextResponse.json(
@@ -98,11 +106,14 @@ export async function GET(request: NextRequest) {
     // 获取前端 JWT token
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 });
+      return NextResponse.json(
+        { error: 'Missing or invalid authorization header' },
+        { status: 401 }
+      );
     }
 
     const frontendToken = authHeader.substring(7);
-    
+
     // 验证前端 JWT token
     let decodedToken;
     try {
@@ -111,7 +122,7 @@ export async function GET(request: NextRequest) {
       console.error('JWT verification failed:', error);
       return NextResponse.json({ error: 'Invalid JWT token' }, { status: 401 });
     }
-    
+
     const { tenant_name: tenantName, sub: userId } = decodedToken;
 
     // 获取查询参数
@@ -125,7 +136,13 @@ export async function GET(request: NextRequest) {
     const signatureString = `GET${backendPath}${timestamp}${nonce}${tenantName}`;
 
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
-    const signature = generateBackendSignature(privateKey, signatureString, timestamp, nonce, tenantName);
+    const signature = generateBackendSignature(
+      privateKey,
+      signatureString,
+      timestamp,
+      nonce,
+      tenantName
+    );
 
     // 构建后端 URL
     const backendUrl = `${process.env.BACKEND_URL || 'http://localhost:8000'}/api/v1/shopify-orders/${queryString ? `?${queryString}` : ''}`;
@@ -154,7 +171,6 @@ export async function GET(request: NextRequest) {
 
     const data = await backendResponse.json();
     return NextResponse.json(data);
-
   } catch (error: any) {
     console.error('Shopify orders API error:', error);
     return NextResponse.json(

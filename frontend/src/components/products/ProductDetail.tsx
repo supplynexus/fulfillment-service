@@ -54,7 +54,7 @@ function TabPanel(props: TabPanelProps) {
 
   return (
     <div
-      role="tabpanel"
+      role='tabpanel'
       hidden={value !== index}
       id={`product-tabpanel-${index}`}
       aria-labelledby={`product-tab-${index}`}
@@ -72,7 +72,9 @@ export function ProductDetail({ productHashId }: ProductDetailProps) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tabValue, setTabValue] = useState(0);
-  const [expandedVariants, setExpandedVariants] = useState<Set<string>>(new Set());
+  const [expandedVariants, setExpandedVariants] = useState<Set<string>>(
+    new Set()
+  );
 
   const fetchProduct = async (isRefresh = false) => {
     try {
@@ -169,10 +171,10 @@ export function ProductDetail({ productHashId }: ProductDetailProps) {
   if (loading) {
     return (
       <Box
-        display="flex"
-        justifyContent="center"
-        alignItems="center"
-        minHeight="400px"
+        display='flex'
+        justifyContent='center'
+        alignItems='center'
+        minHeight='400px'
       >
         <CircularProgress />
       </Box>
@@ -182,11 +184,11 @@ export function ProductDetail({ productHashId }: ProductDetailProps) {
   if (error || !product) {
     return (
       <Box>
-        <Alert severity="error" sx={{ mb: 2 }}>
+        <Alert severity='error' sx={{ mb: 2 }}>
           {error || 'Product not found'}
         </Alert>
         <Button
-          variant="outlined"
+          variant='outlined'
           startIcon={<ArrowBackIcon />}
           onClick={handleBack}
         >
@@ -200,29 +202,29 @@ export function ProductDetail({ productHashId }: ProductDetailProps) {
     <Box>
       {/* 头部操作栏 */}
       <Box
-        display="flex"
-        justifyContent="space-between"
-        alignItems="center"
+        display='flex'
+        justifyContent='space-between'
+        alignItems='center'
         mb={3}
       >
-        <Box display="flex" alignItems="center" gap={2}>
+        <Box display='flex' alignItems='center' gap={2}>
           <Button
-            variant="outlined"
+            variant='outlined'
             startIcon={<ArrowBackIcon />}
             onClick={handleBack}
           >
             返回
           </Button>
-          <Typography variant="h4" component="h1">
+          <Typography variant='h4' component='h1'>
             {product.title}
           </Typography>
         </Box>
-        <Box display="flex" gap={2}>
-          <Tooltip title="刷新商品数据">
+        <Box display='flex' gap={2}>
+          <Tooltip title='刷新商品数据'>
             <IconButton
               onClick={handleRefresh}
               disabled={refreshing}
-              color="primary"
+              color='primary'
               sx={{
                 animation: refreshing ? 'spin 1s linear infinite' : 'none',
                 '@keyframes spin': {
@@ -235,15 +237,15 @@ export function ProductDetail({ productHashId }: ProductDetailProps) {
             </IconButton>
           </Tooltip>
           <Button
-            variant="outlined"
+            variant='outlined'
             startIcon={<EditIcon />}
             onClick={handleEdit}
           >
             编辑
           </Button>
           <Button
-            variant="outlined"
-            color="error"
+            variant='outlined'
+            color='error'
             startIcon={<DeleteIcon />}
             onClick={handleDelete}
           >
@@ -255,105 +257,112 @@ export function ProductDetail({ productHashId }: ProductDetailProps) {
       {/* 商品基本信息 */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Grid container spacing={3}>
-            <Grid item xs={12} md={3}>
-              <Box display="flex" justifyContent="center">
+          <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
+            <Box sx={{ width: "100%" }} md={3}>
+              <Box display='flex' justifyContent='center'>
                 <Avatar
                   src={product.images?.[0]?.url || product.images?.[0]}
-                  variant="rounded"
+                  variant='rounded'
                   sx={{ width: 120, height: 120 }}
                 >
                   <ProductIcon sx={{ fontSize: 60 }} />
                 </Avatar>
               </Box>
-            </Grid>
-            <Grid item xs={12} md={9}>
-              <Typography variant="h5" gutterBottom>
+            </Box>
+            <Box sx={{ width: "100%" }} md={9}>
+              <Typography variant='h5' gutterBottom>
                 {product.title}
               </Typography>
-              <Typography variant="body1" color="text.secondary" paragraph>
+              <Typography variant='body1' color='text.secondary' paragraph>
                 {product.description || '暂无描述'}
               </Typography>
-              
-              <Grid container spacing={2} sx={{ mb: 2 }}>
-                <Grid item xs={6} sm={3}>
-                  <Typography variant="caption" color="text.secondary">
+
+              <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} sx={{ mb: 2 }}>
+                <Box sx={{ width: "50%" }} sm={3}>
+                  <Typography variant='caption' color='text.secondary'>
                     状态
                   </Typography>
                   <Box>
                     <Chip
                       label={product.status}
                       color={getStatusColor(product.status) as any}
-                      size="small"
+                      size='small'
                     />
                   </Box>
-                </Grid>
-                <Grid item xs={6} sm={3}>
-                  <Typography variant="caption" color="text.secondary">
+                </Box>
+                <Box sx={{ width: "50%" }} sm={3}>
+                  <Typography variant='caption' color='text.secondary'>
                     可用性
                   </Typography>
                   <Box>
                     <Chip
-                      label={product.is_active && product.is_available ? '可用' : '不可用'}
-                      color={getAvailabilityColor(product.is_active, product.is_available) as any}
-                      size="small"
+                      label={
+                        product.is_active && product.is_available
+                          ? '可用'
+                          : '不可用'
+                      }
+                      color={
+                        getAvailabilityColor(
+                          product.is_active,
+                          product.is_available
+                        ) as any
+                      }
+                      size='small'
                     />
                   </Box>
-                </Grid>
-                <Grid item xs={6} sm={3}>
-                  <Typography variant="caption" color="text.secondary">
+                </Box>
+                <Box sx={{ width: "50%" }} sm={3}>
+                  <Typography variant='caption' color='text.secondary'>
                     类型
                   </Typography>
-                  <Typography variant="body2">
+                  <Typography variant='body2'>
                     {product.product_type || '-'}
                   </Typography>
-                </Grid>
-                <Grid item xs={6} sm={3}>
-                  <Typography variant="caption" color="text.secondary">
+                </Box>
+                <Box sx={{ width: "50%" }} sm={3}>
+                  <Typography variant='caption' color='text.secondary'>
                     供应商
                   </Typography>
-                  <Typography variant="body2">
+                  <Typography variant='body2'>
                     {product.vendor || '-'}
                   </Typography>
-                </Grid>
-              </Grid>
+                </Box>
+              </Box>
 
-              <Grid container spacing={2}>
-                <Grid item xs={6} sm={3}>
-                  <Typography variant="caption" color="text.secondary">
+              <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
+                <Box sx={{ width: "50%" }} sm={3}>
+                  <Typography variant='caption' color='text.secondary'>
                     Handle
                   </Typography>
-                  <Typography variant="body2">
+                  <Typography variant='body2'>
                     {product.handle || '-'}
                   </Typography>
-                </Grid>
-                <Grid item xs={6} sm={3}>
-                  <Typography variant="caption" color="text.secondary">
+                </Box>
+                <Box sx={{ width: "50%" }} sm={3}>
+                  <Typography variant='caption' color='text.secondary'>
                     变体数量
                   </Typography>
-                  <Typography variant="body2">
+                  <Typography variant='body2'>
                     {product.variants.length}
                   </Typography>
-                </Grid>
-                <Grid item xs={6} sm={3}>
-                  <Typography variant="caption" color="text.secondary">
+                </Box>
+                <Box sx={{ width: "50%" }} sm={3}>
+                  <Typography variant='caption' color='text.secondary'>
                     标签数量
                   </Typography>
-                  <Typography variant="body2">
-                    {product.tags.length}
-                  </Typography>
-                </Grid>
-                <Grid item xs={6} sm={3}>
-                  <Typography variant="caption" color="text.secondary">
+                  <Typography variant='body2'>{product.tags.length}</Typography>
+                </Box>
+                <Box sx={{ width: "50%" }} sm={3}>
+                  <Typography variant='caption' color='text.secondary'>
                     映射数量
                   </Typography>
-                  <Typography variant="body2">
+                  <Typography variant='body2'>
                     {product.mappings.length}
                   </Typography>
-                </Grid>
-              </Grid>
-            </Grid>
-          </Grid>
+                </Box>
+              </Box>
+            </Box>
+          </Box>
         </CardContent>
       </Card>
 
@@ -361,10 +370,10 @@ export function ProductDetail({ productHashId }: ProductDetailProps) {
       {product.tags.length > 0 && (
         <Card sx={{ mb: 3 }}>
           <CardContent>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant='h6' gutterBottom>
               商品标签
             </Typography>
-            <Box display="flex" gap={1} flexWrap="wrap">
+            <Box display='flex' gap={1} flexWrap='wrap'>
               {product.tags.map(tag => (
                 <Chip
                   key={tag.id_hashid}
@@ -390,11 +399,11 @@ export function ProductDetail({ productHashId }: ProductDetailProps) {
 
         {/* 变体标签页 */}
         <TabPanel value={tabValue} index={0}>
-          <Typography variant="h6" gutterBottom>
+          <Typography variant='h6' gutterBottom>
             商品变体
           </Typography>
           {product.variants.length > 0 ? (
-            <TableContainer component={Paper} variant="outlined">
+            <TableContainer component={Paper} variant='outlined'>
               <Table>
                 <TableHead>
                   <TableRow>
@@ -411,29 +420,31 @@ export function ProductDetail({ productHashId }: ProductDetailProps) {
                     <React.Fragment key={variant.id_hashid}>
                       <TableRow hover>
                         <TableCell>
-                          <Typography variant="body2">
+                          <Typography variant='body2'>
                             {variant.sku || '-'}
                           </Typography>
                         </TableCell>
                         <TableCell>
-                          <Box display="flex" gap={0.5} flexWrap="wrap">
-                            {Object.entries(variant.attributes).map(([key, value]) => (
-                              <Chip
-                                key={key}
-                                label={`${key}: ${value}`}
-                                size="small"
-                                variant="outlined"
-                              />
-                            ))}
+                          <Box display='flex' gap={0.5} flexWrap='wrap'>
+                            {Object.entries(variant.attributes).map(
+                              ([key, value]) => (
+                                <Chip
+                                  key={key}
+                                  label={`${key}: ${value}`}
+                                  size='small'
+                                  variant='outlined'
+                                />
+                              )
+                            )}
                           </Box>
                         </TableCell>
                         <TableCell>
-                          <Typography variant="body2">
+                          <Typography variant='body2'>
                             ${variant.price || 0}
                           </Typography>
                         </TableCell>
                         <TableCell>
-                          <Typography variant="body2">
+                          <Typography variant='body2'>
                             {variant.inventory_quantity}
                           </Typography>
                         </TableCell>
@@ -441,81 +452,110 @@ export function ProductDetail({ productHashId }: ProductDetailProps) {
                           <Chip
                             label={variant.is_active ? '活跃' : '非活跃'}
                             color={variant.is_active ? 'success' : 'default'}
-                            size="small"
+                            size='small'
                           />
                         </TableCell>
                         <TableCell>
-                          <Tooltip title={expandedVariants.has(variant.id_hashid) ? '收起' : '展开'}>
+                          <Tooltip
+                            title={
+                              expandedVariants.has(variant.id_hashid)
+                                ? '收起'
+                                : '展开'
+                            }
+                          >
                             <IconButton
-                              size="small"
-                              onClick={() => handleToggleVariant(variant.id_hashid)}
+                              size='small'
+                              onClick={() =>
+                                handleToggleVariant(variant.id_hashid)
+                              }
                             >
-                              {expandedVariants.has(variant.id_hashid) ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                              {expandedVariants.has(variant.id_hashid) ? (
+                                <ExpandLessIcon />
+                              ) : (
+                                <ExpandMoreIcon />
+                              )}
                             </IconButton>
                           </Tooltip>
                         </TableCell>
                       </TableRow>
-                      
+
                       {/* 展开的变体详情 */}
                       {expandedVariants.has(variant.id_hashid) && (
                         <TableRow>
                           <TableCell colSpan={6} sx={{ py: 0 }}>
                             <Box sx={{ pl: 4, pr: 2, pb: 2 }}>
-                              <Grid container spacing={2}>
-                                <Grid item xs={6} sm={3}>
-                                  <Typography variant="caption" color="text.secondary">
+                              <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
+                                <Box sx={{ width: "50%" }} sm={3}>
+                                  <Typography
+                                    variant='caption'
+                                    color='text.secondary'
+                                  >
                                     条码
                                   </Typography>
-                                  <Typography variant="body2">
+                                  <Typography variant='body2'>
                                     {variant.barcode || '-'}
                                   </Typography>
-                                </Grid>
-                                <Grid item xs={6} sm={3}>
-                                  <Typography variant="caption" color="text.secondary">
+                                </Box>
+                                <Box sx={{ width: "50%" }} sm={3}>
+                                  <Typography
+                                    variant='caption'
+                                    color='text.secondary'
+                                  >
                                     对比价格
                                   </Typography>
-                                  <Typography variant="body2">
+                                  <Typography variant='body2'>
                                     ${variant.compare_at_price || 0}
                                   </Typography>
-                                </Grid>
-                                <Grid item xs={6} sm={3}>
-                                  <Typography variant="caption" color="text.secondary">
+                                </Box>
+                                <Box sx={{ width: "50%" }} sm={3}>
+                                  <Typography
+                                    variant='caption'
+                                    color='text.secondary'
+                                  >
                                     成本价格
                                   </Typography>
-                                  <Typography variant="body2">
+                                  <Typography variant='body2'>
                                     ${variant.cost_price || 0}
                                   </Typography>
-                                </Grid>
-                                <Grid item xs={6} sm={3}>
-                                  <Typography variant="caption" color="text.secondary">
+                                </Box>
+                                <Box sx={{ width: "50%" }} sm={3}>
+                                  <Typography
+                                    variant='caption'
+                                    color='text.secondary'
+                                  >
                                     重量
                                   </Typography>
-                                  <Typography variant="body2">
+                                  <Typography variant='body2'>
                                     {variant.weight || '-'} kg
                                   </Typography>
-                                </Grid>
+                                </Box>
                                 {/* 外部变体ID显示 */}
                                 {product.mappings.length > 0 && (
-                                  <Grid item xs={12}>
-                                    <Typography variant="caption" color="text.secondary">
+                                  <Box sx={{ width: "100%" }}>
+                                    <Typography
+                                      variant='caption'
+                                      color='text.secondary'
+                                    >
                                       外部系统映射
                                     </Typography>
                                     <Box sx={{ mt: 1 }}>
                                       {product.mappings
-                                        .filter(mapping => mapping.external_variant_id)
+                                        .filter(
+                                          mapping => mapping.external_variant_id
+                                        )
                                         .map(mapping => (
                                           <Chip
                                             key={mapping.id_hashid}
                                             label={`${mapping.external_system_name}: ${mapping.external_variant_id}`}
-                                            size="small"
-                                            variant="outlined"
+                                            size='small'
+                                            variant='outlined'
                                             sx={{ mr: 1, mb: 1 }}
                                           />
                                         ))}
                                     </Box>
-                                  </Grid>
+                                  </Box>
                                 )}
-                              </Grid>
+                              </Box>
                             </Box>
                           </TableCell>
                         </TableRow>
@@ -526,7 +566,7 @@ export function ProductDetail({ productHashId }: ProductDetailProps) {
               </Table>
             </TableContainer>
           ) : (
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant='body2' color='text.secondary'>
               暂无变体
             </Typography>
           )}
@@ -534,11 +574,11 @@ export function ProductDetail({ productHashId }: ProductDetailProps) {
 
         {/* 维度标签页 */}
         <TabPanel value={tabValue} index={1}>
-          <Typography variant="h6" gutterBottom>
+          <Typography variant='h6' gutterBottom>
             商品维度
           </Typography>
           {product.dimensions.length > 0 ? (
-            <TableContainer component={Paper} variant="outlined">
+            <TableContainer component={Paper} variant='outlined'>
               <Table>
                 <TableHead>
                   <TableRow>
@@ -554,52 +594,49 @@ export function ProductDetail({ productHashId }: ProductDetailProps) {
                   {product.dimensions.map(dimension => (
                     <TableRow key={dimension.id_hashid} hover>
                       <TableCell>
-                        <Typography variant="body2">
+                        <Typography variant='body2'>
                           {dimension.dimension_name}
                         </Typography>
                       </TableCell>
                       <TableCell>
-                        <Typography variant="body2">
+                        <Typography variant='body2'>
                           {dimension.display_name || '-'}
                         </Typography>
                       </TableCell>
                       <TableCell>
                         <Chip
                           label={dimension.dimension_type}
-                          size="small"
-                          variant="outlined"
+                          size='small'
+                          variant='outlined'
                         />
                       </TableCell>
                       <TableCell>
-                        <Box display="flex" gap={0.5} flexWrap="wrap">
+                        <Box display='flex' gap={0.5} flexWrap='wrap'>
                           {dimension.options?.slice(0, 3).map(option => (
-                            <Chip
-                              key={option}
-                              label={option}
-                              size="small"
-                            />
+                            <Chip key={option} label={option} size='small' />
                           ))}
-                          {dimension.options && dimension.options.length > 3 && (
-                            <Chip
-                              label={`+${dimension.options.length - 3}`}
-                              size="small"
-                              variant="outlined"
-                            />
-                          )}
+                          {dimension.options &&
+                            dimension.options.length > 3 && (
+                              <Chip
+                                label={`+${dimension.options.length - 3}`}
+                                size='small'
+                                variant='outlined'
+                              />
+                            )}
                         </Box>
                       </TableCell>
                       <TableCell>
                         <Chip
                           label={dimension.is_required ? '是' : '否'}
                           color={dimension.is_required ? 'primary' : 'default'}
-                          size="small"
+                          size='small'
                         />
                       </TableCell>
                       <TableCell>
                         <Chip
                           label={dimension.is_active ? '活跃' : '非活跃'}
                           color={dimension.is_active ? 'success' : 'default'}
-                          size="small"
+                          size='small'
                         />
                       </TableCell>
                     </TableRow>
@@ -608,7 +645,7 @@ export function ProductDetail({ productHashId }: ProductDetailProps) {
               </Table>
             </TableContainer>
           ) : (
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant='body2' color='text.secondary'>
               暂无维度
             </Typography>
           )}
@@ -616,11 +653,11 @@ export function ProductDetail({ productHashId }: ProductDetailProps) {
 
         {/* 映射标签页 */}
         <TabPanel value={tabValue} index={2}>
-          <Typography variant="h6" gutterBottom>
+          <Typography variant='h6' gutterBottom>
             外部系统映射
           </Typography>
           {product.mappings.length > 0 ? (
-            <TableContainer component={Paper} variant="outlined">
+            <TableContainer component={Paper} variant='outlined'>
               <Table>
                 <TableHead>
                   <TableRow>
@@ -637,44 +674,50 @@ export function ProductDetail({ productHashId }: ProductDetailProps) {
                   {product.mappings.map(mapping => (
                     <TableRow key={mapping.id_hashid} hover>
                       <TableCell>
-                        <Typography variant="body2">
+                        <Typography variant='body2'>
                           {mapping.external_system_name}
                         </Typography>
                       </TableCell>
                       <TableCell>
-                        <Typography variant="body2">
+                        <Typography variant='body2'>
                           {mapping.external_product_id}
                         </Typography>
                       </TableCell>
                       <TableCell>
-                        <Typography variant="body2">
+                        <Typography variant='body2'>
                           {mapping.external_variant_id || '-'}
                         </Typography>
                       </TableCell>
                       <TableCell>
                         <Chip
                           label={mapping.mapping_type}
-                          size="small"
-                          variant="outlined"
+                          size='small'
+                          variant='outlined'
                         />
                       </TableCell>
                       <TableCell>
                         <Chip
                           label={mapping.sync_direction}
-                          size="small"
-                          variant="outlined"
+                          size='small'
+                          variant='outlined'
                         />
                       </TableCell>
                       <TableCell>
                         <Chip
                           label={mapping.sync_status}
-                          color={mapping.sync_status === 'synced' ? 'success' : 'default'}
-                          size="small"
+                          color={
+                            mapping.sync_status === 'synced'
+                              ? 'success'
+                              : 'default'
+                          }
+                          size='small'
                         />
                       </TableCell>
                       <TableCell>
-                        <Typography variant="body2">
-                          {mapping.last_synced_at ? formatDate(mapping.last_synced_at) : '-'}
+                        <Typography variant='body2'>
+                          {mapping.last_synced_at
+                            ? formatDate(mapping.last_synced_at)
+                            : '-'}
                         </Typography>
                       </TableCell>
                     </TableRow>
@@ -683,7 +726,7 @@ export function ProductDetail({ productHashId }: ProductDetailProps) {
               </Table>
             </TableContainer>
           ) : (
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant='body2' color='text.secondary'>
               暂无映射
             </Typography>
           )}

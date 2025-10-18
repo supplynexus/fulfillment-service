@@ -11,11 +11,14 @@ export async function DELETE(
     // 获取前端 JWT token
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 });
+      return NextResponse.json(
+        { error: 'Missing or invalid authorization header' },
+        { status: 401 }
+      );
     }
 
     const frontendToken = authHeader.substring(7);
-    
+
     // 验证前端 JWT token
     let decodedToken;
     try {
@@ -24,7 +27,7 @@ export async function DELETE(
       console.error('JWT verification failed:', error);
       return NextResponse.json({ error: 'Invalid JWT token' }, { status: 401 });
     }
-    
+
     const { tenant_name: tenantName, sub: userId } = decodedToken;
 
     // 生成后端签名
@@ -34,7 +37,13 @@ export async function DELETE(
     const signatureString = `DELETE${backendPath}${timestamp}${nonce}${tenantName}`;
 
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
-    const signature = generateBackendSignature(privateKey, signatureString, timestamp, nonce, tenantName);
+    const signature = generateBackendSignature(
+      privateKey,
+      signatureString,
+      timestamp,
+      nonce,
+      tenantName
+    );
 
     // 构建后端 URL
     const backendUrl = `${process.env.BACKEND_URL || 'http://localhost:8000'}${backendPath}`;
@@ -63,7 +72,6 @@ export async function DELETE(
 
     const data = await backendResponse.json();
     return NextResponse.json({ success: true, ...data });
-
   } catch (error: any) {
     console.error('Shopify order delete API error:', error);
     return NextResponse.json(

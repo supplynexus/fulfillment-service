@@ -15,8 +15,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
 import logging
 
+from app.schemas.base import BaseResponse
+
 from app.core.database import get_async_db
-from app.core.tenant_auth_dependency import verify_tenant_auth
+from app.core.jwt_auth_dependency import verify_jwt_auth
 from app.services.product_dimension_service import ProductDimensionService
 from app.core.logging import get_logger
 
@@ -42,7 +44,7 @@ class DimensionTemplateUpdateRequest(BaseModel):
     is_active: Optional[bool] = Field(None, description="是否激活")
 
 
-class DimensionTemplateResponse(BaseModel):
+class DimensionTemplateResponse(BaseResponse):
     id: int
     dimension_code: str
     dimension_name: str
@@ -50,8 +52,6 @@ class DimensionTemplateResponse(BaseModel):
     description: Optional[str]
     sort_order: int
     is_active: bool
-    created_at: str
-    updated_at: str
 
     class Config:
         from_attributes = True
@@ -75,7 +75,7 @@ class DimensionValueUpdateRequest(BaseModel):
     is_active: Optional[bool] = Field(None, description="是否激活")
 
 
-class DimensionValueResponse(BaseModel):
+class DimensionValueResponse(BaseResponse):
     id: int
     value_code: str
     value_name: str
@@ -83,8 +83,6 @@ class DimensionValueResponse(BaseModel):
     is_default: bool
     sort_order: int
     is_active: bool
-    created_at: str
-    updated_at: str
 
     class Config:
         from_attributes = True
@@ -120,7 +118,7 @@ class EffectiveDimensionsResponse(BaseModel):
 async def create_dimension_template(
     request: DimensionTemplateCreateRequest,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple = Depends(verify_tenant_auth)
+    auth: tuple = Depends(verify_jwt_auth)
 ) -> DimensionTemplateResponse:
     """创建维度模板"""
     tenant, user = auth
@@ -144,7 +142,18 @@ async def create_dimension_template(
                    template_id=template.id,
                    dimension_code=template.dimension_code)
         
-        return DimensionTemplateResponse.from_orm(template)
+        # 手动构建响应对象，转换 datetime 为字符串
+        return DimensionTemplateResponse(
+            id=template.id,
+            dimension_code=template.dimension_code,
+            dimension_name=template.dimension_name,
+            dimension_type=template.dimension_type,
+            description=template.description,
+            sort_order=template.sort_order,
+            is_active=template.is_active,
+            created_at=template.created_at.isoformat() if template.created_at else "",
+            updated_at=template.updated_at.isoformat() if template.updated_at else ""
+        )
         
     except ValueError as e:
         logger.error("❌ 维度模板创建失败", error=str(e))
@@ -158,9 +167,11 @@ async def create_dimension_template(
 async def get_dimension_templates(
     include_inactive: bool = Query(False, description="是否包含非激活模板"),
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple = Depends(verify_tenant_auth)
+    auth: tuple = Depends(verify_jwt_auth)
 ) -> List[DimensionTemplateResponse]:
     """获取维度模板列表"""
+    logger.info(f"🔍 开始获取维度模板列表: include_inactive={include_inactive}")
+    logger.info(f"🔍 请求到达API端点: 认证依赖已通过")
     tenant, user = auth
     
     try:
@@ -175,7 +186,23 @@ async def get_dimension_templates(
                    tenant_id=tenant.id,
                    template_count=len(templates))
         
-        return [DimensionTemplateResponse.from_orm(template) for template in templates]
+        # 手动构造响应对象，处理 datetime 字段
+        result = []
+        for template in templates:
+            template_dict = {
+                "id": template.id,
+                "dimension_code": template.dimension_code,
+                "dimension_name": template.dimension_name,
+                "dimension_type": template.dimension_type,
+                "description": template.description,
+                "sort_order": template.sort_order,
+                "is_active": template.is_active,
+                "created_at": template.created_at.isoformat() if template.created_at else None,
+                "updated_at": template.updated_at.isoformat() if template.updated_at else None,
+            }
+            result.append(DimensionTemplateResponse(**template_dict))
+        
+        return result
         
     except Exception as e:
         logger.error("❌ 维度模板列表获取异常", error=str(e))
@@ -186,7 +213,7 @@ async def get_dimension_templates(
 async def get_dimension_template(
     template_id: int,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple = Depends(verify_tenant_auth)
+    auth: tuple = Depends(verify_jwt_auth)
 ) -> DimensionTemplateResponse:
     """获取单个维度模板"""
     tenant, user = auth
@@ -204,7 +231,19 @@ async def get_dimension_template(
         
         logger.info("✅ 维度模板获取成功", template_id=template_id)
         
-        return DimensionTemplateResponse.from_orm(template)
+        # 手动构造响应对象，处理 datetime 字段
+        template_dict = {
+            "id": template.id,
+            "dimension_code": template.dimension_code,
+            "dimension_name": template.dimension_name,
+            "dimension_type": template.dimension_type,
+            "description": template.description,
+            "sort_order": template.sort_order,
+            "is_active": template.is_active,
+            "created_at": template.created_at.isoformat() if template.created_at else None,
+            "updated_at": template.updated_at.isoformat() if template.updated_at else None,
+        }
+        return DimensionTemplateResponse(**template_dict)
         
     except HTTPException:
         raise
@@ -218,7 +257,7 @@ async def update_dimension_template(
     template_id: int,
     request: DimensionTemplateUpdateRequest,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple = Depends(verify_tenant_auth)
+    auth: tuple = Depends(verify_jwt_auth)
 ) -> DimensionTemplateResponse:
     """更新维度模板"""
     tenant, user = auth
@@ -238,7 +277,7 @@ async def update_dimension_template(
         
         logger.info("✅ 维度模板更新成功", template_id=template_id)
         
-        return DimensionTemplateResponse.from_orm(template)
+        return DimensionTemplateResponse.model_validate(template)
         
     except HTTPException:
         raise
@@ -252,7 +291,7 @@ async def delete_dimension_template(
     template_id: int,
     force: bool = Query(False, description="是否强制删除"),
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple = Depends(verify_tenant_auth)
+    auth: tuple = Depends(verify_jwt_auth)
 ) -> Dict[str, Any]:
     """删除维度模板"""
     tenant, user = auth
@@ -287,7 +326,7 @@ async def delete_dimension_template(
 async def create_dimension_value(
     request: DimensionValueCreateRequest,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple = Depends(verify_tenant_auth)
+    auth: tuple = Depends(verify_jwt_auth)
 ) -> DimensionValueResponse:
     """创建维度值"""
     tenant, user = auth
@@ -313,7 +352,7 @@ async def create_dimension_value(
                    value_id=value.id,
                    value_code=value.value_code)
         
-        return DimensionValueResponse.from_orm(value)
+        return DimensionValueResponse.model_validate(value)
         
     except ValueError as e:
         logger.error("❌ 维度值创建失败", error=str(e))
@@ -328,7 +367,7 @@ async def get_dimension_values(
     template_id: int,
     category_dimension_id: Optional[int] = Query(None, description="分类维度关联ID"),
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple = Depends(verify_tenant_auth)
+    auth: tuple = Depends(verify_jwt_auth)
 ) -> List[DimensionValueResponse]:
     """获取维度值列表"""
     tenant, user = auth
@@ -345,7 +384,7 @@ async def get_dimension_values(
                    template_id=template_id,
                    value_count=len(values))
         
-        return [DimensionValueResponse.from_orm(value) for value in values]
+        return [DimensionValueResponse.model_validate(value) for value in values]
         
     except Exception as e:
         logger.error("❌ 维度值列表获取异常", error=str(e))
@@ -356,7 +395,7 @@ async def get_dimension_values(
 async def get_effective_dimensions(
     category_id: int,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple = Depends(verify_tenant_auth)
+    auth: tuple = Depends(verify_jwt_auth)
 ) -> EffectiveDimensionsResponse:
     """获取分类的有效维度"""
     tenant, user = auth
@@ -384,7 +423,7 @@ async def get_effective_dimensions(
 async def inherit_dimension_from_parent(
     request: CategoryDimensionInheritRequest,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple = Depends(verify_tenant_auth)
+    auth: tuple = Depends(verify_jwt_auth)
 ) -> Dict[str, Any]:
     """从父分类继承维度"""
     tenant, user = auth
@@ -421,7 +460,7 @@ async def inherit_dimension_from_parent(
 async def override_dimension(
     request: CategoryDimensionOverrideRequest,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple = Depends(verify_tenant_auth)
+    auth: tuple = Depends(verify_jwt_auth)
 ) -> Dict[str, Any]:
     """覆盖继承的维度设置"""
     tenant, user = auth
@@ -456,7 +495,7 @@ async def remove_inherited_dimension(
     category_id: int,
     dimension_template_id: int,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple = Depends(verify_tenant_auth)
+    auth: tuple = Depends(verify_jwt_auth)
 ) -> Dict[str, Any]:
     """移除继承的维度"""
     tenant, user = auth
@@ -487,7 +526,7 @@ async def remove_inherited_dimension(
 async def create_variant_dimension(
     request: VariantDimensionCreateRequest,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple = Depends(verify_tenant_auth)
+    auth: tuple = Depends(verify_jwt_auth)
 ) -> Dict[str, Any]:
     """为SKU创建维度值"""
     tenant, user = auth
@@ -521,7 +560,7 @@ async def create_variant_dimension(
 async def get_variant_dimensions(
     variant_id: int,
     db: AsyncSession = Depends(get_async_db),
-    auth: tuple = Depends(verify_tenant_auth)
+    auth: tuple = Depends(verify_jwt_auth)
 ) -> List[Dict[str, Any]]:
     """获取SKU的所有维度值"""
     tenant, user = auth

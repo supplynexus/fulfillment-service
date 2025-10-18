@@ -100,15 +100,23 @@ export function ProductsList() {
   // Snackbar 状态
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
-  const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error' | 'warning' | 'info'>('success');
+  const [snackbarSeverity, setSnackbarSeverity] = useState<
+    'success' | 'error' | 'warning' | 'info'
+  >('success');
 
   // 删除状态
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [productToDelete, setProductToDelete] = useState<{id: string, title: string} | null>(null);
+  const [productToDelete, setProductToDelete] = useState<{
+    id: string;
+    title: string;
+  } | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   // 显示消息的函数
-  const showMessage = (message: string, severity: 'success' | 'error' | 'warning' | 'info' = 'success') => {
+  const showMessage = (
+    message: string,
+    severity: 'success' | 'error' | 'warning' | 'info' = 'success'
+  ) => {
     setSnackbarMessage(message);
     setSnackbarSeverity(severity);
     setSnackbarOpen(true);
@@ -216,7 +224,10 @@ export function ProductsList() {
       showMessage('核心商品创建成功！', 'success');
     } catch (err: any) {
       console.error('❌ 从外部商品创建核心商品失败:', err);
-      showMessage(`创建失败: ${err.response?.data?.detail || err.message}`, 'error');
+      showMessage(
+        `创建失败: ${err.response?.data?.detail || err.message}`,
+        'error'
+      );
     } finally {
       setCreatingFromExternal(false);
     }
@@ -285,22 +296,27 @@ export function ProductsList() {
       setDeleting(true);
       console.log('🔍 开始删除商品:', productToDelete);
 
-      const response = await frontendApi.delete(`/api/products/${productToDelete.id}`);
-      
+      const response = await frontendApi.delete(
+        `/api/products/${productToDelete.id}`
+      );
+
       console.log('✅ 商品删除成功:', response.data);
-      
+
       // 关闭对话框
       setDeleteDialogOpen(false);
       setProductToDelete(null);
-      
+
       // 刷新商品列表
       await fetchProducts();
-      
+
       // 显示成功消息
       showMessage('商品删除成功！', 'success');
     } catch (err: any) {
       console.error('❌ 删除商品失败:', err);
-      showMessage(`删除失败: ${err.response?.data?.detail || err.message}`, 'error');
+      showMessage(
+        `删除失败: ${err.response?.data?.detail || err.message}`,
+        'error'
+      );
     } finally {
       setDeleting(false);
     }
@@ -676,7 +692,10 @@ export function ProductsList() {
                                   size='small'
                                   color='error'
                                   onClick={() =>
-                                    handleDeleteProduct(product.id_hashid, product.title)
+                                    handleDeleteProduct(
+                                      product.id_hashid,
+                                      product.title
+                                    )
                                   }
                                 >
                                   <DeleteIcon />
@@ -1007,15 +1026,16 @@ export function ProductsList() {
               所有标签关联
             </Typography>
           </Box>
-          <Typography variant='body2' color='error' sx={{ mt: 2, fontWeight: 'medium' }}>
+          <Typography
+            variant='body2'
+            color='error'
+            sx={{ mt: 2, fontWeight: 'medium' }}
+          >
             此操作不可撤销！
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button
-            onClick={handleCancelDelete}
-            disabled={deleting}
-          >
+          <Button onClick={handleCancelDelete} disabled={deleting}>
             取消
           </Button>
           <Button
@@ -1024,11 +1044,7 @@ export function ProductsList() {
             color='error'
             disabled={deleting}
             startIcon={
-              deleting ? (
-                <CircularProgress size={16} />
-              ) : (
-                <DeleteIcon />
-              )
+              deleting ? <CircularProgress size={16} /> : <DeleteIcon />
             }
           >
             {deleting ? '删除中...' : '确认删除'}

@@ -18,7 +18,10 @@ export async function POST(request: NextRequest) {
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       logger.error('❌ 缺少认证头');
-      return NextResponse.json({ error: 'Missing authorization header' }, { status: 401 });
+      return NextResponse.json(
+        { error: 'Missing authorization header' },
+        { status: 401 }
+      );
     }
 
     const frontendToken = authHeader.substring(7);
@@ -43,7 +46,10 @@ export async function POST(request: NextRequest) {
 
     if (!external_product_id) {
       logger.error('❌ 缺少外部商品ID');
-      return NextResponse.json({ error: 'External product ID is required' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'External product ID is required' },
+        { status: 400 }
+      );
     }
 
     // 构建后端请求URL
@@ -111,7 +117,10 @@ export async function POST(request: NextRequest) {
     });
     return NextResponse.json(data);
   } catch (error: any) {
-    logger.error('❌ 处理请求失败', { error: error.message, stack: error.stack });
+    logger.error('❌ 处理请求失败', {
+      error: error.message,
+      stack: error.stack,
+    });
     return NextResponse.json({ detail: error.message }, { status: 500 });
   }
 }

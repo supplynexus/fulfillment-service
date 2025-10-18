@@ -29,7 +29,7 @@ class FrontendLogger {
     if (data === null || data === undefined) {
       return data;
     }
-    
+
     try {
       // 使用 JSON.parse(JSON.stringify()) 来深度克隆并移除循环引用
       return JSON.parse(JSON.stringify(data));
@@ -38,7 +38,7 @@ class FrontendLogger {
       return {
         error: 'Failed to serialize data',
         type: typeof data,
-        constructor: data?.constructor?.name || 'Unknown'
+        constructor: data?.constructor?.name || 'Unknown',
       };
     }
   }

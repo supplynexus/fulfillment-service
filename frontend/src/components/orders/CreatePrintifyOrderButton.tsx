@@ -93,10 +93,12 @@ export function CreatePrintifyOrderButton({
   const [selectedStoreId, setSelectedStoreId] = useState<string>('');
   const [loadingStores, setLoadingStores] = useState(false);
   const [storeError, setStoreError] = useState<string | null>(null);
-  
+
   // 商品选择相关状态
   const [orderLineItems, setOrderLineItems] = useState<OrderLineItem[]>([]);
-  const [selectedProducts, setSelectedProducts] = useState<SelectedProduct[]>([]);
+  const [selectedProducts, setSelectedProducts] = useState<SelectedProduct[]>(
+    []
+  );
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [productsError, setProductsError] = useState<string | null>(null);
 
@@ -106,7 +108,10 @@ export function CreatePrintifyOrderButton({
     customer_email: orderData?.customer_email || 'test@example.com',
     address_line1: orderData?.shipping_address?.address1 || '123 Test Street',
     city: orderData?.shipping_address?.city || 'Tokyo',
-    state: orderData?.shipping_address?.province || orderData?.shipping_address?.state || 'Tokyo',
+    state:
+      orderData?.shipping_address?.province ||
+      orderData?.shipping_address?.state ||
+      'Tokyo',
     country: orderData?.shipping_address?.country || 'JP',
     zip_code: orderData?.shipping_address?.zip || '100-0001',
     phone: orderData?.shipping_address?.phone || '+81-90-1234-5678',
@@ -118,24 +123,30 @@ export function CreatePrintifyOrderButton({
     try {
       setLoadingStores(true);
       setStoreError(null);
-      
-      const response = await frontendApi.get('/api/external-systems?system_type=printify');
+
+      const response = await frontendApi.get(
+        '/api/external-systems?system_type=printify'
+      );
       const printifyStores = response.data.external_systems.filter(
         (store: any) => store.system_type === 'PRINTIFY' && store.is_active
       );
-      
+
       setStores(printifyStores);
-      
+
       // 如果只有一个店铺，自动选择
       if (printifyStores.length === 1) {
         setSelectedStoreId(printifyStores[0].id_hashid);
       }
-      
-      frontendLogger.info('✅ Printify店铺列表获取成功', { count: printifyStores.length });
+
+      frontendLogger.info('✅ Printify店铺列表获取成功', {
+        count: printifyStores.length,
+      });
     } catch (error: any) {
       console.error('❌ 获取Printify店铺列表失败:', error);
       setStoreError('获取Printify店铺列表失败，请稍后重试');
-      frontendLogger.error('❌ 获取Printify店铺列表失败', { error: error.message });
+      frontendLogger.error('❌ 获取Printify店铺列表失败', {
+        error: error.message,
+      });
     } finally {
       setLoadingStores(false);
     }
@@ -146,27 +157,29 @@ export function CreatePrintifyOrderButton({
     try {
       setLoadingProducts(true);
       setProductsError(null);
-      
+
       const response = await frontendApi.get(`/api/orders/${orderId}`);
       const orderData = response.data;
-      
+
       if (orderData?.line_items && Array.isArray(orderData.line_items)) {
-        const lineItems: OrderLineItem[] = orderData.line_items.map((item: any, index: number) => ({
-          id: item.id || `item-${index}`,
-          title: item.title || item.name || 'Unknown Product',
-          variant_title: item.variant_title || item.variant_name,
-          sku: item.sku,
-          quantity: item.quantity || 1,
-          price: item.price || 0,
-          product_id: item.product_id,
-          variant_id: item.variant_id,
-        }));
-        
+        const lineItems: OrderLineItem[] = orderData.line_items.map(
+          (item: any, index: number) => ({
+            id: item.id || `item-${index}`,
+            title: item.title || item.name || 'Unknown Product',
+            variant_title: item.variant_title || item.variant_name,
+            sku: item.sku,
+            quantity: item.quantity || 1,
+            price: item.price || 0,
+            product_id: item.product_id,
+            variant_id: item.variant_id,
+          })
+        );
+
         setOrderLineItems(lineItems);
-        frontendLogger.info('📦 获取订单商品信息成功', { 
-          orderId, 
+        frontendLogger.info('📦 获取订单商品信息成功', {
+          orderId,
           lineItemsCount: lineItems.length,
-          lineItems 
+          lineItems,
         });
       } else {
         setOrderLineItems([]);
@@ -175,9 +188,9 @@ export function CreatePrintifyOrderButton({
     } catch (error: any) {
       console.error('获取订单商品信息失败:', error);
       setProductsError('获取订单商品信息失败，请稍后重试');
-      frontendLogger.error('❌ 获取订单商品信息失败', { 
-        orderId, 
-        error: error.message 
+      frontendLogger.error('❌ 获取订单商品信息失败', {
+        orderId,
+        error: error.message,
       });
     } finally {
       setLoadingProducts(false);
@@ -204,21 +217,32 @@ export function CreatePrintifyOrderButton({
   };
 
   // 处理商品选择
-  const handleProductSelect = (lineItem: OrderLineItem, isSelected: boolean) => {
+  const handleProductSelect = (
+    lineItem: OrderLineItem,
+    isSelected: boolean
+  ) => {
     if (isSelected) {
       // 添加商品到选择列表
-      setSelectedProducts(prev => [...prev, { lineItem, quantity: lineItem.quantity }]);
+      setSelectedProducts(prev => [
+        ...prev,
+        { lineItem, quantity: lineItem.quantity },
+      ]);
     } else {
       // 从选择列表中移除商品
-      setSelectedProducts(prev => prev.filter(item => item.lineItem.id !== lineItem.id));
+      setSelectedProducts(prev =>
+        prev.filter(item => item.lineItem.id !== lineItem.id)
+      );
     }
   };
 
   // 处理商品数量变化
-  const handleProductQuantityChange = (lineItemId: string, quantity: number) => {
-    setSelectedProducts(prev => 
-      prev.map(item => 
-        item.lineItem.id === lineItemId 
+  const handleProductQuantityChange = (
+    lineItemId: string,
+    quantity: number
+  ) => {
+    setSelectedProducts(prev =>
+      prev.map(item =>
+        item.lineItem.id === lineItemId
           ? { ...item, quantity: Math.max(1, quantity) }
           : item
       )
@@ -227,7 +251,9 @@ export function CreatePrintifyOrderButton({
 
   // 移除选中的商品
   const handleRemoveProduct = (lineItemId: string) => {
-    setSelectedProducts(prev => prev.filter(item => item.lineItem.id !== lineItemId));
+    setSelectedProducts(prev =>
+      prev.filter(item => item.lineItem.id !== lineItemId)
+    );
   };
 
   const handleCreateOrder = async () => {
@@ -245,22 +271,22 @@ export function CreatePrintifyOrderButton({
     setResult(null);
 
     try {
-      frontendLogger.info('🚀 开始创建Printify订单', { 
-        orderId, 
+      frontendLogger.info('🚀 开始创建Printify订单', {
+        orderId,
         selectedStoreId,
         selectedProductsCount: selectedProducts.length,
-        selectedProducts 
+        selectedProducts,
       });
 
       // 获取订单信息
       const orderResponse = await frontendApi.get(`/api/orders/${orderId}`);
       const orderData = orderResponse.data;
       const shopifyOrderId = orderData?.shopify_order_id;
-      
-      frontendLogger.info('📋 订单信息', { 
-        orderId, 
-        shopifyOrderId, 
-        orderData
+
+      frontendLogger.info('📋 订单信息', {
+        orderId,
+        shopifyOrderId,
+        orderData,
       });
 
       const results = [];
@@ -270,48 +296,53 @@ export function CreatePrintifyOrderButton({
       for (let i = 0; i < selectedProducts.length; i++) {
         const selectedProduct = selectedProducts[i];
         try {
-          frontendLogger.info(`🚀 开始创建履约 ${i + 1}/${selectedProducts.length}`, { 
-            fulfillmentIndex: i,
-            totalFulfillments: selectedProducts.length,
-            selectedProduct: selectedProduct.lineItem.title,
-            quantity: selectedProduct.quantity
-          });
+          frontendLogger.info(
+            `🚀 开始创建履约 ${i + 1}/${selectedProducts.length}`,
+            {
+              fulfillmentIndex: i,
+              totalFulfillments: selectedProducts.length,
+              selectedProduct: selectedProduct.lineItem.title,
+              quantity: selectedProduct.quantity,
+            }
+          );
 
           // 为每个履约创建 Printify 订单
           const request: PrintifyOrderRequest = {
             order_id: parseInt(orderId),
             ...formData,
             // 包含选中的商品信息
-            line_items: [{
-              id: selectedProduct.lineItem.id,
-              title: selectedProduct.lineItem.title,
-              variant_title: selectedProduct.lineItem.variant_title,
-              sku: selectedProduct.lineItem.sku,
-              quantity: selectedProduct.quantity,
-              price: selectedProduct.lineItem.price,
-              product_id: selectedProduct.lineItem.product_id,
-              variant_id: selectedProduct.lineItem.variant_id,
-            }],
+            line_items: [
+              {
+                id: selectedProduct.lineItem.id,
+                title: selectedProduct.lineItem.title,
+                variant_title: selectedProduct.lineItem.variant_title,
+                sku: selectedProduct.lineItem.sku,
+                quantity: selectedProduct.quantity,
+                price: selectedProduct.lineItem.price,
+                product_id: selectedProduct.lineItem.product_id,
+                variant_id: selectedProduct.lineItem.variant_id,
+              },
+            ],
             // 为每个履约添加唯一标识
             external_id: `order-${orderId}-fulfillment-${i + 1}`,
           };
 
           const response = await printifyApi.createOrder(request);
 
-          frontendLogger.info(`📋 履约 ${i + 1} Printify API响应`, { 
+          frontendLogger.info(`📋 履约 ${i + 1} Printify API响应`, {
             fulfillmentIndex: i,
-            success: response.success, 
+            success: response.success,
             printifyOrderId: response.printify_order_id,
             externalId: response.external_id,
             status: response.status,
             totalPrice: response.total_price,
-            message: response.message
+            message: response.message,
           });
 
           if (response.success) {
-            frontendLogger.info(`✅ 履约 ${i + 1} Printify订单创建成功`, { 
+            frontendLogger.info(`✅ 履约 ${i + 1} Printify订单创建成功`, {
               fulfillmentIndex: i,
-              printifyOrderId: response.printify_order_id 
+              printifyOrderId: response.printify_order_id,
             });
 
             // 为每个履约创建 SCM 订单
@@ -320,12 +351,14 @@ export function CreatePrintifyOrderButton({
               target_system_type: 'PRINTIFY',
               target_system_id: response.printify_order_id,
               routing_strategy: 'manual',
-              line_items: [{
-                product_id: 'default',
-                variant_id: 'default',
-                quantity: formData.quantity,
-                price: response.total_price || 0
-              }],
+              line_items: [
+                {
+                  product_id: 'default',
+                  variant_id: 'default',
+                  quantity: formData.quantity,
+                  price: response.total_price || 0,
+                },
+              ],
               total_amount: response.total_price || 0,
               currency: 'USD',
               customer_email: formData.customer_email,
@@ -333,7 +366,8 @@ export function CreatePrintifyOrderButton({
               customer_phone: formData.phone,
               shipping_address: {
                 first_name: formData.customer_name?.split(' ')[0] || 'Customer',
-                last_name: formData.customer_name?.split(' ').slice(1).join(' ') || '',
+                last_name:
+                  formData.customer_name?.split(' ').slice(1).join(' ') || '',
                 address1: formData.address_line1,
                 city: formData.city,
                 state: formData.state,
@@ -352,68 +386,74 @@ export function CreatePrintifyOrderButton({
               shopify_order_id: shopifyOrderId,
             };
 
-            frontendLogger.info(`📤 发送履约 ${i + 1} SCM订单创建请求`, { 
+            frontendLogger.info(`📤 发送履约 ${i + 1} SCM订单创建请求`, {
               fulfillmentIndex: i,
-              scmOrderData 
+              scmOrderData,
             });
-            
-            const scmResponse = await frontendApi.post('/api/scm-orders', scmOrderData);
-            
-            frontendLogger.info(`📥 履约 ${i + 1} SCM订单创建响应`, { 
+
+            const scmResponse = await frontendApi.post(
+              '/api/scm-orders',
+              scmOrderData
+            );
+
+            frontendLogger.info(`📥 履约 ${i + 1} SCM订单创建响应`, {
               fulfillmentIndex: i,
-              scmResponse: scmResponse.data 
+              scmResponse: scmResponse.data,
             });
-            
+
             if (scmResponse.data) {
-              frontendLogger.info(`✅ 履约 ${i + 1} SCM订单创建成功`, { 
+              frontendLogger.info(`✅ 履约 ${i + 1} SCM订单创建成功`, {
                 fulfillmentIndex: i,
-                scmOrderId: scmResponse.data.id 
+                scmOrderId: scmResponse.data.id,
               });
               scmOrderIds.push(scmResponse.data.id);
               results.push({
                 fulfillmentIndex: i + 1,
                 printifyOrderId: response.printify_order_id,
                 scmOrderId: scmResponse.data.id,
-                success: true
+                success: true,
               });
             } else {
-              frontendLogger.info(`⚠️ 履约 ${i + 1} SCM订单创建失败，但Printify订单已创建`, { 
-                fulfillmentIndex: i,
-                response: scmResponse.data 
-              });
+              frontendLogger.info(
+                `⚠️ 履约 ${i + 1} SCM订单创建失败，但Printify订单已创建`,
+                {
+                  fulfillmentIndex: i,
+                  response: scmResponse.data,
+                }
+              );
               results.push({
                 fulfillmentIndex: i + 1,
                 printifyOrderId: response.printify_order_id,
                 scmOrderId: null,
                 success: false,
-                error: 'SCM订单创建失败'
+                error: 'SCM订单创建失败',
               });
             }
           } else {
-            frontendLogger.error(`❌ 履约 ${i + 1} Printify订单创建失败`, { 
+            frontendLogger.error(`❌ 履约 ${i + 1} Printify订单创建失败`, {
               fulfillmentIndex: i,
-              response 
+              response,
             });
             results.push({
               fulfillmentIndex: i + 1,
               printifyOrderId: null,
               scmOrderId: null,
               success: false,
-              error: response.message || 'Printify订单创建失败'
+              error: response.message || 'Printify订单创建失败',
             });
           }
         } catch (error: any) {
-          frontendLogger.error(`❌ 履约 ${i + 1} 创建失败`, { 
+          frontendLogger.error(`❌ 履约 ${i + 1} 创建失败`, {
             fulfillmentIndex: i,
-            error: error.message, 
-            response: error.response?.data 
+            error: error.message,
+            response: error.response?.data,
           });
           results.push({
             fulfillmentIndex: i + 1,
             printifyOrderId: null,
             scmOrderId: null,
             success: false,
-            error: error.message
+            error: error.message,
           });
         }
       }
@@ -421,37 +461,53 @@ export function CreatePrintifyOrderButton({
       // 汇总结果
       const successCount = results.filter(r => r.success).length;
       const totalCount = results.length;
-      
-      frontendLogger.info('📊 履约创建汇总', { 
+
+      frontendLogger.info('📊 履约创建汇总', {
         totalFulfillments: totalCount,
         successCount,
-        results 
+        results,
       });
 
       // 显示结果
       if (successCount === totalCount) {
-        const printifyIds = results.filter(r => r.printifyOrderId).map(r => r.printifyOrderId).join(', ');
-        const scmIds = results.filter(r => r.scmOrderId).map(r => r.scmOrderId).join(', ');
-        alert(`🎉 所有履约创建成功！\n\n履约数量: ${totalCount}\nPrintify订单ID: ${printifyIds}\nSCM订单ID: ${scmIds}`);
+        const printifyIds = results
+          .filter(r => r.printifyOrderId)
+          .map(r => r.printifyOrderId)
+          .join(', ');
+        const scmIds = results
+          .filter(r => r.scmOrderId)
+          .map(r => r.scmOrderId)
+          .join(', ');
+        alert(
+          `🎉 所有履约创建成功！\n\n履约数量: ${totalCount}\nPrintify订单ID: ${printifyIds}\nSCM订单ID: ${scmIds}`
+        );
       } else if (successCount > 0) {
         const successResults = results.filter(r => r.success);
         const failedResults = results.filter(r => !r.success);
-        const printifyIds = successResults.map(r => r.printifyOrderId).join(', ');
+        const printifyIds = successResults
+          .map(r => r.printifyOrderId)
+          .join(', ');
         const scmIds = successResults.map(r => r.scmOrderId).join(', ');
-        alert(`⚠️ 部分履约创建成功！\n\n成功: ${successCount}/${totalCount}\nPrintify订单ID: ${printifyIds}\nSCM订单ID: ${scmIds}\n\n失败的履约: ${failedResults.map(r => `履约${r.fulfillmentIndex}(${r.error})`).join(', ')}`);
+        alert(
+          `⚠️ 部分履约创建成功！\n\n成功: ${successCount}/${totalCount}\nPrintify订单ID: ${printifyIds}\nSCM订单ID: ${scmIds}\n\n失败的履约: ${failedResults.map(r => `履约${r.fulfillmentIndex}(${r.error})`).join(', ')}`
+        );
       } else {
-        alert(`❌ 所有履约创建失败！\n\n失败详情:\n${results.map(r => `履约${r.fulfillmentIndex}: ${r.error}`).join('\n')}`);
+        alert(
+          `❌ 所有履约创建失败！\n\n失败详情:\n${results.map(r => `履约${r.fulfillmentIndex}: ${r.error}`).join('\n')}`
+        );
       }
 
-      setResult({ 
+      setResult({
         success: successCount > 0,
-        printify_order_id: results.filter(r => r.printifyOrderId).map(r => r.printifyOrderId).join(','),
+        printify_order_id: results
+          .filter(r => r.printifyOrderId)
+          .map(r => r.printifyOrderId)
+          .join(','),
         message: `创建了 ${successCount}/${totalCount} 个履约`,
         results,
         successCount,
-        totalCount
+        totalCount,
       } as any);
-
     } catch (error: any) {
       frontendLogger.error('❌ 创建Printify订单时发生错误', {
         error: error.message,
@@ -504,11 +560,13 @@ export function CreatePrintifyOrderButton({
                     {storeError}
                   </Alert>
                 )}
-                
+
                 {loadingStores ? (
                   <Box display='flex' alignItems='center' gap={2}>
                     <CircularProgress size={20} />
-                    <Typography variant='body2'>正在加载Printify店铺...</Typography>
+                    <Typography variant='body2'>
+                      正在加载Printify店铺...
+                    </Typography>
                   </Box>
                 ) : stores.length === 0 ? (
                   <Alert severity='warning'>
@@ -519,10 +577,10 @@ export function CreatePrintifyOrderButton({
                     <InputLabel>选择Printify店铺 *</InputLabel>
                     <Select
                       value={selectedStoreId}
-                      onChange={(e) => setSelectedStoreId(e.target.value)}
+                      onChange={e => setSelectedStoreId(e.target.value)}
                       label='选择Printify店铺 *'
                     >
-                      {stores.map((store) => (
+                      {stores.map(store => (
                         <MenuItem key={store.id} value={store.id_hashid}>
                           {store.name} ({store.external_system_id})
                         </MenuItem>
@@ -587,7 +645,7 @@ export function CreatePrintifyOrderButton({
                     {productsError}
                   </Alert>
                 )}
-                
+
                 {loadingProducts ? (
                   <Box display='flex' alignItems='center' gap={2}>
                     <CircularProgress size={20} />
@@ -599,46 +657,81 @@ export function CreatePrintifyOrderButton({
                   </Alert>
                 ) : (
                   <Box>
-                    <Typography variant='body2' color='text.secondary' sx={{ mb: 2 }}>
+                    <Typography
+                      variant='body2'
+                      color='text.secondary'
+                      sx={{ mb: 2 }}
+                    >
                       请选择要创建履约的商品（可以选择一个或多个）：
                     </Typography>
-                    
+
                     <FormGroup>
-                      {orderLineItems.map((lineItem) => {
-                        const isSelected = selectedProducts.some(p => p.lineItem.id === lineItem.id);
-                        const selectedProduct = selectedProducts.find(p => p.lineItem.id === lineItem.id);
-                        
+                      {orderLineItems.map(lineItem => {
+                        const isSelected = selectedProducts.some(
+                          p => p.lineItem.id === lineItem.id
+                        );
+                        const selectedProduct = selectedProducts.find(
+                          p => p.lineItem.id === lineItem.id
+                        );
+
                         return (
-                          <Box key={lineItem.id} sx={{ mb: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                          <Box
+                            key={lineItem.id}
+                            sx={{
+                              mb: 2,
+                              p: 2,
+                              border: '1px solid',
+                              borderColor: 'divider',
+                              borderRadius: 1,
+                            }}
+                          >
                             <FormControlLabel
                               control={
                                 <Checkbox
                                   checked={isSelected}
-                                  onChange={(e) => handleProductSelect(lineItem, e.target.checked)}
+                                  onChange={e =>
+                                    handleProductSelect(
+                                      lineItem,
+                                      e.target.checked
+                                    )
+                                  }
                                 />
                               }
                               label={
                                 <Box sx={{ flex: 1 }}>
-                                  <Typography variant='body1' fontWeight='medium'>
+                                  <Typography
+                                    variant='body1'
+                                    fontWeight='medium'
+                                  >
                                     {lineItem.title}
                                   </Typography>
                                   {lineItem.variant_title && (
-                                    <Typography variant='body2' color='text.secondary'>
+                                    <Typography
+                                      variant='body2'
+                                      color='text.secondary'
+                                    >
                                       规格: {lineItem.variant_title}
                                     </Typography>
                                   )}
                                   {lineItem.sku && (
-                                    <Typography variant='body2' color='text.secondary'>
+                                    <Typography
+                                      variant='body2'
+                                      color='text.secondary'
+                                    >
                                       SKU: {lineItem.sku}
                                     </Typography>
                                   )}
-                                  <Typography variant='body2' color='text.secondary'>
-                                    单价: ¥{lineItem.price} | 库存数量: {lineItem.quantity}
+                                  <Typography
+                                    variant='body2'
+                                    color='text.secondary'
+                                  >
+                                    单价: ¥{lineItem.price} | 库存数量:{' '}
+                                    {lineItem.quantity}
                                   </Typography>
                                 </Box>
                               }
                             />
-                            
+
                             {isSelected && (
                               <Box sx={{ ml: 4, mt: 1 }}>
                                 <TextField
@@ -646,8 +739,16 @@ export function CreatePrintifyOrderButton({
                                   type='number'
                                   label='履约数量'
                                   value={selectedProduct?.quantity || 1}
-                                  onChange={(e) => handleProductQuantityChange(lineItem.id, parseInt(e.target.value) || 1)}
-                                  inputProps={{ min: 1, max: lineItem.quantity }}
+                                  onChange={e =>
+                                    handleProductQuantityChange(
+                                      lineItem.id,
+                                      parseInt(e.target.value) || 1
+                                    )
+                                  }
+                                  inputProps={{
+                                    min: 1,
+                                    max: lineItem.quantity,
+                                  }}
                                   sx={{ width: 120 }}
                                 />
                               </Box>
@@ -656,7 +757,7 @@ export function CreatePrintifyOrderButton({
                         );
                       })}
                     </FormGroup>
-                    
+
                     {selectedProducts.length > 0 && (
                       <Box sx={{ mt: 2 }}>
                         <Divider sx={{ mb: 2 }} />
@@ -664,16 +765,27 @@ export function CreatePrintifyOrderButton({
                           已选择的商品 ({selectedProducts.length})
                         </Typography>
                         <Stack spacing={1}>
-                          {selectedProducts.map((selectedProduct) => (
-                            <Box key={selectedProduct.lineItem.id} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              <Chip 
+                          {selectedProducts.map(selectedProduct => (
+                            <Box
+                              key={selectedProduct.lineItem.id}
+                              sx={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 1,
+                              }}
+                            >
+                              <Chip
                                 label={`${selectedProduct.lineItem.title} x${selectedProduct.quantity}`}
                                 color='primary'
                                 size='small'
                               />
-                              <IconButton 
-                                size='small' 
-                                onClick={() => handleRemoveProduct(selectedProduct.lineItem.id)}
+                              <IconButton
+                                size='small'
+                                onClick={() =>
+                                  handleRemoveProduct(
+                                    selectedProduct.lineItem.id
+                                  )
+                                }
                                 color='error'
                               >
                                 ×

@@ -18,7 +18,10 @@ export async function GET(request: NextRequest) {
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       logger.error('❌ 缺少认证头');
-      return NextResponse.json({ error: 'Missing authorization header' }, { status: 401 });
+      return NextResponse.json(
+        { error: 'Missing authorization header' },
+        { status: 401 }
+      );
     }
 
     const frontendToken = authHeader.substring(7);
@@ -32,7 +35,7 @@ export async function GET(request: NextRequest) {
     const { tenant_name: tenantName, sub: userId } = decodedToken;
 
     logger.info('✅ 前端认证成功', { tenantName, userId });
-    
+
     if (!tenantName || !userId) {
       logger.error('❌ JWT token 缺少 tenant_name 或 user_id');
       return NextResponse.json({ detail: 'Invalid token' }, { status: 401 });
@@ -65,7 +68,13 @@ export async function GET(request: NextRequest) {
     });
 
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
-    const signature = generateBackendSignature(privateKey, signatureString, timestamp, nonce, tenantName);
+    const signature = generateBackendSignature(
+      privateKey,
+      signatureString,
+      timestamp,
+      nonce,
+      tenantName
+    );
 
     logger.info('🔍 前端签名生成完成', {
       signatureLength: signature.length,
@@ -104,10 +113,14 @@ export async function GET(request: NextRequest) {
     }
 
     const data = await backendResponse.json();
-    logger.requestComplete(request.method, request.url, backendResponse.status, duration);
+    logger.requestComplete(
+      request.method,
+      request.url,
+      backendResponse.status,
+      duration
+    );
 
     return NextResponse.json(data);
-
   } catch (error: any) {
     const duration = Date.now() - startTime;
     logger.error('❌ 外部商品API调用失败', {
@@ -133,7 +146,10 @@ export async function POST(request: NextRequest) {
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       logger.error('❌ 缺少认证头');
-      return NextResponse.json({ error: 'Missing authorization header' }, { status: 401 });
+      return NextResponse.json(
+        { error: 'Missing authorization header' },
+        { status: 401 }
+      );
     }
 
     const frontendToken = authHeader.substring(7);
@@ -154,10 +170,10 @@ export async function POST(request: NextRequest) {
 
     // 获取请求体
     const requestBody = await request.json();
-    logger.info('🔍 开始处理外部商品同步请求', { 
-      tenantName, 
+    logger.info('🔍 开始处理外部商品同步请求', {
+      tenantName,
       userId,
-      externalProductId: requestBody.external_product_id 
+      externalProductId: requestBody.external_product_id,
     });
 
     // 构建后端请求URL
@@ -193,7 +209,7 @@ export async function POST(request: NextRequest) {
     });
 
     const backendUrl = `${process.env.BACKEND_API_URL}${backendPath}`;
-    
+
     logger.info('Forwarding request to backend', { backendUrl });
 
     const backendResponse = await fetch(backendUrl, {
@@ -215,9 +231,9 @@ export async function POST(request: NextRequest) {
       logger.error('❌ 后端 API 调用失败', {
         status: backendResponse.status,
         statusText: backendResponse.statusText,
-        error: responseData
+        error: responseData,
       });
-      
+
       return NextResponse.json(
         { error: responseData.detail || 'Backend request failed' },
         { status: backendResponse.status }
@@ -227,16 +243,15 @@ export async function POST(request: NextRequest) {
     const duration = Date.now() - startTime;
     logger.info('✅ 外部商品同步成功', {
       externalProductId: requestBody.external_product_id,
-      duration: `${duration}ms`
+      duration: `${duration}ms`,
     });
-    
-    return NextResponse.json(responseData);
 
+    return NextResponse.json(responseData);
   } catch (error: any) {
     const duration = Date.now() - startTime;
-    logger.error('❌ 处理外部商品同步请求失败', { 
+    logger.error('❌ 处理外部商品同步请求失败', {
       error: error.message,
-      duration: `${duration}ms`
+      duration: `${duration}ms`,
     });
     return NextResponse.json(
       { error: 'Internal server error' },

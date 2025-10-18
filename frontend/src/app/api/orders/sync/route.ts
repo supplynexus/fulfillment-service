@@ -8,7 +8,7 @@ const logger = createLogger('api.orders.sync');
 
 export async function POST(request: NextRequest) {
   logger.requestStart(request.method, request.url);
-  
+
   try {
     // 1. 验证前端 JWT token
     const authHeader = request.headers.get('authorization');
@@ -35,7 +35,13 @@ export async function POST(request: NextRequest) {
     const signatureString = `POST${backendPath}${timestamp}${nonce}${tenantName}${bodyString}`;
 
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
-    const signature = generateBackendSignature(privateKey, signatureString, timestamp, nonce, tenantName);
+    const signature = generateBackendSignature(
+      privateKey,
+      signatureString,
+      timestamp,
+      nonce,
+      tenantName
+    );
 
     // 4. 调用后端 API
     const backendUrl = `${process.env.BACKEND_API_URL || 'http://backend:8000'}${backendPath}`;
@@ -55,22 +61,30 @@ export async function POST(request: NextRequest) {
     });
 
     const responseData = await backendResponse.json();
-    
+
     if (!backendResponse.ok) {
-      logger.error('后端API调用失败', { 
-        status: backendResponse.status, 
-        error: responseData 
+      logger.error('后端API调用失败', {
+        status: backendResponse.status,
+        error: responseData,
       });
-      return NextResponse.json(responseData, { status: backendResponse.status });
+      return NextResponse.json(responseData, {
+        status: backendResponse.status,
+      });
     }
 
-    logger.requestComplete(request.method, request.url, backendResponse.status, Date.now());
+    logger.requestComplete(
+      request.method,
+      request.url,
+      backendResponse.status,
+      Date.now()
+    );
     return NextResponse.json(responseData);
-
   } catch (error) {
-    logger.error('订单同步失败', { error: error instanceof Error ? error.message : String(error) });
+    logger.error('订单同步失败', {
+      error: error instanceof Error ? error.message : String(error),
+    });
     return NextResponse.json(
-      { error: 'Internal server error' }, 
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }

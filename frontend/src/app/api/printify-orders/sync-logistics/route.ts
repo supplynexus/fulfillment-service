@@ -8,7 +8,7 @@ const logger = createLogger('api.printify-orders.sync-logistics');
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
-  
+
   try {
     logger.requestStart('POST', request.url);
 
@@ -23,14 +23,14 @@ export async function POST(request: NextRequest) {
     }
 
     const frontendToken = authHeader.substring(7);
-    
+
     // 验证前端 JWT token
     const decodedToken = jwtUtilsServer.verifyToken(frontendToken);
     const { tenant_name: tenantName, sub: userId } = decodedToken;
-    
-    logger.info('🔍 开始处理同步 Printify 订单物流信息请求', { 
-      tenantName, 
-      userId 
+
+    logger.info('🔍 开始处理同步 Printify 订单物流信息请求', {
+      tenantName,
+      userId,
     });
 
     // 生成后端签名
@@ -38,15 +38,21 @@ export async function POST(request: NextRequest) {
     const nonce = Math.random().toString(36).substring(2, 15);
     const bodyString = '';
     const signatureString = `POST/api/v1/printify/orders/sync-logistics${timestamp}${nonce}${tenantName}${bodyString}`;
-    
+
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
-    const signature = generateBackendSignature(privateKey, signatureString, timestamp, nonce, tenantName);
+    const signature = generateBackendSignature(
+      privateKey,
+      signatureString,
+      timestamp,
+      nonce,
+      tenantName
+    );
 
     // 调用后端 API
     const backendUrl = `${process.env.BACKEND_API_URL || 'http://backend:8000'}/api/v1/printify/orders/sync-logistics`;
-    
-    logger.info('📡 调用后端同步 Printify 订单物流信息 API', { 
-      backendUrl
+
+    logger.info('📡 调用后端同步 Printify 订单物流信息 API', {
+      backendUrl,
     });
 
     const backendResponse = await fetch(backendUrl, {
@@ -65,43 +71,47 @@ export async function POST(request: NextRequest) {
     const duration = Date.now() - startTime;
 
     if (backendResponse.ok) {
-      logger.requestComplete('POST', request.url, backendResponse.status, duration);
-      logger.info('✅ Printify 订单物流信息同步成功', { 
+      logger.requestComplete(
+        'POST',
+        request.url,
+        backendResponse.status,
+        duration
+      );
+      logger.info('✅ Printify 订单物流信息同步成功', {
         success: responseData.success,
         syncedCount: responseData.synced_count,
         totalOrders: responseData.total_orders,
-        errorCount: responseData.error_count
+        errorCount: responseData.error_count,
       });
-      
+
       return NextResponse.json(responseData);
     } else {
-      logger.error('❌ 后端同步 Printify 订单物流信息失败', { 
+      logger.error('❌ 后端同步 Printify 订单物流信息失败', {
         status: backendResponse.status,
-        error: responseData 
+        error: responseData,
       });
-      
+
       return NextResponse.json(
-        { 
-          success: false, 
+        {
+          success: false,
           message: responseData.detail || '同步 Printify 订单物流信息失败',
-          error: responseData 
+          error: responseData,
         },
         { status: backendResponse.status }
       );
     }
-
   } catch (error: any) {
     const duration = Date.now() - startTime;
-    logger.error('❌ 同步 Printify 订单物流信息请求处理失败', { 
+    logger.error('❌ 同步 Printify 订单物流信息请求处理失败', {
       error: error.message,
-      duration
+      duration,
     });
-    
+
     return NextResponse.json(
-      { 
-        success: false, 
+      {
+        success: false,
         message: 'Internal server error',
-        error: error.message 
+        error: error.message,
       },
       { status: 500 }
     );

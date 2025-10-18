@@ -151,7 +151,7 @@ export async function GET(request: NextRequest) {
       total_pages: data.total_pages,
       current_page: data.current_page,
       limit: data.limit,
-      fullData: data
+      fullData: data,
     });
 
     logger.info('Request completed', {

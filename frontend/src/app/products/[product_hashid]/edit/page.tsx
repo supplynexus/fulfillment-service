@@ -7,16 +7,20 @@ interface ProductEditPageProps {
   params: Promise<{ product_hashid: string }>;
 }
 
-export async function generateMetadata({ params }: ProductEditPageProps): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: ProductEditPageProps): Promise<Metadata> {
   const { product_hashid } = await params;
-  
+
   return {
     title: `编辑商品 - ${product_hashid} - SupplyNexus Fulfillment Service`,
     description: '编辑商品信息，包括基本信息、变体、维度和标签',
   };
 }
 
-export default async function ProductEditPage({ params }: ProductEditPageProps) {
+export default async function ProductEditPage({
+  params,
+}: ProductEditPageProps) {
   const { product_hashid } = await params;
 
   return (

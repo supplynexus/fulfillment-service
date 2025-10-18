@@ -12,19 +12,21 @@ const tokenManager = TokenManager.getInstance();
 
 // 自动保存到 localStorage
 tokenManager.setTokens({
-  access_token: "...",
-  refresh_token: "...",
-  token_type: "bearer"
+  access_token: '...',
+  refresh_token: '...',
+  token_type: 'bearer',
 });
 ```
 
 **优点：**
+
 - 简单易用
 - 自动持久化
 - 跨页面会话保持
 - 自动过期检查
 
 **缺点：**
+
 - 易受 XSS 攻击
 - 无法设置 HttpOnly
 
@@ -36,10 +38,12 @@ tokenManager.setTokens({
 ```
 
 **优点：**
+
 - 更安全，防止 XSS
 - 自动发送到服务器
 
 **缺点：**
+
 - 实现复杂
 - 需要服务器端配合
 
@@ -105,11 +109,13 @@ const authHeaders = await apiClient.getAuthHeaders();
 ```
 
 **优点：**
+
 - 简化部署
 - 数据一致性
 - 成本效益
 
 **缺点：**
+
 - 单点故障风险
 - 安全隔离问题
 
@@ -125,12 +131,14 @@ const authHeaders = await apiClient.getAuthHeaders();
 #### **前端 Redis 用途**
 
 1. **会话缓存**
+
    ```typescript
    // 缓存用户会话信息
    await redis.set(`session:${userId}`, sessionData, 'EX', 3600);
    ```
 
 2. **API 响应缓存**
+
    ```typescript
    // 缓存频繁请求的数据
    await redis.set(`cache:orders:${userId}`, ordersData, 'EX', 300);
@@ -145,12 +153,14 @@ const authHeaders = await apiClient.getAuthHeaders();
 #### **后端 Redis 用途**
 
 1. **Token 黑名单**
+
    ```python
    # 存储已撤销的 refresh tokens
    await redis.set(f"blacklist:{refresh_token}", "1", ex=86400)
    ```
 
 2. **Nonce 防重放**
+
    ```python
    # 存储已使用的 nonce
    await redis.set(f"nonce:{nonce}", "1", ex=300)
@@ -165,31 +175,33 @@ const authHeaders = await apiClient.getAuthHeaders();
 ### **Redis 配置建议**
 
 #### **开发环境**
+
 ```yaml
 # docker-compose.yml
 redis:
   image: redis:7-alpine
   ports:
-    - "6379:6379"
+    - '6379:6379'
   volumes:
     - redis_data:/data
 ```
 
 #### **生产环境**
+
 ```yaml
 # 前端 Redis
 redis-frontend:
   image: redis:7-alpine
   ports:
-    - "6380:6379"
+    - '6380:6379'
   volumes:
     - redis_frontend_data:/data
 
-# 后端 Redis  
+# 后端 Redis
 redis-backend:
   image: redis:7-alpine
   ports:
-    - "6379:6379"
+    - '6379:6379'
   volumes:
     - redis_backend_data:/data
 ```
@@ -224,21 +236,25 @@ redis-backend:
 ## 🚀 **实施建议**
 
 ### **阶段 1：基础实现**
+
 1. 实现 TokenManager
 2. 配置自动刷新
 3. 使用 localStorage 存储
 
 ### **阶段 2：安全增强**
+
 1. 添加 HttpOnly cookies
 2. 实现 token 轮换
 3. 添加安全头部
 
 ### **阶段 3：性能优化**
+
 1. 集成 Redis 缓存
 2. 实现响应缓存
 3. 添加监控
 
 ### **阶段 4：生产就绪**
+
 1. 分离 Redis 实例
 2. 添加负载均衡
 3. 完善监控告警

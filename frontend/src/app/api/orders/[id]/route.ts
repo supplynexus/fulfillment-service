@@ -3,18 +3,24 @@ import { keyLoader } from '@/lib/key-loader';
 import { generateBackendSignature } from '@/lib/signature';
 import { jwtUtilsServer } from '@/lib/jwt-utils-server';
 
-export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
     const { id: orderHashid } = await params;
 
     // 获取前端 JWT token
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 });
+      return NextResponse.json(
+        { error: 'Missing or invalid authorization header' },
+        { status: 401 }
+      );
     }
 
     const frontendToken = authHeader.substring(7);
-    
+
     // 验证前端 JWT token
     let decodedToken;
     try {
@@ -23,7 +29,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       console.error('JWT verification failed:', error);
       return NextResponse.json({ error: 'Invalid JWT token' }, { status: 401 });
     }
-    
+
     const { tenant_name: tenantName, sub: userId } = decodedToken;
 
     // 生成后端签名
@@ -33,7 +39,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const signatureString = `GET${backendPath}${timestamp}${nonce}${tenantName}`;
 
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
-    const signature = generateBackendSignature(privateKey, signatureString, timestamp, nonce, tenantName);
+    const signature = generateBackendSignature(
+      privateKey,
+      signatureString,
+      timestamp,
+      nonce,
+      tenantName
+    );
 
     // 构建后端 URL
     const backendUrl = `${process.env.BACKEND_URL || 'http://localhost:8000'}${backendPath}`;
@@ -55,14 +67,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       const errorText = await backendResponse.text();
       console.error('Backend API error:', backendResponse.status, errorText);
       return NextResponse.json(
-        { error: `Backend API error: ${backendResponse.status}`, detail: errorText },
+        {
+          error: `Backend API error: ${backendResponse.status}`,
+          detail: errorText,
+        },
         { status: backendResponse.status }
       );
     }
 
     const data = await backendResponse.json();
     return NextResponse.json(data);
-
   } catch (error: any) {
     console.error('Order get API error:', error);
     return NextResponse.json(
@@ -72,18 +86,24 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
     const { id: orderHashid } = await params;
 
     // 获取前端 JWT token
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 });
+      return NextResponse.json(
+        { error: 'Missing or invalid authorization header' },
+        { status: 401 }
+      );
     }
 
     const frontendToken = authHeader.substring(7);
-    
+
     // 验证前端 JWT token
     let decodedToken;
     try {
@@ -92,7 +112,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       console.error('JWT verification failed:', error);
       return NextResponse.json({ error: 'Invalid JWT token' }, { status: 401 });
     }
-    
+
     const { tenant_name: tenantName, sub: userId } = decodedToken;
 
     // 生成后端签名
@@ -102,7 +122,13 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     const signatureString = `DELETE${backendPath}${timestamp}${nonce}${tenantName}`;
 
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
-    const signature = generateBackendSignature(privateKey, signatureString, timestamp, nonce, tenantName);
+    const signature = generateBackendSignature(
+      privateKey,
+      signatureString,
+      timestamp,
+      nonce,
+      tenantName
+    );
 
     // 构建后端 URL
     const backendUrl = `${process.env.BACKEND_URL || 'http://localhost:8000'}${backendPath}`;
@@ -124,14 +150,16 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       const errorText = await backendResponse.text();
       console.error('Backend API error:', backendResponse.status, errorText);
       return NextResponse.json(
-        { error: `Backend API error: ${backendResponse.status}`, detail: errorText },
+        {
+          error: `Backend API error: ${backendResponse.status}`,
+          detail: errorText,
+        },
         { status: backendResponse.status }
       );
     }
 
     const data = await backendResponse.json();
     return NextResponse.json(data);
-
   } catch (error: any) {
     console.error('Order delete API error:', error);
     return NextResponse.json(

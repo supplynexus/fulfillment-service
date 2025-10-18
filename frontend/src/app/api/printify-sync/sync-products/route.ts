@@ -9,7 +9,7 @@ const logger = createLogger('api.printify-sync-products');
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
   logger.requestStart(request.method, request.url);
-  
+
   try {
     // 验证前端 JWT token
     const authHeader = request.headers.get('authorization');
@@ -46,7 +46,13 @@ export async function POST(request: NextRequest) {
     const signatureString = `POST${backendPath}${timestamp}${nonce}${tenantName}${bodyString}`;
 
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
-    const signature = generateBackendSignature(privateKey, signatureString, timestamp, nonce, tenantName);
+    const signature = generateBackendSignature(
+      privateKey,
+      signatureString,
+      timestamp,
+      nonce,
+      tenantName
+    );
 
     // 调用后端 API
     const backendResponse = await fetch(backendUrl, {
@@ -77,7 +83,12 @@ export async function POST(request: NextRequest) {
 
     const data = await backendResponse.json();
     const duration = (Date.now() - startTime) / 1000;
-    logger.requestComplete(request.method, request.url, backendResponse.status, duration);
+    logger.requestComplete(
+      request.method,
+      request.url,
+      backendResponse.status,
+      duration
+    );
 
     return NextResponse.json(data);
   } catch (error) {
