@@ -99,9 +99,12 @@ export function ProductMappingDialog({
   onMappingCreated,
 }: ProductMappingDialogProps) {
   const [coreProducts, setCoreProducts] = useState<CoreProduct[]>([]);
-  const [selectedCoreProduct, setSelectedCoreProduct] = useState<CoreProduct | null>(null);
-  const [selectedCoreVariant, setSelectedCoreVariant] = useState<CoreVariant | null>(null);
-  const [selectedPrintifyVariant, setSelectedPrintifyVariant] = useState<PrintifyVariant | null>(null);
+  const [selectedCoreProduct, setSelectedCoreProduct] =
+    useState<CoreProduct | null>(null);
+  const [selectedCoreVariant, setSelectedCoreVariant] =
+    useState<CoreVariant | null>(null);
+  const [selectedPrintifyVariant, setSelectedPrintifyVariant] =
+    useState<PrintifyVariant | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -152,14 +155,19 @@ export function ProductMappingDialog({
   }, [open]);
 
   // 过滤核心商品
-  const filteredCoreProducts = coreProducts.filter(product =>
-    product.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.vendor.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredCoreProducts = coreProducts.filter(
+    product =>
+      product.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.vendor.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   // 创建映射
   const handleCreateMapping = async () => {
-    if (!selectedCoreProduct || !selectedCoreVariant || !selectedPrintifyVariant) {
+    if (
+      !selectedCoreProduct ||
+      !selectedCoreVariant ||
+      !selectedPrintifyVariant
+    ) {
       setError('请选择要映射的商品和变体');
       return;
     }
@@ -176,10 +184,13 @@ export function ProductMappingDialog({
       });
 
       // 获取Printify外部系统ID
-      const externalSystemsResponse = await frontendApi.get('/api/external-systems', {
-        params: { system_type: 'PRINTIFY' }
-      });
-      
+      const externalSystemsResponse = await frontendApi.get(
+        '/api/external-systems',
+        {
+          params: { system_type: 'PRINTIFY' },
+        }
+      );
+
       const printifySystem = externalSystemsResponse.data.external_systems?.[0];
       if (!printifySystem) {
         throw new Error('未找到Printify外部系统配置');
@@ -197,7 +208,10 @@ export function ProductMappingDialog({
       };
 
       // 调用后端API创建映射
-      const response = await frontendApi.post('/api/products/mappings/', mappingData);
+      const response = await frontendApi.post(
+        '/api/products/mappings/',
+        mappingData
+      );
 
       frontendLogger.info('✅ 商品映射创建成功', {
         coreProduct: selectedCoreProduct.title,
@@ -205,7 +219,7 @@ export function ProductMappingDialog({
       });
 
       setSuccess('商品映射创建成功！');
-      
+
       if (onMappingCreated) {
         onMappingCreated(mappingData);
       }
@@ -218,7 +232,6 @@ export function ProductMappingDialog({
         setSelectedCoreVariant(null);
         setSelectedPrintifyVariant(null);
       }, 3000);
-
     } catch (error) {
       frontendLogger.error('❌ 创建商品映射失败', {
         error: String(error),
@@ -240,23 +253,23 @@ export function ProductMappingDialog({
   };
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="lg" fullWidth>
+    <Dialog open={open} onClose={handleClose} maxWidth='lg' fullWidth>
       <DialogTitle>
-        <Box display="flex" alignItems="center" gap={2}>
-          <LinkIcon color="primary" />
-          <Typography variant="h6">商品映射</Typography>
+        <Box display='flex' alignItems='center' gap={2}>
+          <LinkIcon color='primary' />
+          <Typography variant='h6'>商品映射</Typography>
         </Box>
       </DialogTitle>
-      
+
       <DialogContent>
         {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
+          <Alert severity='error' sx={{ mb: 2 }}>
             {error}
           </Alert>
         )}
-        
+
         {success && (
-          <Alert severity="success" sx={{ mb: 2 }}>
+          <Alert severity='success' sx={{ mb: 2 }}>
             {success}
           </Alert>
         )}
@@ -266,74 +279,93 @@ export function ProductMappingDialog({
             {/* Printify商品信息 */}
             <Card sx={{ mb: 3 }}>
               <CardContent>
-                <Box display="flex" alignItems="center" gap={2} mb={2}>
-                  <StorefrontIcon color="primary" />
-                  <Typography variant="h6">Printify商品</Typography>
+                <Box display='flex' alignItems='center' gap={2} mb={2}>
+                  <StorefrontIcon color='primary' />
+                  <Typography variant='h6'>Printify商品</Typography>
                 </Box>
-                
-                <Grid container spacing={2}>
-                  <Grid item xs={12} md={6}>
-                    <Typography variant="subtitle1" fontWeight="medium">
+
+                <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2}>
+                  <Box sx={{ width: { xs: "100%", md: "50%" } }}>
+                    <Typography variant='subtitle1' fontWeight='medium'>
                       {printifyProduct.title}
                     </Typography>
-                    <Typography variant="body2" color="text.secondary" paragraph>
+                    <Typography
+                      variant='body2'
+                      color='text.secondary'
+                      paragraph
+                    >
                       {printifyProduct.description || '暂无描述'}
                     </Typography>
-                    
-                    <Box display="flex" gap={1} flexWrap="wrap" mb={2}>
+
+                    <Box display='flex' gap={1} flexWrap='wrap' mb={2}>
                       {printifyProduct.tags.slice(0, 3).map((tag, index) => (
-                        <Chip key={index} label={tag} size="small" />
+                        <Chip key={index} label={tag} size='small' />
                       ))}
                     </Box>
-                  </Grid>
-                  
-                  <Grid item xs={12} md={6}>
-                    <Typography variant="subtitle2" gutterBottom>
+                  </Box>
+
+                  <Box sx={{ width: { xs: "100%", md: "50%" } }}>
+                    <Typography variant='subtitle2' gutterBottom>
                       选择要映射的变体
                     </Typography>
-                    <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 200 }}>
-                      <Table size="small">
+                    <TableContainer
+                      component={Paper}
+                      variant='outlined'
+                      sx={{ maxHeight: 200 }}
+                    >
+                      <Table size='small'>
                         <TableHead>
                           <TableRow>
-                            <TableCell padding="checkbox">选择</TableCell>
+                            <TableCell padding='checkbox'>选择</TableCell>
                             <TableCell>SKU</TableCell>
                             <TableCell>价格</TableCell>
                             <TableCell>状态</TableCell>
                           </TableRow>
                         </TableHead>
                         <TableBody>
-                          {printifyProduct.variants.slice(0, 10).map((variant) => (
-                            <TableRow key={variant.id} hover>
-                              <TableCell padding="checkbox">
-                                <Checkbox
-                                  checked={selectedPrintifyVariant?.id === variant.id}
-                                  onChange={() => setSelectedPrintifyVariant(variant)}
-                                />
-                              </TableCell>
-                              <TableCell>
-                                <Typography variant="body2" fontWeight="medium">
-                                  {variant.sku}
-                                </Typography>
-                              </TableCell>
-                              <TableCell>
-                                <Typography variant="body2">
-                                  ${variant.price}
-                                </Typography>
-                              </TableCell>
-                              <TableCell>
-                                <Chip
-                                  label={variant.is_enabled ? '启用' : '禁用'}
-                                  color={variant.is_enabled ? 'success' : 'default'}
-                                  size="small"
-                                />
-                              </TableCell>
-                            </TableRow>
-                          ))}
+                          {printifyProduct.variants
+                            .slice(0, 10)
+                            .map(variant => (
+                              <TableRow key={variant.id} hover>
+                                <TableCell padding='checkbox'>
+                                  <Checkbox
+                                    checked={
+                                      selectedPrintifyVariant?.id === variant.id
+                                    }
+                                    onChange={() =>
+                                      setSelectedPrintifyVariant(variant)
+                                    }
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <Typography
+                                    variant='body2'
+                                    fontWeight='medium'
+                                  >
+                                    {variant.sku}
+                                  </Typography>
+                                </TableCell>
+                                <TableCell>
+                                  <Typography variant='body2'>
+                                    ${variant.price}
+                                  </Typography>
+                                </TableCell>
+                                <TableCell>
+                                  <Chip
+                                    label={variant.is_enabled ? '启用' : '禁用'}
+                                    color={
+                                      variant.is_enabled ? 'success' : 'default'
+                                    }
+                                    size='small'
+                                  />
+                                </TableCell>
+                              </TableRow>
+                            ))}
                         </TableBody>
                       </Table>
                     </TableContainer>
-                  </Grid>
-                </Grid>
+                  </Box>
+                </Box>
               </CardContent>
             </Card>
 
@@ -342,19 +374,19 @@ export function ProductMappingDialog({
             {/* 核心商品选择 */}
             <Card>
               <CardContent>
-                <Box display="flex" alignItems="center" gap={2} mb={2}>
-                  <InventoryIcon color="primary" />
-                  <Typography variant="h6">选择核心商品</Typography>
+                <Box display='flex' alignItems='center' gap={2} mb={2}>
+                  <InventoryIcon color='primary' />
+                  <Typography variant='h6'>选择核心商品</Typography>
                 </Box>
 
                 <TextField
                   fullWidth
-                  placeholder="搜索核心商品..."
+                  placeholder='搜索核心商品...'
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onChange={e => setSearchTerm(e.target.value)}
                   InputProps={{
                     startAdornment: (
-                      <InputAdornment position="start">
+                      <InputAdornment position='start'>
                         <SearchIcon />
                       </InputAdornment>
                     ),
@@ -363,15 +395,19 @@ export function ProductMappingDialog({
                 />
 
                 {loading ? (
-                  <Box display="flex" justifyContent="center" py={4}>
+                  <Box display='flex' justifyContent='center' py={4}>
                     <CircularProgress />
                   </Box>
                 ) : (
-                  <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 300 }}>
+                  <TableContainer
+                    component={Paper}
+                    variant='outlined'
+                    sx={{ maxHeight: 300 }}
+                  >
                     <Table stickyHeader>
                       <TableHead>
                         <TableRow>
-                          <TableCell padding="checkbox">选择</TableCell>
+                          <TableCell padding='checkbox'>选择</TableCell>
                           <TableCell>商品名称</TableCell>
                           <TableCell>供应商</TableCell>
                           <TableCell>状态</TableCell>
@@ -379,11 +415,14 @@ export function ProductMappingDialog({
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {filteredCoreProducts.map((product) => (
+                        {filteredCoreProducts.map(product => (
                           <TableRow key={product.id_hashid} hover>
-                            <TableCell padding="checkbox">
+                            <TableCell padding='checkbox'>
                               <Checkbox
-                                checked={selectedCoreProduct?.id_hashid === product.id_hashid}
+                                checked={
+                                  selectedCoreProduct?.id_hashid ===
+                                  product.id_hashid
+                                }
                                 onChange={() => {
                                   setSelectedCoreProduct(product);
                                   setSelectedCoreVariant(null);
@@ -391,24 +430,26 @@ export function ProductMappingDialog({
                               />
                             </TableCell>
                             <TableCell>
-                              <Typography variant="body2" fontWeight="medium">
+                              <Typography variant='body2' fontWeight='medium'>
                                 {product.title}
                               </Typography>
                             </TableCell>
                             <TableCell>
-                              <Typography variant="body2">
+                              <Typography variant='body2'>
                                 {product.vendor}
                               </Typography>
                             </TableCell>
                             <TableCell>
                               <Chip
                                 label={product.status}
-                                color={product.is_active ? 'success' : 'default'}
-                                size="small"
+                                color={
+                                  product.is_active ? 'success' : 'default'
+                                }
+                                size='small'
                               />
                             </TableCell>
                             <TableCell>
-                              <Typography variant="body2">
+                              <Typography variant='body2'>
                                 {product.variants?.length || 0}
                               </Typography>
                             </TableCell>
@@ -422,14 +463,18 @@ export function ProductMappingDialog({
                 {/* 核心商品变体选择 */}
                 {selectedCoreProduct && selectedCoreProduct.variants && (
                   <Box mt={2}>
-                    <Typography variant="subtitle2" gutterBottom>
+                    <Typography variant='subtitle2' gutterBottom>
                       选择核心商品变体
                     </Typography>
-                    <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 200 }}>
-                      <Table size="small">
+                    <TableContainer
+                      component={Paper}
+                      variant='outlined'
+                      sx={{ maxHeight: 200 }}
+                    >
+                      <Table size='small'>
                         <TableHead>
                           <TableRow>
-                            <TableCell padding="checkbox">选择</TableCell>
+                            <TableCell padding='checkbox'>选择</TableCell>
                             <TableCell>SKU</TableCell>
                             <TableCell>名称</TableCell>
                             <TableCell>价格</TableCell>
@@ -437,34 +482,41 @@ export function ProductMappingDialog({
                           </TableRow>
                         </TableHead>
                         <TableBody>
-                          {selectedCoreProduct.variants.map((variant) => (
+                          {selectedCoreProduct.variants.map(variant => (
                             <TableRow key={variant.id_hashid} hover>
-                              <TableCell padding="checkbox">
+                              <TableCell padding='checkbox'>
                                 <Checkbox
-                                  checked={selectedCoreVariant?.id_hashid === variant.id_hashid}
-                                  onChange={() => setSelectedCoreVariant(variant)}
+                                  checked={
+                                    selectedCoreVariant?.id_hashid ===
+                                    variant.id_hashid
+                                  }
+                                  onChange={() =>
+                                    setSelectedCoreVariant(variant)
+                                  }
                                 />
                               </TableCell>
                               <TableCell>
-                                <Typography variant="body2" fontWeight="medium">
+                                <Typography variant='body2' fontWeight='medium'>
                                   {variant.sku}
                                 </Typography>
                               </TableCell>
                               <TableCell>
-                                <Typography variant="body2">
+                                <Typography variant='body2'>
                                   {variant.name}
                                 </Typography>
                               </TableCell>
                               <TableCell>
-                                <Typography variant="body2">
+                                <Typography variant='body2'>
                                   ${variant.price}
                                 </Typography>
                               </TableCell>
                               <TableCell>
                                 <Chip
                                   label={variant.is_active ? '启用' : '禁用'}
-                                  color={variant.is_active ? 'success' : 'default'}
-                                  size="small"
+                                  color={
+                                    variant.is_active ? 'success' : 'default'
+                                  }
+                                  size='small'
                                 />
                               </TableCell>
                             </TableRow>
@@ -479,16 +531,23 @@ export function ProductMappingDialog({
           </Box>
         )}
       </DialogContent>
-      
+
       <DialogActions>
         <Button onClick={handleClose} disabled={creatingMapping}>
           取消
         </Button>
         <Button
           onClick={handleCreateMapping}
-          variant="contained"
-          disabled={!selectedCoreProduct || !selectedCoreVariant || !selectedPrintifyVariant || creatingMapping}
-          startIcon={creatingMapping ? <CircularProgress size={16} /> : <LinkIcon />}
+          variant='contained'
+          disabled={
+            !selectedCoreProduct ||
+            !selectedCoreVariant ||
+            !selectedPrintifyVariant ||
+            creatingMapping
+          }
+          startIcon={
+            creatingMapping ? <CircularProgress size={16} /> : <LinkIcon />
+          }
         >
           {creatingMapping ? '创建中...' : '创建映射'}
         </Button>

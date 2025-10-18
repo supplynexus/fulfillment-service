@@ -11,14 +11,14 @@ export async function POST(
   { params }: { params: Promise<{ external_system_hashid: string }> }
 ) {
   const startTime = Date.now();
-  
+
   try {
     const { external_system_hashid } = await params;
-    
-    logger.info('Request started', { 
-      method: request.method, 
+
+    logger.info('Request started', {
+      method: request.method,
       url: request.url,
-      external_system_hashid
+      external_system_hashid,
     });
 
     const authorization = request.headers.get('authorization');
@@ -72,7 +72,7 @@ export async function POST(
     });
 
     const backendUrl = `${process.env.BACKEND_API_URL}${backendPath}`;
-    
+
     logger.info('Forwarding request to backend', { backendUrl });
 
     const backendResponse = await fetch(backendUrl, {
@@ -93,9 +93,9 @@ export async function POST(
       logger.error('Backend request failed', {
         status: backendResponse.status,
         statusText: backendResponse.statusText,
-        error: responseData
+        error: responseData,
       });
-      
+
       return NextResponse.json(
         { error: responseData.detail || 'Backend request failed' },
         { status: backendResponse.status }
@@ -103,20 +103,19 @@ export async function POST(
     }
 
     const duration = Date.now() - startTime;
-    logger.info('Request completed', { 
-      method: request.method, 
+    logger.info('Request completed', {
+      method: request.method,
       url: request.url,
       status: 200,
-      duration: `${duration}ms`
+      duration: `${duration}ms`,
     });
-    
-    return NextResponse.json(responseData);
 
+    return NextResponse.json(responseData);
   } catch (error: any) {
     const duration = Date.now() - startTime;
-    logger.error('API request failed', { 
+    logger.error('API request failed', {
       error: error.message,
-      duration: `${duration}ms`
+      duration: `${duration}ms`,
     });
     return NextResponse.json(
       { error: 'Internal server error' },

@@ -39,7 +39,13 @@ export async function POST(
     const signatureString = `POST${backendPath}${timestamp}${nonce}${tenantName}`;
 
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
-    const signature = generateBackendSignature(privateKey, signatureString, timestamp, nonce, tenantName);
+    const signature = generateBackendSignature(
+      privateKey,
+      signatureString,
+      timestamp,
+      nonce,
+      tenantName
+    );
 
     // 调用后端 API
     const backendUrl = `${process.env.BACKEND_URL || 'http://localhost:8000'}${backendPath}`;
@@ -58,13 +64,18 @@ export async function POST(
     });
 
     const duration = Date.now() - startTime;
-    logger.requestComplete('POST', `/api/shopify-orders/${id}/sync-to-core`, backendResponse.status, duration);
+    logger.requestComplete(
+      'POST',
+      `/api/shopify-orders/${id}/sync-to-core`,
+      backendResponse.status,
+      duration
+    );
 
     if (!backendResponse.ok) {
       const errorData = await backendResponse.json();
-      logger.error('Backend API error', { 
-        status: backendResponse.status, 
-        error: errorData 
+      logger.error('Backend API error', {
+        status: backendResponse.status,
+        error: errorData,
       });
       return NextResponse.json(
         { detail: errorData.detail || 'Backend API error' },
@@ -73,21 +84,20 @@ export async function POST(
     }
 
     const data = await backendResponse.json();
-    logger.info('Sync to core order successful', { 
-      orderId: id, 
+    logger.info('Sync to core order successful', {
+      orderId: id,
       coreOrderId: data.core_order_id,
-      itemsCount: data.items_count 
+      itemsCount: data.items_count,
     });
 
     return NextResponse.json(data);
-
   } catch (error: any) {
     const duration = Date.now() - startTime;
-    logger.error('Sync to core order failed', { 
+    logger.error('Sync to core order failed', {
       error: error.message,
-      duration 
+      duration,
     });
-    
+
     return NextResponse.json(
       { detail: 'Internal server error' },
       { status: 500 }

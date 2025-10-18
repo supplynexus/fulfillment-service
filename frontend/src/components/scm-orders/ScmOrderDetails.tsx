@@ -93,7 +93,7 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
   const [fulfillmentError, setFulfillmentError] = useState<string | null>(null);
   const [mappingStatus, setMappingStatus] = useState<any>(null);
   const [checkingMapping, setCheckingMapping] = useState(false);
-  
+
   // 商品选择相关状态
   const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
   const [generatingPrintify, setGeneratingPrintify] = useState(false);
@@ -132,17 +132,18 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
 
   const checkProductMapping = async () => {
     if (!order) return null;
-    
+
     try {
       setCheckingMapping(true);
-      
-      const response = await frontendApi.get(`/api/product-mapping/scm-orders/${orderId}/mapping-check?external_system=printify`);
+
+      const response = await frontendApi.get(
+        `/api/product-mapping/scm-orders/${orderId}/mapping-check?external_system=printify`
+      );
       setMappingStatus(response.data);
-      
+
       console.log('商品映射检查结果:', response.data);
-      
+
       return response.data;
-      
     } catch (error: any) {
       console.error('检查商品映射失败:', error);
       setFulfillmentError(error?.response?.data?.detail || '检查商品映射失败');
@@ -154,11 +155,11 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
 
   const handleFulfillToPrintify = async () => {
     if (!order) return;
-    
+
     try {
       setFulfilling(true);
       setFulfillmentError(null);
-      
+
       // 先检查商品映射
       let currentMappingStatus = mappingStatus;
       if (!currentMappingStatus) {
@@ -166,28 +167,35 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
         currentMappingStatus = await checkProductMapping();
         console.log('🔍 映射状态获取结果:', currentMappingStatus);
       }
-      
+
       // 检查是否所有商品都已映射
-      console.log('🔍 检查映射状态:', { mappingStatus: currentMappingStatus, can_fulfill: currentMappingStatus?.can_fulfill });
+      console.log('🔍 检查映射状态:', {
+        mappingStatus: currentMappingStatus,
+        can_fulfill: currentMappingStatus?.can_fulfill,
+      });
       if (!currentMappingStatus?.can_fulfill) {
         console.log('❌ 商品映射检查失败，无法发货');
-        setFulfillmentError(`无法发货：${currentMappingStatus?.unmapped_items || 0} 个商品未映射到 Printify`);
+        setFulfillmentError(
+          `无法发货：${currentMappingStatus?.unmapped_items || 0} 个商品未映射到 Printify`
+        );
         return;
       }
-      
+
       console.log('✅ 商品映射检查通过，开始发货流程');
-      
-      const response = await frontendApi.post(`/api/scm-orders/${orderId}/fulfill`, {
-        fulfillment_channel: 'printify',
-        scm_order_id: orderId,
-      });
-      
+
+      const response = await frontendApi.post(
+        `/api/scm-orders/${orderId}/fulfill`,
+        {
+          fulfillment_channel: 'printify',
+          scm_order_id: orderId,
+        }
+      );
+
       // 刷新订单详情以获取最新状态
       await fetchOrderDetails();
-      
+
       // 显示成功消息
       console.log('发货指示发送成功:', response.data);
-      
     } catch (error: any) {
       console.error('发送发货指示失败:', error);
       setFulfillmentError(error?.response?.data?.detail || '发送发货指示失败');
@@ -209,7 +217,7 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
 
   const handleSelectAllItems = () => {
     if (!order?.line_items) return;
-    
+
     if (selectedItems.size === order.line_items.length) {
       setSelectedItems(new Set());
     } else {
@@ -219,41 +227,48 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
 
   const handleGeneratePrintifyOrder = async () => {
     if (!order || selectedItems.size === 0) return;
-    
+
     try {
       setGeneratingPrintify(true);
       setPrintifyError(null);
       setPrintifySuccess(null);
-      
+
       // 获取选中的商品
-      const selectedLineItems = Array.from(selectedItems).map(index => order.line_items[index]);
-      
-      const response = await frontendApi.post(`/api/scm-orders/${orderId}/generate-printify`, {
-        selected_items: selectedLineItems,
-        scm_order_id: orderId,
-      });
-      
+      const selectedLineItems = Array.from(selectedItems).map(
+        index => order.line_items[index]
+      );
+
+      const response = await frontendApi.post(
+        `/api/scm-orders/${orderId}/generate-printify`,
+        {
+          selected_items: selectedLineItems,
+          scm_order_id: orderId,
+        }
+      );
+
       console.log('Printify 订单生成成功:', response.data);
-      
+
       // 显示成功消息
-      const printifyOrderId = response.data?.printify_order_id || response.data?.id;
+      const printifyOrderId =
+        response.data?.printify_order_id || response.data?.id;
       if (printifyOrderId) {
         setPrintifySuccess(`Printify 订单生成成功！订单ID: ${printifyOrderId}`);
       } else {
         setPrintifySuccess('Printify 订单生成成功！');
       }
-      
+
       // 刷新订单详情以获取最新状态
       await fetchOrderDetails();
-      
+
       // 3秒后清除成功消息
       setTimeout(() => {
         setPrintifySuccess(null);
       }, 3000);
-      
     } catch (error: any) {
       console.error('生成 Printify 订单失败:', error);
-      setPrintifyError(error?.response?.data?.detail || '生成 Printify 订单失败');
+      setPrintifyError(
+        error?.response?.data?.detail || '生成 Printify 订单失败'
+      );
     } finally {
       setGeneratingPrintify(false);
     }
@@ -294,7 +309,12 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
 
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+      <Box
+        display='flex'
+        justifyContent='center'
+        alignItems='center'
+        minHeight='400px'
+      >
         <CircularProgress />
       </Box>
     );
@@ -303,15 +323,15 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
   if (error) {
     return (
       <Box>
-        <Box display="flex" alignItems="center" mb={3}>
+        <Box display='flex' alignItems='center' mb={3}>
           <IconButton onClick={handleBack} sx={{ mr: 1 }}>
             <ArrowBackIcon />
           </IconButton>
-          <Typography variant="h4" component="h1">
+          <Typography variant='h4' component='h1'>
             SCM 订单详情
           </Typography>
         </Box>
-        <Alert severity="error">{error}</Alert>
+        <Alert severity='error'>{error}</Alert>
       </Box>
     );
   }
@@ -319,15 +339,15 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
   if (!order) {
     return (
       <Box>
-        <Box display="flex" alignItems="center" mb={3}>
+        <Box display='flex' alignItems='center' mb={3}>
           <IconButton onClick={handleBack} sx={{ mr: 1 }}>
             <ArrowBackIcon />
           </IconButton>
-          <Typography variant="h4" component="h1">
+          <Typography variant='h4' component='h1'>
             SCM 订单详情
           </Typography>
         </Box>
-        <Alert severity="warning">订单不存在</Alert>
+        <Alert severity='warning'>订单不存在</Alert>
       </Box>
     );
   }
@@ -335,40 +355,44 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
   return (
     <Box>
       <Box
-        display="flex"
-        alignItems="center"
-        justifyContent="space-between"
+        display='flex'
+        alignItems='center'
+        justifyContent='space-between'
         mb={3}
       >
-        <Box display="flex" alignItems="center">
+        <Box display='flex' alignItems='center'>
           <IconButton onClick={handleBack} sx={{ mr: 1 }}>
             <ArrowBackIcon />
           </IconButton>
-          <Typography variant="h4" component="h1">
+          <Typography variant='h4' component='h1'>
             SCM 订单详情 {orderId}
           </Typography>
         </Box>
         <Box>
-          <Tooltip title="刷新">
+          <Tooltip title='刷新'>
             <IconButton onClick={handleRefresh} disabled={loading}>
               <RefreshIcon />
             </IconButton>
           </Tooltip>
-          <Tooltip title="编辑">
+          <Tooltip title='编辑'>
             <IconButton disabled>
               <EditIcon />
             </IconButton>
           </Tooltip>
-          <Tooltip title="打印">
+          <Tooltip title='打印'>
             <IconButton disabled>
               <PrintIcon />
             </IconButton>
           </Tooltip>
-          <Tooltip title="发送到 Printify">
-            <IconButton 
+          <Tooltip title='发送到 Printify'>
+            <IconButton
               onClick={handleFulfillToPrintify}
-              disabled={fulfilling || checkingMapping || order?.fulfillment_status === 'fulfilled'}
-              color="primary"
+              disabled={
+                fulfilling ||
+                checkingMapping ||
+                order?.fulfillment_status === 'fulfilled'
+              }
+              color='primary'
             >
               <LocalShippingIcon />
             </IconButton>
@@ -379,64 +403,59 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
       <Stack spacing={3}>
         {/* Fulfillment Error Alert */}
         {fulfillmentError && (
-          <Alert severity="error" onClose={() => setFulfillmentError(null)}>
+          <Alert severity='error' onClose={() => setFulfillmentError(null)}>
             {fulfillmentError}
           </Alert>
         )}
-        
+
         {/* Fulfillment Loading Alert */}
         {fulfilling && (
-          <Alert severity="info">
-            正在发送发货指示到 Printify...
-          </Alert>
+          <Alert severity='info'>正在发送发货指示到 Printify...</Alert>
         )}
-        
+
         {/* Mapping Check Loading Alert */}
         {checkingMapping && (
-          <Alert severity="info">
-            正在检查商品映射状态...
-          </Alert>
+          <Alert severity='info'>正在检查商品映射状态...</Alert>
         )}
-        
+
         {/* Mapping Status Alert */}
         {mappingStatus && (
-          <Alert 
-            severity={mappingStatus.can_fulfill ? "success" : "warning"}
+          <Alert
+            severity={mappingStatus.can_fulfill ? 'success' : 'warning'}
             action={
               !mappingStatus.can_fulfill && (
-                <Button 
-                  size="small" 
+                <Button
+                  size='small'
                   onClick={() => router.push('/product-mapping')}
-                  color="inherit"
+                  color='inherit'
                 >
                   去映射商品
                 </Button>
               )
             }
           >
-            {mappingStatus.can_fulfill 
+            {mappingStatus.can_fulfill
               ? `✅ 所有商品已映射 (${mappingStatus.mapped_items}/${mappingStatus.total_items})`
-              : `⚠️ ${mappingStatus.unmapped_items} 个商品未映射到 Printify`
-            }
+              : `⚠️ ${mappingStatus.unmapped_items} 个商品未映射到 Printify`}
           </Alert>
         )}
-        
+
         {/* Order Status and Basic Info */}
         <Card>
           <CardContent>
             <Stack
               direction={{ xs: 'column', sm: 'row' }}
               spacing={2}
-              alignItems="center"
+              alignItems='center'
             >
               <Box flex={1}>
-                <Typography variant="h6" gutterBottom>
+                <Typography variant='h6' gutterBottom>
                   订单状态
                 </Typography>
                 <Chip
                   label={order.status}
                   color={getStatusColor(order.status) as any}
-                  size="medium"
+                  size='medium'
                 />
               </Box>
               {/* 核心SCM订单不展示金额 */}
@@ -448,84 +467,96 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
           {/* SCM Order Information */}
           <Card sx={{ flex: 1 }}>
             <CardContent>
-              <Typography variant="h6" gutterBottom>
+              <Typography variant='h6' gutterBottom>
                 SCM 订单信息
               </Typography>
               <Stack spacing={1}>
-                <Box display="flex" justifyContent="space-between">
-                  <Typography variant="body2" color="text.secondary">
+                <Box display='flex' justifyContent='space-between'>
+                  <Typography variant='body2' color='text.secondary'>
                     SCM 订单ID:
                   </Typography>
-                  <Typography variant="body2" fontWeight="medium" fontFamily="monospace">
+                  <Typography
+                    variant='body2'
+                    fontWeight='medium'
+                    fontFamily='monospace'
+                  >
                     {orderId}
                   </Typography>
                 </Box>
                 {order.scm_order_number && (
-                  <Box display="flex" justifyContent="space-between">
-                    <Typography variant="body2" color="text.secondary">
+                  <Box display='flex' justifyContent='space-between'>
+                    <Typography variant='body2' color='text.secondary'>
                       SCM 订单号:
                     </Typography>
-                    <Typography variant="body2" fontWeight="medium">
+                    <Typography variant='body2' fontWeight='medium'>
                       {order.scm_order_number}
                     </Typography>
                   </Box>
                 )}
                 {order.routing_metadata?.printify_order_id && (
-                  <Box display="flex" justifyContent="space-between">
-                    <Typography variant="body2" color="text.secondary">
+                  <Box display='flex' justifyContent='space-between'>
+                    <Typography variant='body2' color='text.secondary'>
                       Printify 订单ID:
                     </Typography>
-                    <Typography variant="body2" fontWeight="medium" fontFamily="monospace">
+                    <Typography
+                      variant='body2'
+                      fontWeight='medium'
+                      fontFamily='monospace'
+                    >
                       {order.routing_metadata.printify_order_id}
                     </Typography>
                   </Box>
                 )}
                 {order.routing_metadata?.printify_shop_id && (
-                  <Box display="flex" justifyContent="space-between">
-                    <Typography variant="body2" color="text.secondary">
+                  <Box display='flex' justifyContent='space-between'>
+                    <Typography variant='body2' color='text.secondary'>
                       Printify 店铺ID:
                     </Typography>
-                    <Typography variant="body2" fontWeight="medium">
+                    <Typography variant='body2' fontWeight='medium'>
                       {order.routing_metadata.printify_shop_id}
                     </Typography>
                   </Box>
                 )}
                 {order.routing_metadata?.app_order_id && (
-                  <Box display="flex" justifyContent="space-between">
-                    <Typography variant="body2" color="text.secondary">
+                  <Box display='flex' justifyContent='space-between'>
+                    <Typography variant='body2' color='text.secondary'>
                       应用订单ID:
                     </Typography>
-                    <Typography variant="body2" fontWeight="medium" fontFamily="monospace">
+                    <Typography
+                      variant='body2'
+                      fontWeight='medium'
+                      fontFamily='monospace'
+                    >
                       {order.routing_metadata.app_order_id}
                     </Typography>
                   </Box>
                 )}
                 {order.fulfillment_status && (
-                  <Box display="flex" justifyContent="space-between">
-                    <Typography variant="body2" color="text.secondary">
+                  <Box display='flex' justifyContent='space-between'>
+                    <Typography variant='body2' color='text.secondary'>
                       履行状态:
                     </Typography>
                     <Chip
                       label={order.fulfillment_status}
                       color={getStatusColor(order.fulfillment_status) as any}
-                      size="small"
+                      size='small'
                     />
                   </Box>
                 )}
-                <Box display="flex" justifyContent="space-between">
-                  <Typography variant="body2" color="text.secondary">
+                <Box display='flex' justifyContent='space-between'>
+                  <Typography variant='body2' color='text.secondary'>
                     创建时间:
                   </Typography>
-                  <Typography variant="body2" fontWeight="medium">
+                  <Typography variant='body2' fontWeight='medium'>
                     {formatDate(order.created_at)}
                   </Typography>
                 </Box>
                 {order.updated_at && (
-                  <Box display="flex" justifyContent="space-between">
-                    <Typography variant="body2" color="text.secondary">
+                  <Box display='flex' justifyContent='space-between'>
+                    <Typography variant='body2' color='text.secondary'>
                       更新时间:
                     </Typography>
-                    <Typography variant="body2" fontWeight="medium">
+                    <Typography variant='body2' fontWeight='medium'>
                       {formatDate(order.updated_at)}
                     </Typography>
                   </Box>
@@ -537,34 +568,34 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
           {/* Customer Information */}
           <Card sx={{ flex: 1 }}>
             <CardContent>
-              <Typography variant="h6" gutterBottom>
+              <Typography variant='h6' gutterBottom>
                 客户信息
               </Typography>
               <Stack spacing={1}>
-                <Box display="flex" justifyContent="space-between">
-                  <Typography variant="body2" color="text.secondary">
+                <Box display='flex' justifyContent='space-between'>
+                  <Typography variant='body2' color='text.secondary'>
                     客户邮箱:
                   </Typography>
-                  <Typography variant="body2" fontWeight="medium">
+                  <Typography variant='body2' fontWeight='medium'>
                     {order.customer_email}
                   </Typography>
                 </Box>
                 {order.customer_name && (
-                  <Box display="flex" justifyContent="space-between">
-                    <Typography variant="body2" color="text.secondary">
+                  <Box display='flex' justifyContent='space-between'>
+                    <Typography variant='body2' color='text.secondary'>
                       客户姓名:
                     </Typography>
-                    <Typography variant="body2" fontWeight="medium">
+                    <Typography variant='body2' fontWeight='medium'>
                       {order.customer_name}
                     </Typography>
                   </Box>
                 )}
                 {order.customer_phone && (
-                  <Box display="flex" justifyContent="space-between">
-                    <Typography variant="body2" color="text.secondary">
+                  <Box display='flex' justifyContent='space-between'>
+                    <Typography variant='body2' color='text.secondary'>
                       客户电话:
                     </Typography>
-                    <Typography variant="body2" fontWeight="medium">
+                    <Typography variant='body2' fontWeight='medium'>
                       {order.customer_phone}
                     </Typography>
                   </Box>
@@ -578,17 +609,17 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
         {order.source_orders && order.source_orders.length > 0 && (
           <Card>
             <CardContent>
-              <Typography variant="h6" gutterBottom>
+              <Typography variant='h6' gutterBottom>
                 源订单信息
               </Typography>
-              <TableContainer component={Paper} variant="outlined">
+              <TableContainer component={Paper} variant='outlined'>
                 <Table>
                   <TableHead>
                     <TableRow>
                       <TableCell>订单编号</TableCell>
                       <TableCell>外部订单号</TableCell>
                       <TableCell>状态</TableCell>
-                      <TableCell align="right">金额</TableCell>
+                      <TableCell align='right'>金额</TableCell>
                       <TableCell>客户邮箱</TableCell>
                       <TableCell>创建时间</TableCell>
                       <TableCell>操作</TableCell>
@@ -598,42 +629,49 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
                     {order.source_orders.map((sourceOrder: SourceOrderInfo) => (
                       <TableRow key={sourceOrder.id}>
                         <TableCell>
-                          <Typography variant="body2" fontWeight="medium">
+                          <Typography variant='body2' fontWeight='medium'>
                             {sourceOrder.order_number || `#${sourceOrder.id}`}
                           </Typography>
                         </TableCell>
                         <TableCell>
-                          <Typography variant="body2" fontFamily="monospace">
-                            {sourceOrder.external_order_number || sourceOrder.external_order_name || 'N/A'}
+                          <Typography variant='body2' fontFamily='monospace'>
+                            {sourceOrder.external_order_number ||
+                              sourceOrder.external_order_name ||
+                              'N/A'}
                           </Typography>
                         </TableCell>
                         <TableCell>
                           <Chip
                             label={sourceOrder.status}
                             color={getStatusColor(sourceOrder.status) as any}
-                            size="small"
+                            size='small'
                           />
                         </TableCell>
-                        <TableCell align="right">
-                          <Typography variant="body2">
-                            {formatCurrency(sourceOrder.total_amount, sourceOrder.currency)}
+                        <TableCell align='right'>
+                          <Typography variant='body2'>
+                            {formatCurrency(
+                              sourceOrder.total_amount,
+                              sourceOrder.currency
+                            )}
                           </Typography>
                         </TableCell>
                         <TableCell>
-                          <Typography variant="body2">
+                          <Typography variant='body2'>
                             {sourceOrder.customer_email}
                           </Typography>
                         </TableCell>
                         <TableCell>
-                          <Typography variant="body2">
+                          <Typography variant='body2'>
                             {formatDate(sourceOrder.created_at)}
                           </Typography>
                         </TableCell>
                         <TableCell>
                           <Button
-                            size="small"
-                            variant="outlined"
-                            onClick={() => router.push(`/orders/${sourceOrder.id}`)}
+                            size='small'
+                            variant='outlined'
+                            onClick={() =>
+                              router.push(`/orders/${sourceOrder.id}`)
+                            }
                           >
                             查看详情
                           </Button>
@@ -651,84 +689,86 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
           {/* Shipping Address */}
           <Card sx={{ flex: 1 }}>
             <CardContent>
-              <Typography variant="h6" gutterBottom>
+              <Typography variant='h6' gutterBottom>
                 收货地址
               </Typography>
               {order.shipping_address ? (
                 <Stack spacing={1}>
                   {order.shipping_address.address1 && (
-                    <Box display="flex" justifyContent="space-between">
-                      <Typography variant="body2" color="text.secondary">
+                    <Box display='flex' justifyContent='space-between'>
+                      <Typography variant='body2' color='text.secondary'>
                         地址1:
                       </Typography>
-                      <Typography variant="body2" fontWeight="medium">
+                      <Typography variant='body2' fontWeight='medium'>
                         {order.shipping_address.address1}
                       </Typography>
                     </Box>
                   )}
                   {order.shipping_address.address2 && (
-                    <Box display="flex" justifyContent="space-between">
-                      <Typography variant="body2" color="text.secondary">
+                    <Box display='flex' justifyContent='space-between'>
+                      <Typography variant='body2' color='text.secondary'>
                         地址2:
                       </Typography>
-                      <Typography variant="body2" fontWeight="medium">
+                      <Typography variant='body2' fontWeight='medium'>
                         {order.shipping_address.address2}
                       </Typography>
                     </Box>
                   )}
                   {order.shipping_address.city && (
-                    <Box display="flex" justifyContent="space-between">
-                      <Typography variant="body2" color="text.secondary">
+                    <Box display='flex' justifyContent='space-between'>
+                      <Typography variant='body2' color='text.secondary'>
                         城市:
                       </Typography>
-                      <Typography variant="body2" fontWeight="medium">
+                      <Typography variant='body2' fontWeight='medium'>
                         {order.shipping_address.city}
                       </Typography>
                     </Box>
                   )}
-                  {(order.shipping_address.state || order.shipping_address.province) && (
-                    <Box display="flex" justifyContent="space-between">
-                      <Typography variant="body2" color="text.secondary">
+                  {(order.shipping_address.state ||
+                    order.shipping_address.province) && (
+                    <Box display='flex' justifyContent='space-between'>
+                      <Typography variant='body2' color='text.secondary'>
                         州/省:
                       </Typography>
-                      <Typography variant="body2" fontWeight="medium">
-                        {order.shipping_address.state || order.shipping_address.province}
+                      <Typography variant='body2' fontWeight='medium'>
+                        {order.shipping_address.state ||
+                          order.shipping_address.province}
                       </Typography>
                     </Box>
                   )}
                   {order.shipping_address.zip && (
-                    <Box display="flex" justifyContent="space-between">
-                      <Typography variant="body2" color="text.secondary">
+                    <Box display='flex' justifyContent='space-between'>
+                      <Typography variant='body2' color='text.secondary'>
                         邮编:
                       </Typography>
-                      <Typography variant="body2" fontWeight="medium">
+                      <Typography variant='body2' fontWeight='medium'>
                         {order.shipping_address.zip}
                       </Typography>
                     </Box>
                   )}
                   {order.shipping_address.country && (
-                    <Box display="flex" justifyContent="space-between">
-                      <Typography variant="body2" color="text.secondary">
+                    <Box display='flex' justifyContent='space-between'>
+                      <Typography variant='body2' color='text.secondary'>
                         国家:
                       </Typography>
-                      <Typography variant="body2" fontWeight="medium">
+                      <Typography variant='body2' fontWeight='medium'>
                         {order.shipping_address.country}
                       </Typography>
                     </Box>
                   )}
                   {order.shipping_address.phone && (
-                    <Box display="flex" justifyContent="space-between">
-                      <Typography variant="body2" color="text.secondary">
+                    <Box display='flex' justifyContent='space-between'>
+                      <Typography variant='body2' color='text.secondary'>
                         电话:
                       </Typography>
-                      <Typography variant="body2" fontWeight="medium">
+                      <Typography variant='body2' fontWeight='medium'>
                         {order.shipping_address.phone}
                       </Typography>
                     </Box>
                   )}
                 </Stack>
               ) : (
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant='body2' color='text.secondary'>
                   无收货地址信息
                 </Typography>
               )}
@@ -738,144 +778,197 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
           {/* Tracking Information */}
           <Card sx={{ flex: 1 }}>
             <CardContent>
-              <Typography variant="h6" gutterBottom>
+              <Typography variant='h6' gutterBottom>
                 物流信息
               </Typography>
               <Stack spacing={1}>
                 {order.tracking_number && (
-                  <Box display="flex" justifyContent="space-between">
-                    <Typography variant="body2" color="text.secondary">
+                  <Box display='flex' justifyContent='space-between'>
+                    <Typography variant='body2' color='text.secondary'>
                       跟踪号:
                     </Typography>
-                    <Typography variant="body2" fontWeight="medium" fontFamily="monospace">
+                    <Typography
+                      variant='body2'
+                      fontWeight='medium'
+                      fontFamily='monospace'
+                    >
                       {order.tracking_number}
                     </Typography>
                   </Box>
                 )}
                 {order.tracking_url && (
-                  <Box display="flex" justifyContent="space-between">
-                    <Typography variant="body2" color="text.secondary">
+                  <Box display='flex' justifyContent='space-between'>
+                    <Typography variant='body2' color='text.secondary'>
                       跟踪链接:
                     </Typography>
                     <Button
-                      size="small"
+                      size='small'
                       href={order.tracking_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                      target='_blank'
+                      rel='noopener noreferrer'
                     >
                       查看跟踪
                     </Button>
                   </Box>
                 )}
-               {/* 从订单字段和 shipments 数据中提取物流公司、发货时间、送达时间 */}
-               <Box display="flex" justifyContent="space-between">
-                 <Typography variant="body2" color="text.secondary">
-                   物流公司:
-                 </Typography>
-                 <Typography variant="body2" fontWeight="medium">
-                   {order.carrier || order.routing_metadata?.shipments?.[0]?.carrier || '未提供'}
-                 </Typography>
-               </Box>
-               <Box display="flex" justifyContent="space-between">
-                 <Typography variant="body2" color="text.secondary">
-                   发货时间:
-                 </Typography>
-                 <Typography variant="body2" fontWeight="medium">
-                   {order.shipped_at ? formatDate(order.shipped_at) : order.routing_metadata?.shipments?.[0]?.shipped_at ? formatDate(order.routing_metadata.shipments[0].shipped_at) : '未发货'}
-                 </Typography>
-               </Box>
-               <Box display="flex" justifyContent="space-between">
-                 <Typography variant="body2" color="text.secondary">
-                   送达时间:
-                 </Typography>
-                 <Typography variant="body2" fontWeight="medium">
-                   {order.delivered_at ? formatDate(order.delivered_at) : order.routing_metadata?.shipments?.[0]?.delivered_at ? formatDate(order.routing_metadata.shipments[0].delivered_at) : '未送达'}
-                 </Typography>
-               </Box>
+                {/* 从订单字段和 shipments 数据中提取物流公司、发货时间、送达时间 */}
+                <Box display='flex' justifyContent='space-between'>
+                  <Typography variant='body2' color='text.secondary'>
+                    物流公司:
+                  </Typography>
+                  <Typography variant='body2' fontWeight='medium'>
+                    {order.carrier ||
+                      order.routing_metadata?.shipments?.[0]?.carrier ||
+                      '未提供'}
+                  </Typography>
+                </Box>
+                <Box display='flex' justifyContent='space-between'>
+                  <Typography variant='body2' color='text.secondary'>
+                    发货时间:
+                  </Typography>
+                  <Typography variant='body2' fontWeight='medium'>
+                    {order.shipped_at
+                      ? formatDate(order.shipped_at)
+                      : order.routing_metadata?.shipments?.[0]?.shipped_at
+                        ? formatDate(
+                            order.routing_metadata.shipments[0].shipped_at
+                          )
+                        : '未发货'}
+                  </Typography>
+                </Box>
+                <Box display='flex' justifyContent='space-between'>
+                  <Typography variant='body2' color='text.secondary'>
+                    送达时间:
+                  </Typography>
+                  <Typography variant='body2' fontWeight='medium'>
+                    {order.delivered_at
+                      ? formatDate(order.delivered_at)
+                      : order.routing_metadata?.shipments?.[0]?.delivered_at
+                        ? formatDate(
+                            order.routing_metadata.shipments[0].delivered_at
+                          )
+                        : '未送达'}
+                  </Typography>
+                </Box>
                 {order.retry_count > 0 && (
-                  <Box display="flex" justifyContent="space-between">
-                    <Typography variant="body2" color="text.secondary">
+                  <Box display='flex' justifyContent='space-between'>
+                    <Typography variant='body2' color='text.secondary'>
                       重试次数:
                     </Typography>
-                    <Typography variant="body2" fontWeight="medium">
+                    <Typography variant='body2' fontWeight='medium'>
                       {order.retry_count}
                     </Typography>
                   </Box>
                 )}
                 {order.error_message && (
                   <Box>
-                    <Typography variant="body2" color="error">
+                    <Typography variant='body2' color='error'>
                       错误信息: {order.error_message}
                     </Typography>
                   </Box>
                 )}
               </Stack>
-              
+
               {/* Printify Shipments 详细信息 */}
-              {order.routing_metadata?.shipments && order.routing_metadata.shipments.length > 0 && (
-                <Box sx={{ mt: 2 }}>
-                  <Typography variant="subtitle1" gutterBottom>
-                    Printify 发货详情
-                  </Typography>
-                  {order.routing_metadata.shipments.map((shipment: any, index: number) => (
-                    <Box key={index} sx={{ mb: 2, p: 2, border: '1px solid #e0e0e0', borderRadius: 1 }}>
-                      <Typography variant="subtitle2" gutterBottom>
-                        包裹 {index + 1}
-                      </Typography>
-                      <Stack spacing={1}>
-                        <Box display="flex" justifyContent="space-between">
-                          <Typography variant="body2" color="text.secondary">
-                            追踪号:
+              {order.routing_metadata?.shipments &&
+                order.routing_metadata.shipments.length > 0 && (
+                  <Box sx={{ mt: 2 }}>
+                    <Typography variant='subtitle1' gutterBottom>
+                      Printify 发货详情
+                    </Typography>
+                    {order.routing_metadata.shipments.map(
+                      (shipment: any, index: number) => (
+                        <Box
+                          key={index}
+                          sx={{
+                            mb: 2,
+                            p: 2,
+                            border: '1px solid #e0e0e0',
+                            borderRadius: 1,
+                          }}
+                        >
+                          <Typography variant='subtitle2' gutterBottom>
+                            包裹 {index + 1}
                           </Typography>
-                          <Typography variant="body2" fontWeight="medium" fontFamily="monospace">
-                            {shipment.number}
-                          </Typography>
+                          <Stack spacing={1}>
+                            <Box display='flex' justifyContent='space-between'>
+                              <Typography
+                                variant='body2'
+                                color='text.secondary'
+                              >
+                                追踪号:
+                              </Typography>
+                              <Typography
+                                variant='body2'
+                                fontWeight='medium'
+                                fontFamily='monospace'
+                              >
+                                {shipment.number}
+                              </Typography>
+                            </Box>
+                            <Box display='flex' justifyContent='space-between'>
+                              <Typography
+                                variant='body2'
+                                color='text.secondary'
+                              >
+                                物流公司:
+                              </Typography>
+                              <Typography variant='body2' fontWeight='medium'>
+                                {shipment.carrier}
+                              </Typography>
+                            </Box>
+                            {shipment.url && (
+                              <Box
+                                display='flex'
+                                justifyContent='space-between'
+                              >
+                                <Typography
+                                  variant='body2'
+                                  color='text.secondary'
+                                >
+                                  追踪链接:
+                                </Typography>
+                                <Button
+                                  size='small'
+                                  href={shipment.url}
+                                  target='_blank'
+                                  rel='noopener noreferrer'
+                                  variant='outlined'
+                                >
+                                  查看物流状态
+                                </Button>
+                              </Box>
+                            )}
+                            <Box display='flex' justifyContent='space-between'>
+                              <Typography
+                                variant='body2'
+                                color='text.secondary'
+                              >
+                                发货时间:
+                              </Typography>
+                              <Typography variant='body2' fontWeight='medium'>
+                                {formatDate(shipment.shipped_at)}
+                              </Typography>
+                            </Box>
+                            <Box display='flex' justifyContent='space-between'>
+                              <Typography
+                                variant='body2'
+                                color='text.secondary'
+                              >
+                                送达时间:
+                              </Typography>
+                              <Typography variant='body2' fontWeight='medium'>
+                                {shipment.delivered_at
+                                  ? formatDate(shipment.delivered_at)
+                                  : '未送达'}
+                              </Typography>
+                            </Box>
+                          </Stack>
                         </Box>
-                        <Box display="flex" justifyContent="space-between">
-                          <Typography variant="body2" color="text.secondary">
-                            物流公司:
-                          </Typography>
-                          <Typography variant="body2" fontWeight="medium">
-                            {shipment.carrier}
-                          </Typography>
-                        </Box>
-                        {shipment.url && (
-                          <Box display="flex" justifyContent="space-between">
-                            <Typography variant="body2" color="text.secondary">
-                              追踪链接:
-                            </Typography>
-                            <Button
-                              size="small"
-                              href={shipment.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              variant="outlined"
-                            >
-                              查看物流状态
-                            </Button>
-                          </Box>
-                        )}
-                        <Box display="flex" justifyContent="space-between">
-                          <Typography variant="body2" color="text.secondary">
-                            发货时间:
-                          </Typography>
-                          <Typography variant="body2" fontWeight="medium">
-                            {formatDate(shipment.shipped_at)}
-                          </Typography>
-                        </Box>
-                        <Box display="flex" justifyContent="space-between">
-                          <Typography variant="body2" color="text.secondary">
-                            送达时间:
-                          </Typography>
-                          <Typography variant="body2" fontWeight="medium">
-                            {shipment.delivered_at ? formatDate(shipment.delivered_at) : '未送达'}
-                          </Typography>
-                        </Box>
-                      </Stack>
-                    </Box>
-                  ))}
-                </Box>
-              )}
+                      )
+                    )}
+                  </Box>
+                )}
             </CardContent>
           </Card>
         </Stack>
@@ -883,19 +976,28 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
         {/* Line Items */}
         <Card>
           <CardContent>
-            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-              <Typography variant="h6">
-                商品清单
-              </Typography>
+            <Box
+              display='flex'
+              justifyContent='space-between'
+              alignItems='center'
+              mb={2}
+            >
+              <Typography variant='h6'>商品清单</Typography>
               {selectedItems.size > 0 && (
-                <Box display="flex" gap={2} alignItems="center">
-                  <Typography variant="body2" color="text.secondary">
+                <Box display='flex' gap={2} alignItems='center'>
+                  <Typography variant='body2' color='text.secondary'>
                     已选择 {selectedItems.size} 个商品
                   </Typography>
                   <Button
-                    variant="contained"
-                    color="primary"
-                    startIcon={generatingPrintify ? <CircularProgress size={16} /> : <LocalShippingIcon />}
+                    variant='contained'
+                    color='primary'
+                    startIcon={
+                      generatingPrintify ? (
+                        <CircularProgress size={16} />
+                      ) : (
+                        <LocalShippingIcon />
+                      )
+                    }
                     onClick={handleGeneratePrintifyOrder}
                     disabled={generatingPrintify}
                   >
@@ -904,95 +1006,120 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
                 </Box>
               )}
             </Box>
-            
+
             {/* Printify 错误提示 */}
             {printifyError && (
-              <Alert severity="error" sx={{ mb: 2 }} onClose={() => setPrintifyError(null)}>
+              <Alert
+                severity='error'
+                sx={{ mb: 2 }}
+                onClose={() => setPrintifyError(null)}
+              >
                 {printifyError}
               </Alert>
             )}
-            
+
             {/* Printify 成功提示 */}
             {printifySuccess && (
-              <Alert severity="success" sx={{ mb: 2 }} onClose={() => setPrintifySuccess(null)}>
+              <Alert
+                severity='success'
+                sx={{ mb: 2 }}
+                onClose={() => setPrintifySuccess(null)}
+              >
                 {printifySuccess}
               </Alert>
             )}
-            
+
             {order.line_items && order.line_items.length > 0 ? (
-              <TableContainer component={Paper} variant="outlined">
+              <TableContainer component={Paper} variant='outlined'>
                 <Table>
                   <TableHead>
                     <TableRow>
-                      <TableCell padding="checkbox">
+                      <TableCell padding='checkbox'>
                         <Checkbox
-                          checked={selectedItems.size === order.line_items.length && order.line_items.length > 0}
-                          indeterminate={selectedItems.size > 0 && selectedItems.size < order.line_items.length}
+                          checked={
+                            selectedItems.size === order.line_items.length &&
+                            order.line_items.length > 0
+                          }
+                          indeterminate={
+                            selectedItems.size > 0 &&
+                            selectedItems.size < order.line_items.length
+                          }
                           onChange={handleSelectAllItems}
                         />
                       </TableCell>
                       <TableCell>商品名称</TableCell>
                       <TableCell>SKU</TableCell>
                       <TableCell>规格</TableCell>
-                      <TableCell align="right">数量</TableCell>
-                      <TableCell align="right">单价</TableCell>
-                      <TableCell align="right">小计</TableCell>
+                      <TableCell align='right'>数量</TableCell>
+                      <TableCell align='right'>单价</TableCell>
+                      <TableCell align='right'>小计</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {order.line_items.map((item: any, index: number) => {
                       const sku = item.sku || item.metadata?.sku || 'N/A';
-                      const variantLabel = item.metadata?.variant_label || 'N/A';
+                      const variantLabel =
+                        item.metadata?.variant_label || 'N/A';
                       const quantity = item.quantity || 1;
-                      const displayPrice = item.price || item.metadata?.price || 0;
+                      const displayPrice =
+                        item.price || item.metadata?.price || 0;
                       const currency = order.currency || 'USD';
-                      
+
                       return (
                         <TableRow key={index}>
-                          <TableCell padding="checkbox">
+                          <TableCell padding='checkbox'>
                             <Checkbox
                               checked={selectedItems.has(index)}
                               onChange={() => handleSelectItem(index)}
                             />
                           </TableCell>
                           <TableCell>
-                            <Typography variant="body2" fontWeight="medium">
-                              {item.metadata?.title || item.title || `商品 ${index + 1}`}
+                            <Typography variant='body2' fontWeight='medium'>
+                              {item.metadata?.title ||
+                                item.title ||
+                                `商品 ${index + 1}`}
                             </Typography>
                             {item.metadata?.variant_label && (
-                              <Typography variant="caption" color="text.secondary">
+                              <Typography
+                                variant='caption'
+                                color='text.secondary'
+                              >
                                 {item.metadata.variant_label}
                               </Typography>
                             )}
                             {variantLabel && variantLabel !== 'N/A' && (
-                              <Typography variant="caption" color="text.secondary">
+                              <Typography
+                                variant='caption'
+                                color='text.secondary'
+                              >
                                 {variantLabel}
                               </Typography>
                             )}
                           </TableCell>
                           <TableCell>
-                            <Typography variant="body2" fontFamily="monospace">
+                            <Typography variant='body2' fontFamily='monospace'>
                               {sku}
                             </Typography>
                           </TableCell>
                           <TableCell>
-                            <Typography variant="body2" color="text.secondary">
+                            <Typography variant='body2' color='text.secondary'>
                               {variantLabel}
                             </Typography>
                           </TableCell>
-                          <TableCell align="right">
-                            <Typography variant="body2">
-                              {quantity}
-                            </Typography>
+                          <TableCell align='right'>
+                            <Typography variant='body2'>{quantity}</Typography>
                           </TableCell>
-                          <TableCell align="right">
-                            <Typography variant="body2">
+                          <TableCell align='right'>
+                            <Typography variant='body2'>
                               {formatCurrency(displayPrice, currency)}
                             </Typography>
                           </TableCell>
-                          <TableCell align="right">
-                            <Typography variant="body2" fontWeight="medium">
-                              {formatCurrency(displayPrice * quantity, currency)}
+                          <TableCell align='right'>
+                            <Typography variant='body2' fontWeight='medium'>
+                              {formatCurrency(
+                                displayPrice * quantity,
+                                currency
+                              )}
                             </Typography>
                           </TableCell>
                         </TableRow>
@@ -1002,7 +1129,7 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
                 </Table>
               </TableContainer>
             ) : (
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant='body2' color='text.secondary'>
                 无商品信息
               </Typography>
             )}

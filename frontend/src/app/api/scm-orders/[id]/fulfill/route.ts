@@ -13,34 +13,42 @@ export async function POST(
 ) {
   const startTime = Date.now();
   const { id: scmOrderHashid } = await params;
-  
+
   try {
     frontendLogger.info('🚀 开始处理 SCM 订单发货指示', { scmOrderHashid });
 
     // 获取前端 JWT token
-    const frontendToken = request.headers.get('authorization')?.replace('Bearer ', '');
+    const frontendToken = request.headers
+      .get('authorization')
+      ?.replace('Bearer ', '');
     if (!frontendToken) {
       frontendLogger.error('❌ 缺少授权头');
-      return NextResponse.json({ error: 'Missing authorization header' }, { status: 401 });
+      return NextResponse.json(
+        { error: 'Missing authorization header' },
+        { status: 401 }
+      );
     }
 
     // 验证前端 JWT token
     let decodedToken;
     try {
       decodedToken = jwtUtilsServer.verifyToken(frontendToken);
-      frontendLogger.info('✅ JWT 验证成功', { userId: decodedToken.sub, tenantName: decodedToken.tenant_name });
+      frontendLogger.info('✅ JWT 验证成功', {
+        userId: decodedToken.sub,
+        tenantName: decodedToken.tenant_name,
+      });
     } catch (error: any) {
       frontendLogger.error('❌ JWT 验证失败', { error: error.message });
       return NextResponse.json({ error: 'Invalid JWT token' }, { status: 401 });
     }
-    
+
     const { tenant_name: tenantName, sub: userId } = decodedToken;
 
     // 获取请求体
     const requestBody = await request.json();
-    frontendLogger.info('📦 发货指示请求数据', { 
-      scmOrderHashid, 
-      fulfillmentChannel: requestBody.fulfillment_channel 
+    frontendLogger.info('📦 发货指示请求数据', {
+      scmOrderHashid,
+      fulfillmentChannel: requestBody.fulfillment_channel,
     });
 
     // 生成后端签名
@@ -51,11 +59,20 @@ export async function POST(
     const signatureString = `POST${backendPath}${timestamp}${nonce}${tenantName}${bodyString}`;
 
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
-    const signature = generateBackendSignature(privateKey, signatureString, timestamp, nonce, tenantName);
+    const signature = generateBackendSignature(
+      privateKey,
+      signatureString,
+      timestamp,
+      nonce,
+      tenantName
+    );
 
     // 构建后端 URL
     const backendUrl = `${process.env.BACKEND_URL || 'http://localhost:8000'}${backendPath}`;
-    frontendLogger.info('➡️ 转发发货指示请求到后端', { backendUrl, scmOrderHashid });
+    frontendLogger.info('➡️ 转发发货指示请求到后端', {
+      backendUrl,
+      scmOrderHashid,
+    });
 
     // 调用后端 API
     const backendResponse = await fetch(backendUrl, {
@@ -72,41 +89,48 @@ export async function POST(
     });
 
     const duration = Date.now() - startTime;
-    
+
     if (!backendResponse.ok) {
       const errorText = await backendResponse.text();
-      frontendLogger.error('❌ 后端 API 错误', { 
-        status: backendResponse.status, 
+      frontendLogger.error('❌ 后端 API 错误', {
+        status: backendResponse.status,
         errorText,
-        duration 
+        duration,
       });
-      
+
       return NextResponse.json(
-        { error: `Backend API error: ${backendResponse.status}`, detail: errorText },
+        {
+          error: `Backend API error: ${backendResponse.status}`,
+          detail: errorText,
+        },
         { status: backendResponse.status }
       );
     }
 
     const data = await backendResponse.json();
-    frontendLogger.info('✅ 发货指示发送成功', { 
-      scmOrderHashid, 
+    frontendLogger.info('✅ 发货指示发送成功', {
+      scmOrderHashid,
       fulfillmentId: data.fulfillment_id,
       trackingNumber: data.tracking_number,
-      duration 
+      duration,
     });
-    
-    logger.requestComplete(request.method, request.url, backendResponse.status, duration);
-    
-    return NextResponse.json(data);
 
+    logger.requestComplete(
+      request.method,
+      request.url,
+      backendResponse.status,
+      duration
+    );
+
+    return NextResponse.json(data);
   } catch (error: any) {
     const duration = Date.now() - startTime;
-    frontendLogger.error('❌ 发货指示处理失败', { 
-      error: error.message, 
+    frontendLogger.error('❌ 发货指示处理失败', {
+      error: error.message,
       scmOrderHashid,
-      duration 
+      duration,
     });
-    
+
     return NextResponse.json(
       { error: 'Internal server error', detail: error.message },
       { status: 500 }

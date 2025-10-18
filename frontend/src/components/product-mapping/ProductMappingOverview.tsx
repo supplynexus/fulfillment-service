@@ -76,19 +76,29 @@ export function ProductMappingOverview() {
       });
 
       // 获取外部商品数据
-      const externalProductsResponse = await frontendApi.get('/api/external-products', {
-        params: {
-          page: 1,
-          limit: 100,
-        },
-      });
+      const externalProductsResponse = await frontendApi.get(
+        '/api/external-products',
+        {
+          params: {
+            page: 1,
+            limit: 100,
+          },
+        }
+      );
 
       const coreProducts = coreProductsResponse.data.products || [];
       const externalProducts = externalProductsResponse.data.products || [];
 
       // 计算映射统计
-      const platformStats: { [key: string]: { total: number; active: number; pending: number; lastSync: string } } = {};
-      
+      const platformStats: {
+        [key: string]: {
+          total: number;
+          active: number;
+          pending: number;
+          lastSync: string;
+        };
+      } = {};
+
       // 初始化平台统计
       const platforms = ['shopify', 'yahoo', 'rakuten'];
       platforms.forEach(platform => {
@@ -104,7 +114,8 @@ export function ProductMappingOverview() {
       coreProducts.forEach((product: any) => {
         if (product.mappings && product.mappings.length > 0) {
           product.mappings.forEach((mapping: any) => {
-            const platform = mapping.external_system_name?.toLowerCase() || 'unknown';
+            const platform =
+              mapping.external_system_name?.toLowerCase() || 'unknown';
             if (platformStats[platform]) {
               platformStats[platform].total++;
               if (mapping.sync_status === 'active') {
@@ -118,31 +129,39 @@ export function ProductMappingOverview() {
       });
 
       // 转换为组件需要的格式
-      const stats: MappingStats[] = Object.entries(platformStats).map(([platform, data]) => ({
-        platform,
-        totalMappings: data.total,
-        activeMappings: data.active,
-        pendingMappings: data.pending,
-        lastSync: data.lastSync,
-      }));
+      const stats: MappingStats[] = Object.entries(platformStats).map(
+        ([platform, data]) => ({
+          platform,
+          totalMappings: data.total,
+          activeMappings: data.active,
+          pendingMappings: data.pending,
+          lastSync: data.lastSync,
+        })
+      );
 
       // 生成最近映射记录
       const recentMappings: RecentMapping[] = [];
       coreProducts.forEach((product: any) => {
         if (product.mappings && product.mappings.length > 0) {
           product.mappings.forEach((mapping: any) => {
-            const externalProduct = externalProducts.find((ep: any) => 
-              ep.external_product_id === mapping.external_product_id
+            const externalProduct = externalProducts.find(
+              (ep: any) =>
+                ep.external_product_id === mapping.external_product_id
             );
-            
+
             if (externalProduct) {
               recentMappings.push({
                 id: mapping.id_hashid || mapping.id,
                 coreProduct: product.title,
                 externalProduct: externalProduct.title,
-                platform: mapping.external_system_name?.toLowerCase() || 'unknown',
-                status: mapping.sync_status === 'active' ? 'active' : 
-                       mapping.sync_status === 'pending' ? 'pending' : 'error',
+                platform:
+                  mapping.external_system_name?.toLowerCase() || 'unknown',
+                status:
+                  mapping.sync_status === 'active'
+                    ? 'active'
+                    : mapping.sync_status === 'pending'
+                      ? 'pending'
+                      : 'error',
                 createdAt: mapping.created_at || new Date().toISOString(),
               });
             }
@@ -151,14 +170,21 @@ export function ProductMappingOverview() {
       });
 
       // 按创建时间排序，取最近10条
-      recentMappings.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      recentMappings.sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
       const recentMappingsSlice = recentMappings.slice(0, 10);
 
       setStats(stats);
       setRecentMappings(recentMappingsSlice);
     } catch (err: any) {
       console.error('Failed to fetch mapping data:', err);
-      setError(err.response?.data?.detail || err.message || 'Failed to fetch mapping data');
+      setError(
+        err.response?.data?.detail ||
+          err.message ||
+          'Failed to fetch mapping data'
+      );
     } finally {
       setLoading(false);
     }
@@ -239,13 +265,20 @@ export function ProductMappingOverview() {
       await fetchMappingData();
     } catch (err: any) {
       console.error('Failed to delete mapping:', err);
-      setError(err.response?.data?.detail || err.message || 'Failed to delete mapping');
+      setError(
+        err.response?.data?.detail || err.message || 'Failed to delete mapping'
+      );
     }
   };
 
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+      <Box
+        display='flex'
+        justifyContent='center'
+        alignItems='center'
+        minHeight='400px'
+      >
         <CircularProgress />
       </Box>
     );
@@ -253,12 +286,17 @@ export function ProductMappingOverview() {
 
   return (
     <Box>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h4" component="h1">
+      <Box
+        display='flex'
+        justifyContent='space-between'
+        alignItems='center'
+        mb={3}
+      >
+        <Typography variant='h4' component='h1'>
           商品映射总览
         </Typography>
         <Button
-          variant="outlined"
+          variant='outlined'
           startIcon={<RefreshIcon />}
           onClick={fetchMappingData}
           disabled={loading}
@@ -268,28 +306,28 @@ export function ProductMappingOverview() {
       </Box>
 
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
+        <Alert severity='error' sx={{ mb: 2 }}>
           {error}
         </Alert>
       )}
 
       {/* 平台统计卡片 */}
-      <Grid container spacing={3} mb={3}>
-        {stats.map((stat) => (
-          <Grid item xs={12} md={4} key={stat.platform}>
-            <Card 
-              sx={{ 
+      <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={3} mb={3}>
+        {stats.map(stat => (
+          <Box sx={{ width: "100%" }} md={4} key={stat.platform}>
+            <Card
+              sx={{
                 cursor: 'pointer',
-                '&:hover': { 
+                '&:hover': {
                   boxShadow: 3,
                   transform: 'translateY(-2px)',
-                  transition: 'all 0.2s ease-in-out'
-                }
+                  transition: 'all 0.2s ease-in-out',
+                },
               }}
               onClick={() => handlePlatformClick(stat.platform)}
             >
               <CardContent>
-                <Box display="flex" alignItems="center" mb={2}>
+                <Box display='flex' alignItems='center' mb={2}>
                   <Avatar
                     sx={{
                       bgcolor: getPlatformColor(stat.platform),
@@ -298,56 +336,63 @@ export function ProductMappingOverview() {
                   >
                     {getPlatformIcon(stat.platform)}
                   </Avatar>
-                  <Typography variant="h6" component="div">
-                    {stat.platform.charAt(0).toUpperCase() + stat.platform.slice(1)}
+                  <Typography variant='h6' component='div'>
+                    {stat.platform.charAt(0).toUpperCase() +
+                      stat.platform.slice(1)}
                   </Typography>
                 </Box>
-                
+
                 <Box mb={2}>
-                  <Typography variant="h4" component="div" color="primary">
+                  <Typography variant='h4' component='div' color='primary'>
                     {stat.totalMappings}
                   </Typography>
-                  <Typography variant="body2" color="text.secondary">
+                  <Typography variant='body2' color='text.secondary'>
                     总映射数
                   </Typography>
                 </Box>
 
                 <Box mb={2}>
-                  <Box display="flex" justifyContent="space-between" mb={1}>
-                    <Typography variant="body2">活跃映射</Typography>
-                    <Typography variant="body2">{stat.activeMappings}</Typography>
+                  <Box display='flex' justifyContent='space-between' mb={1}>
+                    <Typography variant='body2'>活跃映射</Typography>
+                    <Typography variant='body2'>
+                      {stat.activeMappings}
+                    </Typography>
                   </Box>
                   <LinearProgress
-                    variant="determinate"
+                    variant='determinate'
                     value={(stat.activeMappings / stat.totalMappings) * 100}
                     sx={{ height: 6, borderRadius: 3 }}
                   />
                 </Box>
 
-                <Box display="flex" justifyContent="space-between" alignItems="center">
+                <Box
+                  display='flex'
+                  justifyContent='space-between'
+                  alignItems='center'
+                >
                   <Chip
                     label={`${stat.pendingMappings} 待处理`}
-                    color="warning"
-                    size="small"
+                    color='warning'
+                    size='small'
                   />
-                  <Typography variant="caption" color="text.secondary">
+                  <Typography variant='caption' color='text.secondary'>
                     最后同步: {formatDate(stat.lastSync)}
                   </Typography>
                 </Box>
               </CardContent>
             </Card>
-          </Grid>
+          </Box>
         ))}
-      </Grid>
+      </Box>
 
       {/* 最近映射记录 */}
       <Card>
         <CardContent>
-          <Typography variant="h6" component="h2" mb={2}>
+          <Typography variant='h6' component='h2' mb={2}>
             最近映射记录
           </Typography>
-          
-          <TableContainer component={Paper} variant="outlined">
+
+          <TableContainer component={Paper} variant='outlined'>
             <Table>
               <TableHead>
                 <TableRow>
@@ -362,27 +407,27 @@ export function ProductMappingOverview() {
               <TableBody>
                 {recentMappings.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} align="center">
-                      <Typography variant="body2" color="text.secondary">
+                    <TableCell colSpan={6} align='center'>
+                      <Typography variant='body2' color='text.secondary'>
                         暂无映射记录
                       </Typography>
                     </TableCell>
                   </TableRow>
                 ) : (
-                  recentMappings.map((mapping) => (
+                  recentMappings.map(mapping => (
                     <TableRow key={mapping.id} hover>
                       <TableCell>
-                        <Typography variant="body2" fontWeight="medium">
+                        <Typography variant='body2' fontWeight='medium'>
                           {mapping.coreProduct}
                         </Typography>
                       </TableCell>
                       <TableCell>
-                        <Typography variant="body2">
+                        <Typography variant='body2'>
                           {mapping.externalProduct}
                         </Typography>
                       </TableCell>
                       <TableCell>
-                        <Box display="flex" alignItems="center">
+                        <Box display='flex' alignItems='center'>
                           <Avatar
                             sx={{
                               bgcolor: getPlatformColor(mapping.platform),
@@ -393,45 +438,52 @@ export function ProductMappingOverview() {
                           >
                             {getPlatformIcon(mapping.platform)}
                           </Avatar>
-                          <Typography variant="body2">
-                            {mapping.platform.charAt(0).toUpperCase() + mapping.platform.slice(1)}
+                          <Typography variant='body2'>
+                            {mapping.platform.charAt(0).toUpperCase() +
+                              mapping.platform.slice(1)}
                           </Typography>
                         </Box>
                       </TableCell>
                       <TableCell>
                         <Chip
-                          label={mapping.status === 'active' ? '活跃' : mapping.status === 'pending' ? '待处理' : '错误'}
+                          label={
+                            mapping.status === 'active'
+                              ? '活跃'
+                              : mapping.status === 'pending'
+                                ? '待处理'
+                                : '错误'
+                          }
                           color={getStatusColor(mapping.status) as any}
-                          size="small"
+                          size='small'
                         />
                       </TableCell>
                       <TableCell>
-                        <Typography variant="body2">
+                        <Typography variant='body2'>
                           {formatDate(mapping.createdAt)}
                         </Typography>
                       </TableCell>
                       <TableCell>
-                        <Box display="flex" gap={1}>
-                          <Tooltip title="查看详情">
-                            <IconButton 
-                              size="small"
+                        <Box display='flex' gap={1}>
+                          <Tooltip title='查看详情'>
+                            <IconButton
+                              size='small'
                               onClick={() => handleViewMapping(mapping.id)}
                             >
                               <ViewIcon />
                             </IconButton>
                           </Tooltip>
-                          <Tooltip title="编辑">
-                            <IconButton 
-                              size="small"
+                          <Tooltip title='编辑'>
+                            <IconButton
+                              size='small'
                               onClick={() => handleEditMapping(mapping.id)}
                             >
                               <EditIcon />
                             </IconButton>
                           </Tooltip>
-                          <Tooltip title="删除">
-                            <IconButton 
-                              size="small" 
-                              color="error"
+                          <Tooltip title='删除'>
+                            <IconButton
+                              size='small'
+                              color='error'
                               onClick={() => handleDeleteMapping(mapping.id)}
                             >
                               <DeleteIcon />

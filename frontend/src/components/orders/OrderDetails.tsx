@@ -43,8 +43,12 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
-  const [quantityByItemId, setQuantityByItemId] = useState<Record<string, number>>({});
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(
+    new Set()
+  );
+  const [quantityByItemId, setQuantityByItemId] = useState<
+    Record<string, number>
+  >({});
   const [creatingScm, setCreatingScm] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -82,11 +86,17 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
       else next.add(id);
       return next;
     });
-    setQuantityByItemId(prev => ({ ...prev, [id]: prev[id] ?? defaultQty ?? 1 }));
+    setQuantityByItemId(prev => ({
+      ...prev,
+      [id]: prev[id] ?? defaultQty ?? 1,
+    }));
   };
 
   const updateQty = (id: string, value: number) => {
-    setQuantityByItemId(prev => ({ ...prev, [id]: Math.max(1, Number(value) || 1) }));
+    setQuantityByItemId(prev => ({
+      ...prev,
+      [id]: Math.max(1, Number(value) || 1),
+    }));
   };
 
   const handleCreateScmOrder = async () => {
@@ -124,7 +134,10 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
         customer_phone: order.customer_phone || undefined,
         shipping_address: order.shipping_address,
         billing_address: order.billing_address || undefined,
-        routing_metadata: { from_ui: 'orders/[id]', created_via: 'manual_select' },
+        routing_metadata: {
+          from_ui: 'orders/[id]',
+          created_via: 'manual_select',
+        },
         shopify_order_id: order.external_order_id || undefined,
       };
 
@@ -450,7 +463,8 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
                     )}
                     <Typography variant='body2'>
                       {order.shipping_address.city},{' '}
-                      {order.shipping_address.province} {order.shipping_address.zip}
+                      {order.shipping_address.province}{' '}
+                      {order.shipping_address.zip}
                     </Typography>
                     <Typography variant='body2'>
                       {order.shipping_address.country}
@@ -499,7 +513,8 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
                       )}
                       <Typography variant='body2'>
                         {order.billing_address.city},{' '}
-                        {order.billing_address.province} {order.billing_address.zip}
+                        {order.billing_address.province}{' '}
+                        {order.billing_address.zip}
                       </Typography>
                       <Typography variant='body2'>
                         {order.billing_address.country}
@@ -521,7 +536,7 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
           )}
         </Stack>
 
-          {/* Line Items */}
+        {/* Line Items */}
         <Card>
           <CardContent>
             <Typography variant='h6' gutterBottom>
@@ -532,37 +547,41 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
                 {createError}
               </Alert>
             )}
-              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} mb={2}>
-                <Button
-                  variant='contained'
-                  onClick={handleCreateScmOrder}
-                  disabled={creatingScm || selectedItemIds.size === 0}
-                >
-                  {creatingScm ? '创建中...' : `创建核心SCM订单（已选 ${selectedItemIds.size} 项）`}
-                </Button>
-              </Stack>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} mb={2}>
+              <Button
+                variant='contained'
+                onClick={handleCreateScmOrder}
+                disabled={creatingScm || selectedItemIds.size === 0}
+              >
+                {creatingScm
+                  ? '创建中...'
+                  : `创建核心SCM订单（已选 ${selectedItemIds.size} 项）`}
+              </Button>
+            </Stack>
             <TableContainer component={Paper} variant='outlined'>
               <Table>
                 <TableHead>
                   <TableRow>
-                      <TableCell padding='checkbox'>选择</TableCell>
+                    <TableCell padding='checkbox'>选择</TableCell>
                     <TableCell>商品</TableCell>
                     <TableCell>SKU</TableCell>
-                      <TableCell align='right'>数量</TableCell>
-                      <TableCell align='right'>单价</TableCell>
-                      <TableCell align='right'>小计</TableCell>
+                    <TableCell align='right'>数量</TableCell>
+                    <TableCell align='right'>单价</TableCell>
+                    <TableCell align='right'>小计</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {(order.line_items || []).map(item => (
                     <TableRow key={item.id}>
-                        <TableCell padding='checkbox'>
-                          <Checkbox
-                            color='primary'
-                            checked={selectedItemIds.has(item.id)}
-                            onChange={() => toggleSelectItem(item.id, item.quantity)}
-                          />
-                        </TableCell>
+                      <TableCell padding='checkbox'>
+                        <Checkbox
+                          color='primary'
+                          checked={selectedItemIds.has(item.id)}
+                          onChange={() =>
+                            toggleSelectItem(item.id, item.quantity)
+                          }
+                        />
+                      </TableCell>
                       <TableCell>
                         <Box>
                           <Typography variant='body2' fontWeight='medium'>
@@ -590,39 +609,64 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
                             </Typography>
                           )}
                           {item.core_product_id && (
-                            <Typography variant='caption' color='primary' display='block'>
+                            <Typography
+                              variant='caption'
+                              color='primary'
+                              display='block'
+                            >
                               核心商品: {item.core_product_id}
                             </Typography>
                           )}
                           {item.core_variant_id && (
-                            <Typography variant='caption' color='primary' display='block'>
+                            <Typography
+                              variant='caption'
+                              color='primary'
+                              display='block'
+                            >
                               核心变体: {item.core_variant_id}
                             </Typography>
                           )}
                           {item.external_product_id && (
-                            <Typography variant='caption' color='text.secondary' display='block'>
+                            <Typography
+                              variant='caption'
+                              color='text.secondary'
+                              display='block'
+                            >
                               外部商品: {item.external_product_id}
                             </Typography>
                           )}
                           {item.external_variant_id && (
-                            <Typography variant='caption' color='text.secondary' display='block'>
+                            <Typography
+                              variant='caption'
+                              color='text.secondary'
+                              display='block'
+                            >
                               外部变体: {item.external_variant_id}
                             </Typography>
                           )}
                         </Box>
                       </TableCell>
                       <TableCell align='right'>
-                          {selectedItemIds.has(item.id) ? (
-                            <TextField
-                              type='number'
-                              size='small'
-                              inputProps={{ min: 1, style: { textAlign: 'right', width: 72 } }}
-                              value={quantityByItemId[item.id] ?? item.quantity ?? 1}
-                              onChange={e => updateQty(item.id, Number(e.target.value))}
-                            />
-                          ) : (
-                            <Typography variant='body2'>{item.quantity}</Typography>
-                          )}
+                        {selectedItemIds.has(item.id) ? (
+                          <TextField
+                            type='number'
+                            size='small'
+                            inputProps={{
+                              min: 1,
+                              style: { textAlign: 'right', width: 72 },
+                            }}
+                            value={
+                              quantityByItemId[item.id] ?? item.quantity ?? 1
+                            }
+                            onChange={e =>
+                              updateQty(item.id, Number(e.target.value))
+                            }
+                          />
+                        ) : (
+                          <Typography variant='body2'>
+                            {item.quantity}
+                          </Typography>
+                        )}
                       </TableCell>
                       <TableCell align='right'>
                         <Typography variant='body2'>

@@ -62,7 +62,13 @@ class TokenManager {
    */
   public getAccessToken(): string | null {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('access_token');
+      const token = localStorage.getItem('access_token');
+      console.log('🔍 TokenManager.getAccessToken:', {
+        hasToken: !!token,
+        tokenLength: token?.length,
+        tokenPrefix: token?.substring(0, 20) + '...',
+      });
+      return token;
     }
     return null;
   }

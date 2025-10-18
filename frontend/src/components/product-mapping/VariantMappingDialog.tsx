@@ -86,37 +86,47 @@ export function VariantMappingDialog({
     if (open && coreProduct.variants && printifyProduct.variants) {
       console.log('核心商品变体:', coreProduct.variants);
       console.log('Printify 变体:', printifyProduct.variants);
-      
+
       // 调试：检查变体数据结构
       if (coreProduct.variants.length > 0) {
         console.log('第一个核心商品变体的结构:', coreProduct.variants[0]);
-        console.log('第一个核心商品变体的 id_hashid:', coreProduct.variants[0].id_hashid);
+        console.log(
+          '第一个核心商品变体的 id_hashid:',
+          coreProduct.variants[0].id_hashid
+        );
       }
-      
-      const initialMappings: VariantMapping[] = coreProduct.variants.map((coreVariant, index) => {
-        // 使用 index 作为 ID，因为 coreVariant.id 可能是 undefined
-        const variantId = coreVariant.id || `variant-${index}`;
-        return {
-          core_variant_id: variantId,
-          external_variant_id: '', // 用户需要手动选择
-          core_variant_sku: coreVariant.sku,
-          external_variant_sku: '',
-          core_variant_title: coreVariant.title,
-          external_variant_title: '',
-        };
-      });
+
+      const initialMappings: VariantMapping[] = coreProduct.variants.map(
+        (coreVariant, index) => {
+          // 使用 index 作为 ID，因为 coreVariant.id 可能是 undefined
+          const variantId = coreVariant.id || `variant-${index}`;
+          return {
+            core_variant_id: variantId,
+            external_variant_id: '', // 用户需要手动选择
+            core_variant_sku: coreVariant.sku,
+            external_variant_sku: '',
+            core_variant_title: coreVariant.title,
+            external_variant_title: '',
+          };
+        }
+      );
       console.log('初始映射:', initialMappings);
       setMappings(initialMappings);
     }
   }, [open, coreProduct, printifyProduct]);
 
-  const handleVariantMappingChange = (coreVariantId: string, externalVariantId: string) => {
+  const handleVariantMappingChange = (
+    coreVariantId: string,
+    externalVariantId: string
+  ) => {
     console.log('变体映射变化:', { coreVariantId, externalVariantId });
-    
-    const externalVariant = printifyProduct.variants.find(v => v.id === externalVariantId);
-    
+
+    const externalVariant = printifyProduct.variants.find(
+      v => v.id === externalVariantId
+    );
+
     setMappings(prev => {
-      const newMappings = prev.map(mapping => 
+      const newMappings = prev.map(mapping =>
         mapping.core_variant_id === coreVariantId
           ? {
               ...mapping,
@@ -161,7 +171,7 @@ export function VariantMappingDialog({
       const createPromises = mappings.map(async (mapping, index) => {
         // 找到对应的核心商品变体，获取其真正的 hashid
         const coreVariant = coreProduct.variants[index];
-        
+
         console.log('创建映射数据:', {
           coreVariant,
           coreVariantHashid: coreVariant.id_hashid,
@@ -176,9 +186,9 @@ export function VariantMappingDialog({
             mapping_type: 'manual',
             sync_direction: 'bidirectional',
             sync_status: 'active',
-          }
+          },
         });
-        
+
         const mappingData = {
           core_product_id_hashid: coreProduct.id_hashid,
           core_variant_id_hashid: coreVariant.id_hashid || coreVariant.id,
@@ -214,49 +224,59 @@ export function VariantMappingDialog({
     }
   };
 
-  const getAvailablePrintifyVariants = (coreVariantId: string, currentMappings: VariantMapping[]) => {
-    const currentMapping = currentMappings.find(m => m.core_variant_id === coreVariantId);
+  const getAvailablePrintifyVariants = (
+    coreVariantId: string,
+    currentMappings: VariantMapping[]
+  ) => {
+    const currentMapping = currentMappings.find(
+      m => m.core_variant_id === coreVariantId
+    );
     const usedExternalIds = currentMappings
       .filter(m => m.core_variant_id !== coreVariantId && m.external_variant_id)
       .map(m => m.external_variant_id);
-    
-    const availableVariants = printifyProduct.variants.filter(v => 
-      !usedExternalIds.includes(v.id) || v.id === currentMapping?.external_variant_id
+
+    const availableVariants = printifyProduct.variants.filter(
+      v =>
+        !usedExternalIds.includes(v.id) ||
+        v.id === currentMapping?.external_variant_id
     );
-    
+
     console.log(`变体 ${coreVariantId} 的可用选项:`, {
       coreVariantId,
       currentMapping,
       usedExternalIds,
-      availableVariants: availableVariants.map(v => ({ id: v.id, title: v.title }))
+      availableVariants: availableVariants.map(v => ({
+        id: v.id,
+        title: v.title,
+      })),
     });
-    
+
     return availableVariants;
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
+    <Dialog open={open} onClose={onClose} maxWidth='lg' fullWidth>
       <DialogTitle>
         变体映射 - {coreProduct.title} → {printifyProduct.title}
       </DialogTitle>
-      
+
       <DialogContent>
         {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
+          <Alert severity='error' sx={{ mb: 2 }}>
             {error}
           </Alert>
         )}
 
-        <Grid container spacing={3}>
+        <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={3}>
           {/* 核心商品变体 */}
-          <Grid item xs={12} md={6}>
+          <Box sx={{ width: "100%" }} md={6}>
             <Card>
               <CardContent>
-                <Typography variant="h6" gutterBottom>
+                <Typography variant='h6' gutterBottom>
                   核心商品变体 ({coreProduct.variants.length})
                 </Typography>
-                <TableContainer component={Paper} variant="outlined">
-                  <Table size="small">
+                <TableContainer component={Paper} variant='outlined'>
+                  <Table size='small'>
                     <TableHead>
                       <TableRow>
                         <TableCell>SKU</TableCell>
@@ -279,17 +299,17 @@ export function VariantMappingDialog({
                 </TableContainer>
               </CardContent>
             </Card>
-          </Grid>
+          </Box>
 
           {/* Printify 变体 */}
-          <Grid item xs={12} md={6}>
+          <Box sx={{ width: "100%" }} md={6}>
             <Card>
               <CardContent>
-                <Typography variant="h6" gutterBottom>
+                <Typography variant='h6' gutterBottom>
                   Printify 变体 ({printifyProduct.variants.length})
                 </Typography>
-                <TableContainer component={Paper} variant="outlined">
-                  <Table size="small">
+                <TableContainer component={Paper} variant='outlined'>
+                  <Table size='small'>
                     <TableHead>
                       <TableRow>
                         <TableCell>SKU</TableCell>
@@ -300,7 +320,9 @@ export function VariantMappingDialog({
                     </TableHead>
                     <TableBody>
                       {printifyProduct.variants.map((variant, index) => (
-                        <TableRow key={`printify-variant-${variant.id}-${index}`}>
+                        <TableRow
+                          key={`printify-variant-${variant.id}-${index}`}
+                        >
                           <TableCell>{variant.sku}</TableCell>
                           <TableCell>{variant.title}</TableCell>
                           <TableCell>${variant.price}</TableCell>
@@ -312,17 +334,17 @@ export function VariantMappingDialog({
                 </TableContainer>
               </CardContent>
             </Card>
-          </Grid>
-        </Grid>
+          </Box>
+        </Box>
 
         <Divider sx={{ my: 3 }} />
 
         {/* 映射配置 */}
         <Box>
-          <Typography variant="h6" gutterBottom>
+          <Typography variant='h6' gutterBottom>
             变体映射配置
           </Typography>
-          <TableContainer component={Paper} variant="outlined">
+          <TableContainer component={Paper} variant='outlined'>
             <Table>
               <TableHead>
                 <TableRow>
@@ -333,38 +355,51 @@ export function VariantMappingDialog({
               </TableHead>
               <TableBody>
                 {mappings.map((mapping, index) => {
-                  const availableVariants = getAvailablePrintifyVariants(mapping.core_variant_id, mappings);
+                  const availableVariants = getAvailablePrintifyVariants(
+                    mapping.core_variant_id,
+                    mappings
+                  );
                   const isMapped = !!mapping.external_variant_id;
-                  
+
                   return (
-                    <TableRow key={`mapping-${index}-${mapping.core_variant_sku}`}>
+                    <TableRow
+                      key={`mapping-${index}-${mapping.core_variant_sku}`}
+                    >
                       <TableCell>
                         <Box>
-                          <Typography variant="body2" fontWeight="medium">
+                          <Typography variant='body2' fontWeight='medium'>
                             {mapping.core_variant_title}
                           </Typography>
-                          <Typography variant="caption" color="text.secondary">
+                          <Typography variant='caption' color='text.secondary'>
                             SKU: {mapping.core_variant_sku}
                           </Typography>
                         </Box>
                       </TableCell>
                       <TableCell>
-                        <FormControl fullWidth size="small">
+                        <FormControl fullWidth size='small'>
                           <Select
                             value={mapping.external_variant_id || ''}
-                            onChange={(e) => handleVariantMappingChange(mapping.core_variant_id, e.target.value)}
+                            onChange={e =>
+                              handleVariantMappingChange(
+                                mapping.core_variant_id,
+                                e.target.value
+                              )
+                            }
                             displayEmpty
                           >
-                            <MenuItem value="">
+                            <MenuItem value=''>
                               <em>选择 Printify 变体</em>
                             </MenuItem>
-                            {availableVariants.map((variant) => (
+                            {availableVariants.map(variant => (
                               <MenuItem key={variant.id} value={variant.id}>
                                 <Box>
-                                  <Typography variant="body2">
+                                  <Typography variant='body2'>
                                     {variant.title}
                                   </Typography>
-                                  <Typography variant="caption" color="text.secondary">
+                                  <Typography
+                                    variant='caption'
+                                    color='text.secondary'
+                                  >
                                     SKU: {variant.sku}
                                   </Typography>
                                 </Box>
@@ -375,9 +410,9 @@ export function VariantMappingDialog({
                       </TableCell>
                       <TableCell>
                         {isMapped ? (
-                          <Chip label="已映射" color="success" size="small" />
+                          <Chip label='已映射' color='success' size='small' />
                         ) : (
-                          <Chip label="未映射" color="default" size="small" />
+                          <Chip label='未映射' color='default' size='small' />
                         )}
                       </TableCell>
                     </TableRow>
@@ -395,7 +430,7 @@ export function VariantMappingDialog({
         </Button>
         <Button
           onClick={handleConfirm}
-          variant="contained"
+          variant='contained'
           disabled={loading || mappings.some(m => !m.external_variant_id)}
         >
           {loading ? <CircularProgress size={20} /> : '确认映射'}

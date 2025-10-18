@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 from enum import Enum
 
+from app.schemas.base import BaseResponse
+
 from app.core.database import get_async_db
 from app.core.tenant_auth_dependency import verify_tenant_auth
 from app.core.logging import get_logger
@@ -53,15 +55,13 @@ class RetryConfigRequest(BaseModel):
     backoff_multiplier: float = Field(2.0, ge=1.0, le=5.0, description="退避乘数")
 
 
-class RetryTaskResponse(BaseModel):
+class RetryTaskResponse(BaseResponse):
     """重试任务响应"""
     task_id: str
     operation_name: str
     status: str
     current_attempt: int
     total_attempts: int
-    created_at: str
-    updated_at: str
     last_error: Optional[str] = None
     result: Optional[Any] = None
 

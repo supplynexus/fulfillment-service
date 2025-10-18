@@ -8,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 
+from app.schemas.base import BaseResponse
+
 from app.core.database import get_async_db
 from app.core.tenant_auth_dependency import verify_tenant_auth
 from app.core.logging import get_logger
@@ -22,7 +24,7 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-class PrintifyProductResponse(BaseModel):
+class PrintifyProductResponse(BaseResponse):
     """Printify 商品响应模型"""
     id: int
     id_hashid: str
@@ -46,11 +48,7 @@ class PrintifyProductResponse(BaseModel):
     last_synced_at: Optional[str]
     sync_status: str
     sync_error: Optional[str]
-    created_at: str
-    updated_at: Optional[str]
-
-    class Config:
-        from_attributes = True
+    pass
 
 
 class PrintifyVariantResponse(BaseModel):
@@ -70,11 +68,7 @@ class PrintifyVariantResponse(BaseModel):
     is_available: bool
     options: Optional[List[int]]
     raw_data: Optional[Dict[str, Any]]
-    created_at: str
-    updated_at: Optional[str]
-
-    class Config:
-        from_attributes = True
+    pass
 
 
 class PrintifyProductListResponse(BaseModel):

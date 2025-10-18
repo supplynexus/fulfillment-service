@@ -11,10 +11,10 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   const startTime = Date.now();
-  
+
   try {
     logger.requestStart('POST', request.url, {
-      scm_order_id: params.id
+      scm_order_id: params.id,
     });
 
     // 获取前端 JWT token
@@ -28,15 +28,15 @@ export async function POST(
     }
 
     const frontendToken = authHeader.substring(7);
-    
+
     // 验证前端 JWT token
     const decodedToken = jwtUtilsServer.verifyToken(frontendToken);
     const { tenant_name: tenantName, sub: userId } = decodedToken;
-    
-    logger.info('🔍 开始处理创建 Printify 发货单请求', { 
-      tenantName, 
-      userId, 
-      scm_order_id: params.id 
+
+    logger.info('🔍 开始处理创建 Printify 发货单请求', {
+      tenantName,
+      userId,
+      scm_order_id: params.id,
     });
 
     // 生成后端签名
@@ -44,16 +44,22 @@ export async function POST(
     const nonce = Math.random().toString(36).substring(2, 15);
     const bodyString = '';
     const signatureString = `POST/api/v1/scm-orders/${params.id}/create-printify-order${timestamp}${nonce}${tenantName}${bodyString}`;
-    
+
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
-    const signature = generateBackendSignature(privateKey, signatureString, timestamp, nonce, tenantName);
+    const signature = generateBackendSignature(
+      privateKey,
+      signatureString,
+      timestamp,
+      nonce,
+      tenantName
+    );
 
     // 调用后端 API
     const backendUrl = `${process.env.BACKEND_API_URL || 'http://backend:8000'}/api/v1/scm-orders/${params.id}/create-printify-order`;
-    
-    logger.info('📡 调用后端创建 Printify 发货单 API', { 
+
+    logger.info('📡 调用后端创建 Printify 发货单 API', {
       backendUrl,
-      scm_order_id: params.id
+      scm_order_id: params.id,
     });
 
     const backendResponse = await fetch(backendUrl, {
@@ -72,43 +78,47 @@ export async function POST(
     const duration = Date.now() - startTime;
 
     if (backendResponse.ok) {
-      logger.requestComplete('POST', request.url, backendResponse.status, duration);
-      logger.info('✅ Printify 发货单创建成功', { 
+      logger.requestComplete(
+        'POST',
+        request.url,
+        backendResponse.status,
+        duration
+      );
+      logger.info('✅ Printify 发货单创建成功', {
         success: responseData.success,
         printify_order_id: responseData.printify_order_id,
-        external_order_id: responseData.external_order_id
+        external_order_id: responseData.external_order_id,
       });
-      
+
       return NextResponse.json(responseData);
     } else {
-      logger.error('❌ 后端创建 Printify 发货单失败', { 
+      logger.error('❌ 后端创建 Printify 发货单失败', {
         status: backendResponse.status,
-        error: responseData 
+        error: responseData,
       });
-      
+
       return NextResponse.json(
-        { 
-          success: false, 
+        {
+          success: false,
           message: responseData.detail || '创建 Printify 发货单失败',
-          error: responseData 
+          error: responseData,
         },
         { status: backendResponse.status }
       );
     }
-
   } catch (error: any) {
     const duration = Date.now() - startTime;
-    logger.error('❌ 创建 Printify 发货单请求处理失败', { 
+    logger.error('❌ 创建 Printify 发货单请求处理失败', {
       error: error.message,
       duration,
-      scm_order_id: params.id
+      scm_order_id: params.id,
     });
-    
+
     return NextResponse.json(
-      { 
-        success: false, 
+      {
+        success: false,
         message: 'Internal server error',
-        error: error.message 
+        error: error.message,
       },
       { status: 500 }
     );

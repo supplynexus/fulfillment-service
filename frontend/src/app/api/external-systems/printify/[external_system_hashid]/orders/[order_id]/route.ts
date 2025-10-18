@@ -8,7 +8,9 @@ const logger = createLogger('api.printify.order-details');
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ external_system_hashid: string; order_id: string }> }
+  {
+    params,
+  }: { params: Promise<{ external_system_hashid: string; order_id: string }> }
 ) {
   const startTime = Date.now();
   const { external_system_hashid, order_id } = await params;
@@ -63,8 +65,7 @@ export async function GET(
       orderId: order_id,
     });
 
-    const backendApiUrl =
-      process.env.BACKEND_API_URL || 'http://backend:8000';
+    const backendApiUrl = process.env.BACKEND_API_URL || 'http://backend:8000';
     const backendEndpoint = `${backendApiUrl}${backendPath}`;
 
     logger.info('Forwarding request to backend', { backendEndpoint });
@@ -114,4 +115,3 @@ export async function GET(
     );
   }
 }
-

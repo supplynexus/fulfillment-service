@@ -86,25 +86,35 @@ interface PlatformMappingProps {
 
 export function PlatformMapping({ platform }: PlatformMappingProps) {
   const [coreProducts, setCoreProducts] = useState<CoreProduct[]>([]);
-  const [externalProducts, setExternalProducts] = useState<ExternalProduct[]>([]);
+  const [externalProducts, setExternalProducts] = useState<ExternalProduct[]>(
+    []
+  );
   const [mappings, setMappings] = useState<ProductMapping[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+
   // 搜索和筛选状态
   const [coreSearchTerm, setCoreSearchTerm] = useState('');
   const [externalSearchTerm, setExternalSearchTerm] = useState('');
-  const [selectedCoreProducts, setSelectedCoreProducts] = useState<string[]>([]);
-  const [selectedExternalProducts, setSelectedExternalProducts] = useState<string[]>([]);
-  
+  const [selectedCoreProducts, setSelectedCoreProducts] = useState<string[]>(
+    []
+  );
+  const [selectedExternalProducts, setSelectedExternalProducts] = useState<
+    string[]
+  >([]);
+
   // 映射对话框状态
   const [mappingDialogOpen, setMappingDialogOpen] = useState(false);
-  const [mappingStatus, setMappingStatus] = useState<'active' | 'pending'>('active');
-  
+  const [mappingStatus, setMappingStatus] = useState<'active' | 'pending'>(
+    'active'
+  );
+
   // 详情对话框状态
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
-  const [selectedMapping, setSelectedMapping] = useState<ProductMapping | null>(null);
-  
+  const [selectedMapping, setSelectedMapping] = useState<ProductMapping | null>(
+    null
+  );
+
   // 批量映射对话框状态
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
 
@@ -126,39 +136,45 @@ export function PlatformMapping({ platform }: PlatformMappingProps) {
       });
 
       const coreProductsData = coreProductsResponse.data.products || [];
-      const formattedCoreProducts: CoreProduct[] = coreProductsData.map((product: any) => ({
-        id_hashid: product.id_hashid,
-        title: product.title,
-        vendor: product.vendor || 'Unknown',
-        product_type: product.product_type || 'Unknown',
-        status: product.status,
-        is_active: product.is_active,
-        is_available: product.is_available,
-        created_at: product.created_at,
-      }));
+      const formattedCoreProducts: CoreProduct[] = coreProductsData.map(
+        (product: any) => ({
+          id_hashid: product.id_hashid,
+          title: product.title,
+          vendor: product.vendor || 'Unknown',
+          product_type: product.product_type || 'Unknown',
+          status: product.status,
+          is_active: product.is_active,
+          is_available: product.is_available,
+          created_at: product.created_at,
+        })
+      );
 
       // 获取外部商品数据（根据平台类型）
       let externalProductsData: any[] = [];
       if (platform === 'shopify') {
-        const externalProductsResponse = await frontendApi.get('/api/external-products', {
-          params: {
-            page: 1,
-            limit: 100,
-          },
-        });
+        const externalProductsResponse = await frontendApi.get(
+          '/api/external-products',
+          {
+            params: {
+              page: 1,
+              limit: 100,
+            },
+          }
+        );
         externalProductsData = externalProductsResponse.data.products || [];
       }
 
-      const formattedExternalProducts: ExternalProduct[] = externalProductsData.map((product: any) => ({
-        id_hashid: product.id,
-        title: product.title,
-        vendor: product.vendor || 'Unknown',
-        product_type: product.product_type || 'Unknown',
-        status: product.status,
-        price: product.price || 0,
-        inventory_quantity: product.inventory_quantity || 0,
-        created_at: product.created_at,
-      }));
+      const formattedExternalProducts: ExternalProduct[] =
+        externalProductsData.map((product: any) => ({
+          id_hashid: product.id,
+          title: product.title,
+          vendor: product.vendor || 'Unknown',
+          product_type: product.product_type || 'Unknown',
+          status: product.status,
+          price: product.price || 0,
+          inventory_quantity: product.inventory_quantity || 0,
+          created_at: product.created_at,
+        }));
 
       // 获取现有映射关系
       const mappings: ProductMapping[] = [];
@@ -169,7 +185,9 @@ export function PlatformMapping({ platform }: PlatformMappingProps) {
       setMappings(mappings);
     } catch (err: any) {
       console.error('Failed to fetch data:', err);
-      setError(err.response?.data?.detail || err.message || 'Failed to fetch data');
+      setError(
+        err.response?.data?.detail || err.message || 'Failed to fetch data'
+      );
     } finally {
       setLoading(false);
     }
@@ -218,38 +236,47 @@ export function PlatformMapping({ platform }: PlatformMappingProps) {
     }
   };
 
-  const isProductMapped = (coreProductId: string, externalProductId: string) => {
+  const isProductMapped = (
+    coreProductId: string,
+    externalProductId: string
+  ) => {
     return mappings.some(
-      mapping => 
-        mapping.core_product_id === coreProductId && 
+      mapping =>
+        mapping.core_product_id === coreProductId &&
         mapping.external_product_id === externalProductId
     );
   };
 
   const handleCoreProductSelect = (productId: string) => {
-    setSelectedCoreProducts(prev => 
-      prev.includes(productId) 
+    setSelectedCoreProducts(prev =>
+      prev.includes(productId)
         ? prev.filter(id => id !== productId)
         : [...prev, productId]
     );
   };
 
   const handleExternalProductSelect = (productId: string) => {
-    setSelectedExternalProducts(prev => 
-      prev.includes(productId) 
+    setSelectedExternalProducts(prev =>
+      prev.includes(productId)
         ? prev.filter(id => id !== productId)
         : [...prev, productId]
     );
   };
 
   const handleCreateMapping = () => {
-    if (selectedCoreProducts.length === 0 || selectedExternalProducts.length === 0) {
+    if (
+      selectedCoreProducts.length === 0 ||
+      selectedExternalProducts.length === 0
+    ) {
       setError('请选择要映射的商品');
       return;
     }
-    
+
     // 如果选择了多个商品，显示批量映射对话框
-    if (selectedCoreProducts.length > 1 || selectedExternalProducts.length > 1) {
+    if (
+      selectedCoreProducts.length > 1 ||
+      selectedExternalProducts.length > 1
+    ) {
       setBatchDialogOpen(true);
     } else {
       setMappingDialogOpen(true);
@@ -269,7 +296,7 @@ export function PlatformMapping({ platform }: PlatformMappingProps) {
           });
         }
       }
-      
+
       setMappingDialogOpen(false);
       setSelectedCoreProducts([]);
       setSelectedExternalProducts([]);
@@ -277,7 +304,9 @@ export function PlatformMapping({ platform }: PlatformMappingProps) {
       await fetchData();
     } catch (err: any) {
       console.error('Failed to create mapping:', err);
-      setError(err.response?.data?.detail || err.message || 'Failed to create mapping');
+      setError(
+        err.response?.data?.detail || err.message || 'Failed to create mapping'
+      );
     }
   };
 
@@ -304,7 +333,10 @@ export function PlatformMapping({ platform }: PlatformMappingProps) {
     await fetchData();
   };
 
-  const handleBatchMappingConfirm = async (mappings: any[], status: 'active' | 'pending') => {
+  const handleBatchMappingConfirm = async (
+    mappings: any[],
+    status: 'active' | 'pending'
+  ) => {
     // 这里应该调用 API 创建批量映射
     console.log('Creating batch mappings:', mappings, status);
     setBatchDialogOpen(false);
@@ -318,19 +350,26 @@ export function PlatformMapping({ platform }: PlatformMappingProps) {
     setSelectedExternalProducts([]);
   };
 
-  const filteredCoreProducts = coreProducts.filter(product =>
-    product.title.toLowerCase().includes(coreSearchTerm.toLowerCase()) ||
-    product.vendor.toLowerCase().includes(coreSearchTerm.toLowerCase())
+  const filteredCoreProducts = coreProducts.filter(
+    product =>
+      product.title.toLowerCase().includes(coreSearchTerm.toLowerCase()) ||
+      product.vendor.toLowerCase().includes(coreSearchTerm.toLowerCase())
   );
 
-  const filteredExternalProducts = externalProducts.filter(product =>
-    product.title.toLowerCase().includes(externalSearchTerm.toLowerCase()) ||
-    product.vendor.toLowerCase().includes(externalSearchTerm.toLowerCase())
+  const filteredExternalProducts = externalProducts.filter(
+    product =>
+      product.title.toLowerCase().includes(externalSearchTerm.toLowerCase()) ||
+      product.vendor.toLowerCase().includes(externalSearchTerm.toLowerCase())
   );
 
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+      <Box
+        display='flex'
+        justifyContent='center'
+        alignItems='center'
+        minHeight='400px'
+      >
         <CircularProgress />
       </Box>
     );
@@ -338,17 +377,22 @@ export function PlatformMapping({ platform }: PlatformMappingProps) {
 
   return (
     <Box>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Box display="flex" alignItems="center" gap={2}>
+      <Box
+        display='flex'
+        justifyContent='space-between'
+        alignItems='center'
+        mb={3}
+      >
+        <Box display='flex' alignItems='center' gap={2}>
           <Avatar sx={{ bgcolor: getPlatformColor() }}>
             {getPlatformIcon()}
           </Avatar>
-          <Typography variant="h4" component="h1">
+          <Typography variant='h4' component='h1'>
             {getPlatformName()} 商品映射
           </Typography>
         </Box>
         <Button
-          variant="outlined"
+          variant='outlined'
           startIcon={<RefreshIcon />}
           onClick={fetchData}
           disabled={loading}
@@ -358,49 +402,61 @@ export function PlatformMapping({ platform }: PlatformMappingProps) {
       </Box>
 
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
+        <Alert severity='error' sx={{ mb: 2 }}>
           {error}
         </Alert>
       )}
 
       {/* 映射操作区域 */}
-      {selectedCoreProducts.length > 0 && selectedExternalProducts.length > 0 && (
-        <Card sx={{ mb: 3, bgcolor: 'primary.light', color: 'primary.contrastText' }}>
-          <CardContent>
-            <Box display="flex" justifyContent="space-between" alignItems="center">
-              <Typography variant="h6">
-                已选择 {selectedCoreProducts.length} 个核心商品 和 {selectedExternalProducts.length} 个外部商品
-              </Typography>
-              <Button
-                variant="contained"
-                startIcon={<LinkIcon />}
-                onClick={handleCreateMapping}
-                sx={{ bgcolor: 'white', color: 'primary.main' }}
+      {selectedCoreProducts.length > 0 &&
+        selectedExternalProducts.length > 0 && (
+          <Card
+            sx={{
+              mb: 3,
+              bgcolor: 'primary.light',
+              color: 'primary.contrastText',
+            }}
+          >
+            <CardContent>
+              <Box
+                display='flex'
+                justifyContent='space-between'
+                alignItems='center'
               >
-                创建映射
-              </Button>
-            </Box>
-          </CardContent>
-        </Card>
-      )}
+                <Typography variant='h6'>
+                  已选择 {selectedCoreProducts.length} 个核心商品 和{' '}
+                  {selectedExternalProducts.length} 个外部商品
+                </Typography>
+                <Button
+                  variant='contained'
+                  startIcon={<LinkIcon />}
+                  onClick={handleCreateMapping}
+                  sx={{ bgcolor: 'white', color: 'primary.main' }}
+                >
+                  创建映射
+                </Button>
+              </Box>
+            </CardContent>
+          </Card>
+        )}
 
-      <Grid container spacing={3}>
+      <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={3}>
         {/* 核心商品列表 */}
-        <Grid item xs={12} md={6}>
+        <Box sx={{ width: "100%" }} md={6}>
           <Card>
             <CardContent>
-              <Typography variant="h6" component="h2" mb={2}>
+              <Typography variant='h6' component='h2' mb={2}>
                 核心商品
               </Typography>
-              
+
               <TextField
                 fullWidth
-                placeholder="搜索核心商品..."
+                placeholder='搜索核心商品...'
                 value={coreSearchTerm}
-                onChange={(e) => setCoreSearchTerm(e.target.value)}
+                onChange={e => setCoreSearchTerm(e.target.value)}
                 InputProps={{
                   startAdornment: (
-                    <InputAdornment position="start">
+                    <InputAdornment position='start'>
                       <SearchIcon />
                     </InputAdornment>
                   ),
@@ -408,32 +464,40 @@ export function PlatformMapping({ platform }: PlatformMappingProps) {
                 sx={{ mb: 2 }}
               />
 
-              <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 400 }}>
+              <TableContainer
+                component={Paper}
+                variant='outlined'
+                sx={{ maxHeight: 400 }}
+              >
                 <Table stickyHeader>
                   <TableHead>
                     <TableRow>
-                      <TableCell padding="checkbox">选择</TableCell>
+                      <TableCell padding='checkbox'>选择</TableCell>
                       <TableCell>商品名称</TableCell>
                       <TableCell>供应商</TableCell>
                       <TableCell>状态</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {filteredCoreProducts.map((product) => (
+                    {filteredCoreProducts.map(product => (
                       <TableRow key={product.id_hashid} hover>
-                        <TableCell padding="checkbox">
+                        <TableCell padding='checkbox'>
                           <Checkbox
-                            checked={selectedCoreProducts.includes(product.id_hashid)}
-                            onChange={() => handleCoreProductSelect(product.id_hashid)}
+                            checked={selectedCoreProducts.includes(
+                              product.id_hashid
+                            )}
+                            onChange={() =>
+                              handleCoreProductSelect(product.id_hashid)
+                            }
                           />
                         </TableCell>
                         <TableCell>
-                          <Typography variant="body2" fontWeight="medium">
+                          <Typography variant='body2' fontWeight='medium'>
                             {product.title}
                           </Typography>
                         </TableCell>
                         <TableCell>
-                          <Typography variant="body2">
+                          <Typography variant='body2'>
                             {product.vendor}
                           </Typography>
                         </TableCell>
@@ -441,7 +505,7 @@ export function PlatformMapping({ platform }: PlatformMappingProps) {
                           <Chip
                             label={product.status}
                             color={product.is_active ? 'success' : 'default'}
-                            size="small"
+                            size='small'
                           />
                         </TableCell>
                       </TableRow>
@@ -451,24 +515,24 @@ export function PlatformMapping({ platform }: PlatformMappingProps) {
               </TableContainer>
             </CardContent>
           </Card>
-        </Grid>
+        </Box>
 
         {/* 外部商品列表 */}
-        <Grid item xs={12} md={6}>
+        <Box sx={{ width: "100%" }} md={6}>
           <Card>
             <CardContent>
-              <Typography variant="h6" component="h2" mb={2}>
+              <Typography variant='h6' component='h2' mb={2}>
                 {getPlatformName()} 商品
               </Typography>
-              
+
               <TextField
                 fullWidth
                 placeholder={`搜索${getPlatformName()}商品...`}
                 value={externalSearchTerm}
-                onChange={(e) => setExternalSearchTerm(e.target.value)}
+                onChange={e => setExternalSearchTerm(e.target.value)}
                 InputProps={{
                   startAdornment: (
-                    <InputAdornment position="start">
+                    <InputAdornment position='start'>
                       <SearchIcon />
                     </InputAdornment>
                   ),
@@ -476,11 +540,15 @@ export function PlatformMapping({ platform }: PlatformMappingProps) {
                 sx={{ mb: 2 }}
               />
 
-              <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 400 }}>
+              <TableContainer
+                component={Paper}
+                variant='outlined'
+                sx={{ maxHeight: 400 }}
+              >
                 <Table stickyHeader>
                   <TableHead>
                     <TableRow>
-                      <TableCell padding="checkbox">选择</TableCell>
+                      <TableCell padding='checkbox'>选择</TableCell>
                       <TableCell>商品名称</TableCell>
                       <TableCell>价格</TableCell>
                       <TableCell>库存</TableCell>
@@ -488,34 +556,42 @@ export function PlatformMapping({ platform }: PlatformMappingProps) {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {filteredExternalProducts.map((product) => (
+                    {filteredExternalProducts.map(product => (
                       <TableRow key={product.id_hashid} hover>
-                        <TableCell padding="checkbox">
+                        <TableCell padding='checkbox'>
                           <Checkbox
-                            checked={selectedExternalProducts.includes(product.id_hashid)}
-                            onChange={() => handleExternalProductSelect(product.id_hashid)}
+                            checked={selectedExternalProducts.includes(
+                              product.id_hashid
+                            )}
+                            onChange={() =>
+                              handleExternalProductSelect(product.id_hashid)
+                            }
                           />
                         </TableCell>
                         <TableCell>
-                          <Typography variant="body2" fontWeight="medium">
+                          <Typography variant='body2' fontWeight='medium'>
                             {product.title}
                           </Typography>
                         </TableCell>
                         <TableCell>
-                          <Typography variant="body2">
+                          <Typography variant='body2'>
                             ${product.price}
                           </Typography>
                         </TableCell>
                         <TableCell>
-                          <Typography variant="body2">
+                          <Typography variant='body2'>
                             {product.inventory_quantity}
                           </Typography>
                         </TableCell>
                         <TableCell>
                           <Chip
                             label={product.status}
-                            color={product.status === 'active' ? 'success' : 'default'}
-                            size="small"
+                            color={
+                              product.status === 'active'
+                                ? 'success'
+                                : 'default'
+                            }
+                            size='small'
                           />
                         </TableCell>
                       </TableRow>
@@ -525,18 +601,18 @@ export function PlatformMapping({ platform }: PlatformMappingProps) {
               </TableContainer>
             </CardContent>
           </Card>
-        </Grid>
-      </Grid>
+        </Box>
+      </Box>
 
       {/* 现有映射列表 */}
       {mappings.length > 0 && (
         <Card sx={{ mt: 3 }}>
           <CardContent>
-            <Typography variant="h6" component="h2" mb={2}>
+            <Typography variant='h6' component='h2' mb={2}>
               现有映射关系
             </Typography>
-            
-            <TableContainer component={Paper} variant="outlined">
+
+            <TableContainer component={Paper} variant='outlined'>
               <Table>
                 <TableHead>
                   <TableRow>
@@ -548,56 +624,74 @@ export function PlatformMapping({ platform }: PlatformMappingProps) {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {mappings.map((mapping) => {
-                    const coreProduct = coreProducts.find(p => p.id_hashid === mapping.core_product_id);
-                    const externalProduct = externalProducts.find(p => p.id_hashid === mapping.external_product_id);
-                    
+                  {mappings.map(mapping => {
+                    const coreProduct = coreProducts.find(
+                      p => p.id_hashid === mapping.core_product_id
+                    );
+                    const externalProduct = externalProducts.find(
+                      p => p.id_hashid === mapping.external_product_id
+                    );
+
                     return (
                       <TableRow key={mapping.id} hover>
                         <TableCell>
-                          <Typography variant="body2" fontWeight="medium">
+                          <Typography variant='body2' fontWeight='medium'>
                             {coreProduct?.title || 'Unknown'}
                           </Typography>
                         </TableCell>
                         <TableCell>
-                          <Typography variant="body2">
+                          <Typography variant='body2'>
                             {externalProduct?.title || 'Unknown'}
                           </Typography>
                         </TableCell>
                         <TableCell>
                           <Chip
-                            label={mapping.status === 'active' ? '活跃' : mapping.status === 'pending' ? '待处理' : '错误'}
-                            color={mapping.status === 'active' ? 'success' : mapping.status === 'pending' ? 'warning' : 'error'}
-                            size="small"
+                            label={
+                              mapping.status === 'active'
+                                ? '活跃'
+                                : mapping.status === 'pending'
+                                  ? '待处理'
+                                  : '错误'
+                            }
+                            color={
+                              mapping.status === 'active'
+                                ? 'success'
+                                : mapping.status === 'pending'
+                                  ? 'warning'
+                                  : 'error'
+                            }
+                            size='small'
                           />
                         </TableCell>
                         <TableCell>
-                          <Typography variant="body2">
-                            {new Date(mapping.created_at).toLocaleDateString('zh-CN')}
+                          <Typography variant='body2'>
+                            {new Date(mapping.created_at).toLocaleDateString(
+                              'zh-CN'
+                            )}
                           </Typography>
                         </TableCell>
                         <TableCell>
-                          <Box display="flex" gap={1}>
-                            <Tooltip title="查看详情">
-                              <IconButton 
-                                size="small"
+                          <Box display='flex' gap={1}>
+                            <Tooltip title='查看详情'>
+                              <IconButton
+                                size='small'
                                 onClick={() => handleViewMappingDetail(mapping)}
                               >
                                 <ViewIcon />
                               </IconButton>
                             </Tooltip>
-                            <Tooltip title="编辑映射">
-                              <IconButton 
-                                size="small"
+                            <Tooltip title='编辑映射'>
+                              <IconButton
+                                size='small'
                                 onClick={() => handleEditMapping(mapping)}
                               >
                                 <EditIcon />
                               </IconButton>
                             </Tooltip>
-                            <Tooltip title="删除映射">
-                              <IconButton 
-                                size="small" 
-                                color="error"
+                            <Tooltip title='删除映射'>
+                              <IconButton
+                                size='small'
+                                color='error'
                                 onClick={() => handleRemoveMapping(mapping.id)}
                               >
                                 <UnlinkIcon />
@@ -616,28 +710,36 @@ export function PlatformMapping({ platform }: PlatformMappingProps) {
       )}
 
       {/* 映射确认对话框 */}
-      <Dialog open={mappingDialogOpen} onClose={() => setMappingDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog
+        open={mappingDialogOpen}
+        onClose={() => setMappingDialogOpen(false)}
+        maxWidth='sm'
+        fullWidth
+      >
         <DialogTitle>确认创建映射</DialogTitle>
         <DialogContent>
-          <Typography variant="body2" mb={2}>
-            您即将创建 {selectedCoreProducts.length} 个核心商品与 {selectedExternalProducts.length} 个外部商品的映射关系。
+          <Typography variant='body2' mb={2}>
+            您即将创建 {selectedCoreProducts.length} 个核心商品与{' '}
+            {selectedExternalProducts.length} 个外部商品的映射关系。
           </Typography>
-          
+
           <FormControl fullWidth sx={{ mt: 2 }}>
             <InputLabel>映射状态</InputLabel>
             <Select
               value={mappingStatus}
-              onChange={(e) => setMappingStatus(e.target.value as 'active' | 'pending')}
-              label="映射状态"
+              onChange={e =>
+                setMappingStatus(e.target.value as 'active' | 'pending')
+              }
+              label='映射状态'
             >
-              <MenuItem value="active">活跃</MenuItem>
-              <MenuItem value="pending">待处理</MenuItem>
+              <MenuItem value='active'>活跃</MenuItem>
+              <MenuItem value='pending'>待处理</MenuItem>
             </Select>
           </FormControl>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setMappingDialogOpen(false)}>取消</Button>
-          <Button onClick={handleConfirmMapping} variant="contained">
+          <Button onClick={handleConfirmMapping} variant='contained'>
             确认创建
           </Button>
         </DialogActions>
@@ -648,8 +750,20 @@ export function PlatformMapping({ platform }: PlatformMappingProps) {
         open={detailDialogOpen}
         onClose={() => setDetailDialogOpen(false)}
         mapping={selectedMapping}
-        coreProduct={selectedMapping ? coreProducts.find(p => p.id_hashid === selectedMapping.core_product_id) || null : null}
-        externalProduct={selectedMapping ? externalProducts.find(p => p.id_hashid === selectedMapping.external_product_id) || null : null}
+        coreProduct={
+          selectedMapping
+            ? coreProducts.find(
+                p => p.id_hashid === selectedMapping.core_product_id
+              ) || null
+            : null
+        }
+        externalProduct={
+          selectedMapping
+            ? externalProducts.find(
+                p => p.id_hashid === selectedMapping.external_product_id
+              ) || null
+            : null
+        }
         platform={platform}
         onEdit={handleEditMapping}
         onDelete={handleRemoveMapping}
@@ -660,8 +774,12 @@ export function PlatformMapping({ platform }: PlatformMappingProps) {
       <BatchMappingDialog
         open={batchDialogOpen}
         onClose={() => setBatchDialogOpen(false)}
-        coreProducts={selectedCoreProducts.map(id => coreProducts.find(p => p.id_hashid === id)!).filter(Boolean)}
-        externalProducts={selectedExternalProducts.map(id => externalProducts.find(p => p.id_hashid === id)!).filter(Boolean)}
+        coreProducts={selectedCoreProducts
+          .map(id => coreProducts.find(p => p.id_hashid === id)!)
+          .filter(Boolean)}
+        externalProducts={selectedExternalProducts
+          .map(id => externalProducts.find(p => p.id_hashid === id)!)
+          .filter(Boolean)}
         platform={getPlatformName()}
         onConfirm={handleBatchMappingConfirm}
         onCancel={handleBatchMappingCancel}

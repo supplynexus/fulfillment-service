@@ -54,7 +54,7 @@ export function OrdersList() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
-  
+
   // 删除相关状态
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -62,7 +62,9 @@ export function OrdersList() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
-  const [sortBy, setSortBy] = useState<'created_at' | 'order_date'>('created_at');
+  const [sortBy, setSortBy] = useState<'created_at' | 'order_date'>(
+    'created_at'
+  );
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   const fetchOrders = useCallback(async () => {
@@ -85,7 +87,7 @@ export function OrdersList() {
         total: response.data.total,
         total_pages: response.data.total_pages,
         current_page: response.data.current_page,
-        fullResponse: response.data
+        fullResponse: response.data,
       });
 
       setOrders(response.data.orders || []);
@@ -112,7 +114,10 @@ export function OrdersList() {
     fetchOrders();
   };
 
-  const handlePageChange = (event: React.ChangeEvent<unknown>, page: number) => {
+  const handlePageChange = (
+    event: React.ChangeEvent<unknown>,
+    page: number
+  ) => {
     setCurrentPage(page);
   };
 
@@ -133,7 +138,9 @@ export function OrdersList() {
       setError(null);
 
       // 首先获取所有 Shopify 店铺
-      const storesResponse = await frontendApi.get('/api/external-systems?system_type=shopify');
+      const storesResponse = await frontendApi.get(
+        '/api/external-systems?system_type=shopify'
+      );
       const shopifyStores = storesResponse.data.external_systems || [];
 
       if (shopifyStores.length === 0) {
@@ -148,7 +155,7 @@ export function OrdersList() {
       for (const store of shopifyStores) {
         try {
           setSyncMessage(`正在同步店铺: ${store.name}...`);
-          
+
           const syncResponse = await frontendApi.post(
             `/api/external-systems/shopify/${store.id_hashid}/sync-orders`,
             {
@@ -159,7 +166,9 @@ export function OrdersList() {
 
           if (syncResponse.data.success) {
             totalSynced += syncResponse.data.orders_synced || 0;
-            console.log(`✅ 店铺 ${store.name} 同步成功: ${syncResponse.data.orders_synced || 0} 个订单`);
+            console.log(
+              `✅ 店铺 ${store.name} 同步成功: ${syncResponse.data.orders_synced || 0} 个订单`
+            );
           }
         } catch (storeError: any) {
           console.error(`❌ 店铺 ${store.name} 同步失败:`, storeError);
@@ -170,12 +179,13 @@ export function OrdersList() {
       if (totalErrors === 0) {
         setSyncMessage(`✅ 同步完成！共同步了 ${totalSynced} 个订单`);
       } else {
-        setSyncMessage(`⚠️ 同步完成，成功同步 ${totalSynced} 个订单，${totalErrors} 个店铺同步失败`);
+        setSyncMessage(
+          `⚠️ 同步完成，成功同步 ${totalSynced} 个订单，${totalErrors} 个店铺同步失败`
+        );
       }
 
       // 同步完成后刷新订单列表
       await fetchOrders();
-
     } catch (error: any) {
       console.error('❌ Shopify 订单同步失败:', error);
       setError(error.response?.data?.detail || '同步失败，请稍后重试');
@@ -215,9 +225,9 @@ export function OrdersList() {
   const handleDeleteOrder = async (orderId: string) => {
     try {
       setDeletingOrders(prev => new Set(prev).add(orderId));
-      
+
       const response = await frontendApi.delete(`/api/orders/${orderId}`);
-      
+
       if (response.data.success) {
         // 删除成功后刷新列表
         fetchOrders();
@@ -227,7 +237,9 @@ export function OrdersList() {
       }
     } catch (error: any) {
       console.error('❌ 删除订单失败:', error);
-      setError(`删除失败：${error.response?.data?.detail || error.message || '网络错误'}`);
+      setError(
+        `删除失败：${error.response?.data?.detail || error.message || '网络错误'}`
+      );
     } finally {
       setDeletingOrders(prev => {
         const newSet = new Set(prev);
@@ -244,9 +256,9 @@ export function OrdersList() {
     }
 
     setBulkDeleting(true);
-    
+
     try {
-      const deletePromises = Array.from(selectedOrders).map(async (orderId) => {
+      const deletePromises = Array.from(selectedOrders).map(async orderId => {
         try {
           const response = await frontendApi.delete(`/api/orders/${orderId}`);
           return { orderId, success: response.data.success };
@@ -304,9 +316,11 @@ export function OrdersList() {
     }
   };
 
-  const getFulfillmentStatusColor = (fulfillmentStatus: string | null | undefined) => {
+  const getFulfillmentStatusColor = (
+    fulfillmentStatus: string | null | undefined
+  ) => {
     if (!fulfillmentStatus) return 'default';
-    
+
     switch (fulfillmentStatus.toLowerCase()) {
       case 'fulfilled':
         return 'success';
@@ -392,8 +406,14 @@ export function OrdersList() {
       )}
 
       {syncMessage && (
-        <Alert 
-          severity={syncMessage.includes('✅') ? 'success' : syncMessage.includes('⚠️') ? 'warning' : 'info'} 
+        <Alert
+          severity={
+            syncMessage.includes('✅')
+              ? 'success'
+              : syncMessage.includes('⚠️')
+                ? 'warning'
+                : 'info'
+          }
           sx={{ mb: 2 }}
         >
           {syncMessage}
@@ -425,21 +445,25 @@ export function OrdersList() {
           {selectedOrders.size > 0 && (
             <Box sx={{ mb: 2, display: 'flex', gap: 1, alignItems: 'center' }}>
               <Button
-                variant="contained"
-                color="error"
-                startIcon={bulkDeleting ? <CircularProgress size={16} /> : <DeleteIcon />}
+                variant='contained'
+                color='error'
+                startIcon={
+                  bulkDeleting ? <CircularProgress size={16} /> : <DeleteIcon />
+                }
                 onClick={handleConfirmDelete}
                 disabled={bulkDeleting}
               >
-                {bulkDeleting ? '删除中...' : `删除订单 (${selectedOrders.size})`}
+                {bulkDeleting
+                  ? '删除中...'
+                  : `删除订单 (${selectedOrders.size})`}
               </Button>
               <Button
-                variant="outlined"
+                variant='outlined'
                 onClick={() => setSelectedOrders(new Set())}
               >
                 取消选择
               </Button>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant='body2' color='text.secondary'>
                 已选择 {selectedOrders.size} 个订单
               </Typography>
             </Box>
@@ -449,11 +473,17 @@ export function OrdersList() {
             <Table>
               <TableHead>
                 <TableRow>
-                  <TableCell padding="checkbox">
+                  <TableCell padding='checkbox'>
                     <Checkbox
-                      indeterminate={selectedOrders.size > 0 && selectedOrders.size < orders.length}
-                      checked={orders.length > 0 && selectedOrders.size === orders.length}
-                      onChange={(e) => handleSelectAll(e.target.checked)}
+                      indeterminate={
+                        selectedOrders.size > 0 &&
+                        selectedOrders.size < orders.length
+                      }
+                      checked={
+                        orders.length > 0 &&
+                        selectedOrders.size === orders.length
+                      }
+                      onChange={e => handleSelectAll(e.target.checked)}
                     />
                   </TableCell>
                   <TableCell>订单ID</TableCell>
@@ -463,17 +493,17 @@ export function OrdersList() {
                   <TableCell>状态</TableCell>
                   <TableCell>履约状态</TableCell>
                   <TableCell>
-                    <Box display="flex" alignItems="center" gap={1}>
+                    <Box display='flex' alignItems='center' gap={1}>
                       订单日期
                       <IconButton
-                        size="small"
+                        size='small'
                         onClick={() => handleSort('order_date')}
                         color={sortBy === 'order_date' ? 'primary' : 'default'}
                       >
                         {sortBy === 'order_date' && sortOrder === 'desc' ? (
-                          <ArrowDownwardIcon fontSize="small" />
+                          <ArrowDownwardIcon fontSize='small' />
                         ) : (
-                          <ArrowUpwardIcon fontSize="small" />
+                          <ArrowUpwardIcon fontSize='small' />
                         )}
                       </IconButton>
                     </Box>
@@ -493,10 +523,12 @@ export function OrdersList() {
                 ) : (
                   orders.map(order => (
                     <TableRow key={order.id_hashid} hover>
-                      <TableCell padding="checkbox">
+                      <TableCell padding='checkbox'>
                         <Checkbox
                           checked={selectedOrders.has(order.id_hashid)}
-                          onChange={(e) => handleSelectOrder(order.id_hashid, e.target.checked)}
+                          onChange={e =>
+                            handleSelectOrder(order.id_hashid, e.target.checked)
+                          }
                         />
                       </TableCell>
                       <TableCell>
@@ -534,7 +566,9 @@ export function OrdersList() {
                       <TableCell>
                         <Chip
                           label={order.fulfillment_status || 'unfulfilled'}
-                          color={getFulfillmentStatusColor(order.fulfillment_status)}
+                          color={getFulfillmentStatusColor(
+                            order.fulfillment_status
+                          )}
                           size='small'
                         />
                       </TableCell>
@@ -544,7 +578,7 @@ export function OrdersList() {
                         </Typography>
                       </TableCell>
                       <TableCell>
-                        <Box display="flex" gap={1}>
+                        <Box display='flex' gap={1}>
                           <Tooltip title='查看详情'>
                             <IconButton
                               size='small'
@@ -577,17 +611,21 @@ export function OrdersList() {
           </TableContainer>
 
           {/* 分页组件 */}
-          <Box display="flex" justifyContent="center" mt={3}>
+          <Box display='flex' justifyContent='center' mt={3}>
             <Stack spacing={2}>
               <Pagination
                 count={totalPages}
                 page={currentPage}
                 onChange={handlePageChange}
-                color="primary"
+                color='primary'
                 showFirstButton
                 showLastButton
               />
-              <Typography variant="body2" color="text.secondary" textAlign="center">
+              <Typography
+                variant='body2'
+                color='text.secondary'
+                textAlign='center'
+              >
                 共 {totalCount} 个订单，第 {currentPage} 页，共 {totalPages} 页
               </Typography>
             </Stack>
@@ -599,29 +637,32 @@ export function OrdersList() {
       <Dialog
         open={deleteDialogOpen}
         onClose={() => setDeleteDialogOpen(false)}
-        maxWidth="sm"
+        maxWidth='sm'
         fullWidth
       >
-        <DialogTitle>
-          确认删除订单
-        </DialogTitle>
+        <DialogTitle>确认删除订单</DialogTitle>
         <DialogContent>
-          <Typography variant="body1" gutterBottom>
+          <Typography variant='body1' gutterBottom>
             您确定要删除选中的 {selectedOrders.size} 个订单吗？
           </Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant='body2' color='text.secondary'>
             此操作不可撤销，删除的订单将从数据库中永久移除。
           </Typography>
           <Box sx={{ mt: 2 }}>
-            <Typography variant="subtitle2" gutterBottom>
+            <Typography variant='subtitle2' gutterBottom>
               将要删除的订单：
             </Typography>
             <Box sx={{ maxHeight: '200px', overflow: 'auto' }}>
               {Array.from(selectedOrders).map(orderId => {
                 const order = orders.find(o => o.id_hashid === orderId);
                 return order ? (
-                  <Typography key={orderId} variant="body2" color="text.secondary">
-                    • {order.order_number || order.id_hashid} - {order.external_order_name || order.external_order_id}
+                  <Typography
+                    key={orderId}
+                    variant='body2'
+                    color='text.secondary'
+                  >
+                    • {order.order_number || order.id_hashid} -{' '}
+                    {order.external_order_name || order.external_order_id}
                   </Typography>
                 ) : null;
               })}
@@ -629,13 +670,13 @@ export function OrdersList() {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteDialogOpen(false)}>
-            取消
-          </Button>
+          <Button onClick={() => setDeleteDialogOpen(false)}>取消</Button>
           <Button
-            variant="contained"
-            color="error"
-            startIcon={bulkDeleting ? <CircularProgress size={16} /> : <DeleteIcon />}
+            variant='contained'
+            color='error'
+            startIcon={
+              bulkDeleting ? <CircularProgress size={16} /> : <DeleteIcon />
+            }
             onClick={handleBulkDelete}
             disabled={bulkDeleting}
           >

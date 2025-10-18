@@ -12,7 +12,7 @@ export default function RakutenMappingPage() {
   return (
     <ProtectedRoute>
       <DashboardLayout>
-        <PlatformMapping platform="rakuten" />
+        <PlatformMapping platform='rakuten' />
       </DashboardLayout>
     </ProtectedRoute>
   );

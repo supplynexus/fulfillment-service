@@ -12,7 +12,7 @@ export default function YahooMappingPage() {
   return (
     <ProtectedRoute>
       <DashboardLayout>
-        <PlatformMapping platform="yahoo" />
+        <PlatformMapping platform='yahoo' />
       </DashboardLayout>
     </ProtectedRoute>
   );

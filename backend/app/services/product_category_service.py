@@ -146,36 +146,35 @@ class ProductCategoryService:
         include_inactive: bool = False
     ) -> List[Dict[str, Any]]:
         """
-        获取分类树结构
+        获取分类树结构（优化版本）
         
         Returns:
             List[Dict]: 树形结构数据，包含 children 字段
         """
         logger.info("🔍 开始获取分类树", tenant_id=tenant_id)
         
-        # 获取所有分类
-        query = select(ProductCategory).where(ProductCategory.tenant_id == tenant_id)
+        # 优化：使用一次查询获取所有分类和关系
+        query = (
+            select(ProductCategory)
+            .options(
+                selectinload(ProductCategory.parent_relations),
+                selectinload(ProductCategory.child_relations)
+            )
+            .where(ProductCategory.tenant_id == tenant_id)
+        )
         if not include_inactive:
             query = query.where(ProductCategory.is_active == True)
         
         result = await self.db.execute(query)
         categories = result.scalars().all()
         
-        # 获取所有关系
-        relations_result = await self.db.execute(
-            select(ProductCategoryRelation)
-            .where(
-                ProductCategoryRelation.parent_category_id.in_([c.id for c in categories])
-            )
-        )
-        relations = relations_result.scalars().all()
-        
-        # 构建关系映射
+        # 构建关系映射（避免重复查询）
         parent_to_children = {}
-        for relation in relations:
-            if relation.parent_category_id not in parent_to_children:
-                parent_to_children[relation.parent_category_id] = []
-            parent_to_children[relation.parent_category_id].append(relation.child_category_id)
+        for category in categories:
+            for child_relation in category.child_relations:
+                if category.id not in parent_to_children:
+                    parent_to_children[category.id] = []
+                parent_to_children[category.id].append(child_relation.child_category_id)
         
         # 构建树形结构
         category_dict = {cat.id: {

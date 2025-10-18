@@ -12,12 +12,12 @@ export async function GET(
 ) {
   const startTime = Date.now();
   const { external_system_hashid } = await params;
-  
+
   try {
-    logger.info('Request started', { 
-      method: request.method, 
+    logger.info('Request started', {
+      method: request.method,
       url: request.url,
-      external_system_hashid
+      external_system_hashid,
     });
 
     const authorization = request.headers.get('authorization');
@@ -82,7 +82,7 @@ export async function GET(
     });
 
     const backendUrl = `${process.env.BACKEND_API_URL || 'http://localhost:8000'}${backendPath}?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}&sort_by=${sortBy}&sort_order=${sortOrder}&status=${status}&financial_status=${financialStatus}&fulfillment_status=${fulfillmentStatus}`;
-    
+
     logger.info('Forwarding request to backend', { backendUrl });
 
     const backendResponse = await fetch(backendUrl, {
@@ -103,9 +103,9 @@ export async function GET(
       logger.error('Backend request failed', {
         status: backendResponse.status,
         statusText: backendResponse.statusText,
-        error: responseData
+        error: responseData,
       });
-      
+
       return NextResponse.json(
         { error: responseData.detail || 'Backend request failed' },
         { status: backendResponse.status }
@@ -113,20 +113,19 @@ export async function GET(
     }
 
     const duration = Date.now() - startTime;
-    logger.info('Request completed', { 
-      method: request.method, 
+    logger.info('Request completed', {
+      method: request.method,
       url: request.url,
       status: 200,
-      duration: `${duration}ms`
+      duration: `${duration}ms`,
     });
-    
-    return NextResponse.json(responseData);
 
+    return NextResponse.json(responseData);
   } catch (error: any) {
     const duration = Date.now() - startTime;
-    logger.error('API request failed', { 
+    logger.error('API request failed', {
       error: error.message,
-      duration: `${duration}ms`
+      duration: `${duration}ms`,
     });
     return NextResponse.json(
       { error: 'Internal server error' },

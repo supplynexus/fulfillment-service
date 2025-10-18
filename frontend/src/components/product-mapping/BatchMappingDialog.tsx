@@ -97,14 +97,16 @@ export function BatchMappingDialog({
   onConfirm,
   onCancel,
 }: BatchMappingDialogProps) {
-  const [mappingStatus, setMappingStatus] = useState<'active' | 'pending'>('active');
+  const [mappingStatus, setMappingStatus] = useState<'active' | 'pending'>(
+    'active'
+  );
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // 生成所有可能的映射组合
   const generateMappings = (): BatchMapping[] => {
     const mappings: BatchMapping[] = [];
-    
+
     for (const coreProduct of coreProducts) {
       for (const externalProduct of externalProducts) {
         mappings.push({
@@ -118,7 +120,7 @@ export function BatchMappingDialog({
         });
       }
     }
-    
+
     return mappings;
   };
 
@@ -140,17 +142,20 @@ export function BatchMappingDialog({
       });
 
       // 获取外部系统ID
-      const externalSystemsResponse = await frontendApi.get('/api/external-systems', {
-        params: { system_type: platform.toUpperCase() }
-      });
-      
+      const externalSystemsResponse = await frontendApi.get(
+        '/api/external-systems',
+        {
+          params: { system_type: platform.toUpperCase() },
+        }
+      );
+
       const externalSystem = externalSystemsResponse.data.external_systems?.[0];
       if (!externalSystem) {
         throw new Error(`未找到${platform}外部系统配置`);
       }
 
       // 批量创建映射
-      const createPromises = mappings.map(async (mapping) => {
+      const createPromises = mappings.map(async mapping => {
         const mappingData = {
           core_product_id_hashid: mapping.core_product_id,
           core_variant_id_hashid: null, // 暂时不映射变体
@@ -191,48 +196,49 @@ export function BatchMappingDialog({
   };
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="lg" fullWidth>
+    <Dialog open={open} onClose={handleClose} maxWidth='lg' fullWidth>
       <DialogTitle>
-        <Box display="flex" alignItems="center" gap={2}>
-          <LinkIcon color="primary" />
-          <Typography variant="h6">批量创建映射</Typography>
+        <Box display='flex' alignItems='center' gap={2}>
+          <LinkIcon color='primary' />
+          <Typography variant='h6'>批量创建映射</Typography>
         </Box>
       </DialogTitle>
-      
+
       <DialogContent>
         {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
+          <Alert severity='error' sx={{ mb: 2 }}>
             {error}
           </Alert>
         )}
 
         <Box mb={3}>
-          <Typography variant="body2" color="text.secondary" paragraph>
-            您即将创建 {coreProducts.length} 个核心商品与 {externalProducts.length} 个 {platform} 商品的映射关系，
-            总共将创建 {mappings.length} 个映射。
+          <Typography variant='body2' color='text.secondary' paragraph>
+            您即将创建 {coreProducts.length} 个核心商品与{' '}
+            {externalProducts.length} 个 {platform} 商品的映射关系， 总共将创建{' '}
+            {mappings.length} 个映射。
           </Typography>
-          
-          <Alert severity="warning" sx={{ mb: 2 }}>
-            <Typography variant="body2">
+
+          <Alert severity='warning' sx={{ mb: 2 }}>
+            <Typography variant='body2'>
               注意：这将创建所有可能的映射组合。如果某些商品已经存在映射，可能会创建重复的映射关系。
             </Typography>
           </Alert>
         </Box>
 
-        <Grid container spacing={2} sx={{ mb: 3 }}>
-          <Grid item xs={12} md={6}>
-            <Card variant="outlined">
+        <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2} sx={{ mb: 3 }}>
+          <Box sx={{ width: "100%" }} md={6}>
+            <Card variant='outlined'>
               <CardContent>
-                <Typography variant="h6" gutterBottom>
+                <Typography variant='h6' gutterBottom>
                   核心商品 ({coreProducts.length})
                 </Typography>
                 <Box sx={{ maxHeight: 200, overflow: 'auto' }}>
-                  {coreProducts.map((product) => (
+                  {coreProducts.map(product => (
                     <Box key={product.id_hashid} sx={{ mb: 1 }}>
-                      <Typography variant="body2" fontWeight="medium">
+                      <Typography variant='body2' fontWeight='medium'>
                         {product.title}
                       </Typography>
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography variant='caption' color='text.secondary'>
                         {product.vendor} • {product.variants?.length || 0} 变体
                       </Typography>
                     </Box>
@@ -240,21 +246,21 @@ export function BatchMappingDialog({
                 </Box>
               </CardContent>
             </Card>
-          </Grid>
-          
-          <Grid item xs={12} md={6}>
-            <Card variant="outlined">
+          </Box>
+
+          <Box sx={{ width: "100%" }} md={6}>
+            <Card variant='outlined'>
               <CardContent>
-                <Typography variant="h6" gutterBottom>
+                <Typography variant='h6' gutterBottom>
                   {platform} 商品 ({externalProducts.length})
                 </Typography>
                 <Box sx={{ maxHeight: 200, overflow: 'auto' }}>
-                  {externalProducts.map((product) => (
+                  {externalProducts.map(product => (
                     <Box key={product.id} sx={{ mb: 1 }}>
-                      <Typography variant="body2" fontWeight="medium">
+                      <Typography variant='body2' fontWeight='medium'>
                         {product.title}
                       </Typography>
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography variant='caption' color='text.secondary'>
                         {product.variants?.length || 0} 变体
                       </Typography>
                     </Box>
@@ -262,8 +268,8 @@ export function BatchMappingDialog({
                 </Box>
               </CardContent>
             </Card>
-          </Grid>
-        </Grid>
+          </Box>
+        </Box>
 
         <Divider sx={{ my: 2 }} />
 
@@ -271,20 +277,26 @@ export function BatchMappingDialog({
           <InputLabel>映射状态</InputLabel>
           <Select
             value={mappingStatus}
-            onChange={(e) => setMappingStatus(e.target.value as 'active' | 'pending')}
-            label="映射状态"
+            onChange={e =>
+              setMappingStatus(e.target.value as 'active' | 'pending')
+            }
+            label='映射状态'
           >
-            <MenuItem value="active">活跃</MenuItem>
-            <MenuItem value="pending">待处理</MenuItem>
+            <MenuItem value='active'>活跃</MenuItem>
+            <MenuItem value='pending'>待处理</MenuItem>
           </Select>
         </FormControl>
 
-        <Typography variant="h6" gutterBottom>
+        <Typography variant='h6' gutterBottom>
           即将创建的映射 ({mappings.length})
         </Typography>
-        
-        <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 300 }}>
-          <Table size="small" stickyHeader>
+
+        <TableContainer
+          component={Paper}
+          variant='outlined'
+          sx={{ maxHeight: 300 }}
+        >
+          <Table size='small' stickyHeader>
             <TableHead>
               <TableRow>
                 <TableCell>核心商品</TableCell>
@@ -296,27 +308,31 @@ export function BatchMappingDialog({
               {mappings.slice(0, 50).map((mapping, index) => (
                 <TableRow key={index}>
                   <TableCell>
-                    <Typography variant="body2" fontWeight="medium">
+                    <Typography variant='body2' fontWeight='medium'>
                       {mapping.core_product_title}
                     </Typography>
                   </TableCell>
                   <TableCell>
-                    <Typography variant="body2">
+                    <Typography variant='body2'>
                       {mapping.external_product_title}
                     </Typography>
                   </TableCell>
                   <TableCell>
                     <Chip
-                      label={mapping.sync_status === 'active' ? '活跃' : '待处理'}
-                      color={mapping.sync_status === 'active' ? 'success' : 'warning'}
-                      size="small"
+                      label={
+                        mapping.sync_status === 'active' ? '活跃' : '待处理'
+                      }
+                      color={
+                        mapping.sync_status === 'active' ? 'success' : 'warning'
+                      }
+                      size='small'
                     />
                   </TableCell>
                 </TableRow>
               ))}
               {mappings.length > 50 && (
                 <TableRow>
-                  <TableCell colSpan={3} align="center">
+                  <TableCell colSpan={3} align='center'>
                     ... 还有 {mappings.length - 50} 个映射
                   </TableCell>
                 </TableRow>
@@ -325,14 +341,14 @@ export function BatchMappingDialog({
           </Table>
         </TableContainer>
       </DialogContent>
-      
+
       <DialogActions>
         <Button onClick={handleClose} disabled={creating}>
           取消
         </Button>
         <Button
           onClick={handleConfirm}
-          variant="contained"
+          variant='contained'
           disabled={creating || mappings.length === 0}
           startIcon={creating ? <CircularProgress size={16} /> : <CheckIcon />}
         >

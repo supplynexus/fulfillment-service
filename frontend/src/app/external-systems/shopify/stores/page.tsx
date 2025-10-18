@@ -132,10 +132,12 @@ export default function ShopifyStoresPage() {
       }
 
       const data = await response.json();
-      
+
       if (data.success && data.stores) {
         setStores(data.stores);
-        console.log('[FRONTEND] ✅ Shopify 店铺列表获取成功', { count: data.count });
+        console.log('[FRONTEND] ✅ Shopify 店铺列表获取成功', {
+          count: data.count,
+        });
       } else {
         throw new Error(data.error || '获取店铺列表失败');
       }
@@ -443,6 +445,7 @@ export default function ShopifyStoresPage() {
         // Add new store
         const newStore: ShopifyStore = {
           id: Date.now(), // Temporary ID
+          id_hashid: '', // Will be set by backend
           name: formData.name,
           system_type: 'SHOPIFY',
           external_id: formData.external_id,

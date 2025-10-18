@@ -12,7 +12,7 @@ export default function ShopifyMappingPage() {
   return (
     <ProtectedRoute>
       <DashboardLayout>
-        <PlatformMapping platform="shopify" />
+        <PlatformMapping platform='shopify' />
       </DashboardLayout>
     </ProtectedRoute>
   );

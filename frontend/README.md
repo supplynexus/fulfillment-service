@@ -58,6 +58,7 @@ nano .env.local
 ```
 
 **必需的环境变量**:
+
 ```bash
 # Backend API 配置
 NEXT_PUBLIC_API_URL=http://localhost:8000
@@ -151,18 +152,21 @@ npm run test:coverage
 ## 🌍 环境配置
 
 ### 本地开发环境
+
 - **端口**: 3000
 - **API URL**: http://localhost:8000
 - **数据库**: 本地 PostgreSQL
 - **密钥**: 本地生成的密钥对
 
 ### 开发服务器环境
+
 - **端口**: 3000
 - **API URL**: https://api.dev.supplynexus.store
 - **数据库**: 开发服务器 PostgreSQL
 - **密钥**: 服务器环境变量中的密钥
 
 ### 生产环境
+
 - **端口**: 3000
 - **API URL**: https://api.supplynexus.store
 - **数据库**: 生产 PostgreSQL
@@ -228,6 +232,7 @@ npm run start
 ### 常见问题
 
 1. **密钥文件不存在**
+
    ```bash
    # 重新生成密钥
    openssl genrsa -out keys/frontend_private_key.pem 2048

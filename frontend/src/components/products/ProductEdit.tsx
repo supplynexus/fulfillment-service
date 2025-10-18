@@ -67,7 +67,7 @@ function TabPanel(props: TabPanelProps) {
 
   return (
     <div
-      role="tabpanel"
+      role='tabpanel'
       hidden={value !== index}
       id={`product-edit-tabpanel-${index}`}
       aria-labelledby={`product-edit-tab-${index}`}
@@ -141,12 +141,15 @@ export function ProductEdit({ productHashId }: ProductEditProps) {
       setError(null);
       console.log('🔍 开始保存商品信息:', editData);
 
-      const response = await frontendApi.put(`/api/products/${productHashId}`, editData);
-      
+      const response = await frontendApi.put(
+        `/api/products/${productHashId}`,
+        editData
+      );
+
       console.log('✅ 商品信息保存成功:', response.data);
       setSuccess('商品信息已保存');
       setHasChanges(false);
-      
+
       // 刷新数据
       await fetchProduct();
     } catch (err: any) {
@@ -161,7 +164,7 @@ export function ProductEdit({ productHashId }: ProductEditProps) {
     console.log('🔍 字段值变化:', field, value);
     setEditData(prev => ({
       ...prev,
-      [field]: value
+      [field]: value,
     }));
     setHasChanges(true);
   };
@@ -217,7 +220,9 @@ export function ProductEdit({ productHashId }: ProductEditProps) {
   };
 
   const handleEditDimension = (dimensionHashId: string) => {
-    const dimension = product?.dimensions.find(d => d.id_hashid === dimensionHashId);
+    const dimension = product?.dimensions.find(
+      d => d.id_hashid === dimensionHashId
+    );
     if (dimension) {
       setNewDimension(dimension);
       setEditingDimension(dimensionHashId);
@@ -246,10 +251,10 @@ export function ProductEdit({ productHashId }: ProductEditProps) {
   if (loading) {
     return (
       <Box
-        display="flex"
-        justifyContent="center"
-        alignItems="center"
-        minHeight="400px"
+        display='flex'
+        justifyContent='center'
+        alignItems='center'
+        minHeight='400px'
       >
         <CircularProgress />
       </Box>
@@ -259,11 +264,11 @@ export function ProductEdit({ productHashId }: ProductEditProps) {
   if (error && !product) {
     return (
       <Box>
-        <Alert severity="error" sx={{ mb: 2 }}>
+        <Alert severity='error' sx={{ mb: 2 }}>
           {error}
         </Alert>
         <Button
-          variant="outlined"
+          variant='outlined'
           startIcon={<ArrowBackIcon />}
           onClick={handleBack}
         >
@@ -276,11 +281,11 @@ export function ProductEdit({ productHashId }: ProductEditProps) {
   if (!product) {
     return (
       <Box>
-        <Alert severity="error" sx={{ mb: 2 }}>
+        <Alert severity='error' sx={{ mb: 2 }}>
           Product not found
         </Alert>
         <Button
-          variant="outlined"
+          variant='outlined'
           startIcon={<ArrowBackIcon />}
           onClick={handleBack}
         >
@@ -294,26 +299,26 @@ export function ProductEdit({ productHashId }: ProductEditProps) {
     <Box>
       {/* 头部操作栏 */}
       <Box
-        display="flex"
-        justifyContent="space-between"
-        alignItems="center"
+        display='flex'
+        justifyContent='space-between'
+        alignItems='center'
         mb={3}
       >
-        <Box display="flex" alignItems="center" gap={2}>
+        <Box display='flex' alignItems='center' gap={2}>
           <Button
-            variant="outlined"
+            variant='outlined'
             startIcon={<ArrowBackIcon />}
             onClick={handleBack}
           >
             返回
           </Button>
-          <Typography variant="h4" component="h1">
+          <Typography variant='h4' component='h1'>
             编辑商品: {product.title}
           </Typography>
         </Box>
-        <Box display="flex" gap={2}>
+        <Box display='flex' gap={2}>
           <Button
-            variant="contained"
+            variant='contained'
             startIcon={<SaveIcon />}
             onClick={handleSave}
             disabled={saving || !hasChanges}
@@ -325,7 +330,7 @@ export function ProductEdit({ productHashId }: ProductEditProps) {
 
       {/* 错误和成功提示 */}
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
+        <Alert severity='error' sx={{ mb: 2 }}>
           {error}
         </Alert>
       )}
@@ -333,95 +338,101 @@ export function ProductEdit({ productHashId }: ProductEditProps) {
       {/* 基本信息编辑 */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Typography variant="h6" gutterBottom>
+          <Typography variant='h6' gutterBottom>
             基本信息
           </Typography>
-          <Grid container spacing={3}>
-            <Grid item xs={12} md={6}>
+          <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={3}>
+            <Box sx={{ width: { xs: "100%", md: "50%" } }}>
               <TextField
                 fullWidth
-                label="商品标题"
+                label='商品标题'
                 value={editData.title || ''}
-                onChange={(e) => handleInputChange('title', e.target.value)}
-                variant="outlined"
+                onChange={e => handleInputChange('title', e.target.value)}
+                variant='outlined'
               />
-            </Grid>
-            <Grid item xs={12} md={6}>
+            </Box>
+            <Box sx={{ width: { xs: "100%", md: "50%" } }}>
               <TextField
                 fullWidth
-                label="Handle"
+                label='Handle'
                 value={editData.handle || ''}
-                onChange={(e) => handleInputChange('handle', e.target.value)}
-                variant="outlined"
-                helperText="URL友好的标识符"
+                onChange={e => handleInputChange('handle', e.target.value)}
+                variant='outlined'
+                helperText='URL友好的标识符'
               />
-            </Grid>
-            <Grid item xs={12}>
+            </Box>
+            <Box sx={{ width: "100%" }}>
               <TextField
                 fullWidth
-                label="商品描述"
+                label='商品描述'
                 value={editData.description || ''}
-                onChange={(e) => handleInputChange('description', e.target.value)}
-                variant="outlined"
+                onChange={e => handleInputChange('description', e.target.value)}
+                variant='outlined'
                 multiline
                 rows={3}
               />
-            </Grid>
-            <Grid item xs={12} md={4}>
+            </Box>
+            <Box sx={{ width: { xs: "100%", md: "33.33%" } }}>
               <TextField
                 fullWidth
-                label="商品类型"
+                label='商品类型'
                 value={editData.product_type || ''}
-                onChange={(e) => handleInputChange('product_type', e.target.value)}
-                variant="outlined"
+                onChange={e =>
+                  handleInputChange('product_type', e.target.value)
+                }
+                variant='outlined'
               />
-            </Grid>
-            <Grid item xs={12} md={4}>
+            </Box>
+            <Box sx={{ width: { xs: "100%", md: "33.33%" } }}>
               <TextField
                 fullWidth
-                label="供应商"
+                label='供应商'
                 value={editData.vendor || ''}
-                onChange={(e) => handleInputChange('vendor', e.target.value)}
-                variant="outlined"
+                onChange={e => handleInputChange('vendor', e.target.value)}
+                variant='outlined'
               />
-            </Grid>
-            <Grid item xs={12} md={4}>
+            </Box>
+            <Box sx={{ width: { xs: "100%", md: "33.33%" } }}>
               <FormControl fullWidth>
                 <InputLabel>状态</InputLabel>
                 <Select
                   value={editData.status || 'draft'}
-                  onChange={(e) => handleInputChange('status', e.target.value)}
-                  label="状态"
+                  onChange={e => handleInputChange('status', e.target.value)}
+                  label='状态'
                 >
-                  <MenuItem value="draft">草稿</MenuItem>
-                  <MenuItem value="active">活跃</MenuItem>
-                  <MenuItem value="archived">已归档</MenuItem>
+                  <MenuItem value='draft'>草稿</MenuItem>
+                  <MenuItem value='active'>活跃</MenuItem>
+                  <MenuItem value='archived'>已归档</MenuItem>
                 </Select>
               </FormControl>
-            </Grid>
-            <Grid item xs={12} md={6}>
+            </Box>
+            <Box sx={{ width: { xs: "100%", md: "50%" } }}>
               <FormControlLabel
                 control={
                   <Switch
                     checked={editData.is_active || false}
-                    onChange={(e) => handleInputChange('is_active', e.target.checked)}
+                    onChange={e =>
+                      handleInputChange('is_active', e.target.checked)
+                    }
                   />
                 }
-                label="商品激活"
+                label='商品激活'
               />
-            </Grid>
-            <Grid item xs={12} md={6}>
+            </Box>
+            <Box sx={{ width: { xs: "100%", md: "50%" } }}>
               <FormControlLabel
                 control={
                   <Switch
                     checked={editData.is_available || false}
-                    onChange={(e) => handleInputChange('is_available', e.target.checked)}
+                    onChange={e =>
+                      handleInputChange('is_available', e.target.checked)
+                    }
                   />
                 }
-                label="商品可用"
+                label='商品可用'
               />
-            </Grid>
-          </Grid>
+            </Box>
+          </Box>
         </CardContent>
       </Card>
 
@@ -437,21 +448,24 @@ export function ProductEdit({ productHashId }: ProductEditProps) {
 
         {/* 变体标签页 */}
         <TabPanel value={tabValue} index={0}>
-          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-            <Typography variant="h6">
-              商品变体
-            </Typography>
+          <Box
+            display='flex'
+            justifyContent='space-between'
+            alignItems='center'
+            mb={2}
+          >
+            <Typography variant='h6'>商品变体</Typography>
             <Button
-              variant="outlined"
+              variant='outlined'
               startIcon={<AddIcon />}
               onClick={handleAddVariant}
             >
               添加变体
             </Button>
           </Box>
-          
+
           {product.variants.length > 0 ? (
-            <TableContainer component={Paper} variant="outlined">
+            <TableContainer component={Paper} variant='outlined'>
               <Table>
                 <TableHead>
                   <TableRow>
@@ -467,29 +481,31 @@ export function ProductEdit({ productHashId }: ProductEditProps) {
                   {product.variants.map(variant => (
                     <TableRow key={variant.id_hashid} hover>
                       <TableCell>
-                        <Typography variant="body2">
+                        <Typography variant='body2'>
                           {variant.sku || '-'}
                         </Typography>
                       </TableCell>
                       <TableCell>
-                        <Box display="flex" gap={0.5} flexWrap="wrap">
-                          {Object.entries(variant.attributes).map(([key, value]) => (
-                            <Chip
-                              key={key}
-                              label={`${key}: ${value}`}
-                              size="small"
-                              variant="outlined"
-                            />
-                          ))}
+                        <Box display='flex' gap={0.5} flexWrap='wrap'>
+                          {Object.entries(variant.attributes).map(
+                            ([key, value]) => (
+                              <Chip
+                                key={key}
+                                label={`${key}: ${value}`}
+                                size='small'
+                                variant='outlined'
+                              />
+                            )
+                          )}
                         </Box>
                       </TableCell>
                       <TableCell>
-                        <Typography variant="body2">
+                        <Typography variant='body2'>
                           ${variant.price || 0}
                         </Typography>
                       </TableCell>
                       <TableCell>
-                        <Typography variant="body2">
+                        <Typography variant='body2'>
                           {variant.inventory_quantity}
                         </Typography>
                       </TableCell>
@@ -497,13 +513,13 @@ export function ProductEdit({ productHashId }: ProductEditProps) {
                         <Chip
                           label={variant.is_active ? '活跃' : '非活跃'}
                           color={variant.is_active ? 'success' : 'default'}
-                          size="small"
+                          size='small'
                         />
                       </TableCell>
                       <TableCell>
-                        <Tooltip title="编辑变体">
+                        <Tooltip title='编辑变体'>
                           <IconButton
-                            size="small"
+                            size='small'
                             onClick={() => handleEditVariant(variant.id_hashid)}
                           >
                             <EditIcon />
@@ -516,7 +532,7 @@ export function ProductEdit({ productHashId }: ProductEditProps) {
               </Table>
             </TableContainer>
           ) : (
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant='body2' color='text.secondary'>
               暂无变体，点击"添加变体"创建第一个变体
             </Typography>
           )}
@@ -524,21 +540,24 @@ export function ProductEdit({ productHashId }: ProductEditProps) {
 
         {/* 维度标签页 */}
         <TabPanel value={tabValue} index={1}>
-          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-            <Typography variant="h6">
-              商品维度
-            </Typography>
+          <Box
+            display='flex'
+            justifyContent='space-between'
+            alignItems='center'
+            mb={2}
+          >
+            <Typography variant='h6'>商品维度</Typography>
             <Button
-              variant="outlined"
+              variant='outlined'
               startIcon={<AddIcon />}
               onClick={handleAddDimension}
             >
               添加维度
             </Button>
           </Box>
-          
+
           {product.dimensions.length > 0 ? (
-            <TableContainer component={Paper} variant="outlined">
+            <TableContainer component={Paper} variant='outlined'>
               <Table>
                 <TableHead>
                   <TableRow>
@@ -555,59 +574,58 @@ export function ProductEdit({ productHashId }: ProductEditProps) {
                   {product.dimensions.map(dimension => (
                     <TableRow key={dimension.id_hashid} hover>
                       <TableCell>
-                        <Typography variant="body2">
+                        <Typography variant='body2'>
                           {dimension.dimension_name}
                         </Typography>
                       </TableCell>
                       <TableCell>
-                        <Typography variant="body2">
+                        <Typography variant='body2'>
                           {dimension.display_name || '-'}
                         </Typography>
                       </TableCell>
                       <TableCell>
                         <Chip
                           label={dimension.dimension_type}
-                          size="small"
-                          variant="outlined"
+                          size='small'
+                          variant='outlined'
                         />
                       </TableCell>
                       <TableCell>
-                        <Box display="flex" gap={0.5} flexWrap="wrap">
+                        <Box display='flex' gap={0.5} flexWrap='wrap'>
                           {dimension.options?.slice(0, 3).map(option => (
-                            <Chip
-                              key={option}
-                              label={option}
-                              size="small"
-                            />
+                            <Chip key={option} label={option} size='small' />
                           ))}
-                          {dimension.options && dimension.options.length > 3 && (
-                            <Chip
-                              label={`+${dimension.options.length - 3}`}
-                              size="small"
-                              variant="outlined"
-                            />
-                          )}
+                          {dimension.options &&
+                            dimension.options.length > 3 && (
+                              <Chip
+                                label={`+${dimension.options.length - 3}`}
+                                size='small'
+                                variant='outlined'
+                              />
+                            )}
                         </Box>
                       </TableCell>
                       <TableCell>
                         <Chip
                           label={dimension.is_required ? '是' : '否'}
                           color={dimension.is_required ? 'primary' : 'default'}
-                          size="small"
+                          size='small'
                         />
                       </TableCell>
                       <TableCell>
                         <Chip
                           label={dimension.is_active ? '活跃' : '非活跃'}
                           color={dimension.is_active ? 'success' : 'default'}
-                          size="small"
+                          size='small'
                         />
                       </TableCell>
                       <TableCell>
-                        <Tooltip title="编辑维度">
+                        <Tooltip title='编辑维度'>
                           <IconButton
-                            size="small"
-                            onClick={() => handleEditDimension(dimension.id_hashid)}
+                            size='small'
+                            onClick={() =>
+                              handleEditDimension(dimension.id_hashid)
+                            }
                           >
                             <EditIcon />
                           </IconButton>
@@ -619,7 +637,7 @@ export function ProductEdit({ productHashId }: ProductEditProps) {
               </Table>
             </TableContainer>
           ) : (
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant='body2' color='text.secondary'>
               暂无维度，点击"添加维度"创建第一个维度
             </Typography>
           )}
@@ -627,11 +645,11 @@ export function ProductEdit({ productHashId }: ProductEditProps) {
 
         {/* 标签标签页 */}
         <TabPanel value={tabValue} index={2}>
-          <Typography variant="h6" gutterBottom>
+          <Typography variant='h6' gutterBottom>
             商品标签
           </Typography>
           {product.tags.length > 0 ? (
-            <Box display="flex" gap={1} flexWrap="wrap">
+            <Box display='flex' gap={1} flexWrap='wrap'>
               {product.tags.map(tag => (
                 <Chip
                   key={tag.id_hashid}
@@ -642,7 +660,7 @@ export function ProductEdit({ productHashId }: ProductEditProps) {
               ))}
             </Box>
           ) : (
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant='body2' color='text.secondary'>
               暂无标签
             </Typography>
           )}
@@ -653,91 +671,116 @@ export function ProductEdit({ productHashId }: ProductEditProps) {
       <Dialog
         open={variantDialogOpen}
         onClose={() => setVariantDialogOpen(false)}
-        maxWidth="md"
+        maxWidth='md'
         fullWidth
       >
-        <DialogTitle>
-          {editingVariant ? '编辑变体' : '添加变体'}
-        </DialogTitle>
+        <DialogTitle>{editingVariant ? '编辑变体' : '添加变体'}</DialogTitle>
         <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12} md={6}>
+          <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2} sx={{ mt: 1 }}>
+            <Box sx={{ width: { xs: "100%", md: "50%" } }}>
               <TextField
                 fullWidth
-                label="SKU"
+                label='SKU'
                 value={newVariant.sku || ''}
-                onChange={(e) => setNewVariant(prev => ({ ...prev, sku: e.target.value }))}
-                variant="outlined"
+                onChange={e =>
+                  setNewVariant(prev => ({ ...prev, sku: e.target.value }))
+                }
+                variant='outlined'
               />
-            </Grid>
-            <Grid item xs={12} md={6}>
+            </Box>
+            <Box sx={{ width: { xs: "100%", md: "50%" } }}>
               <TextField
                 fullWidth
-                label="条码"
+                label='条码'
                 value={newVariant.barcode || ''}
-                onChange={(e) => setNewVariant(prev => ({ ...prev, barcode: e.target.value }))}
-                variant="outlined"
+                onChange={e =>
+                  setNewVariant(prev => ({ ...prev, barcode: e.target.value }))
+                }
+                variant='outlined'
               />
-            </Grid>
-            <Grid item xs={12} md={4}>
+            </Box>
+            <Box sx={{ width: { xs: "100%", md: "33.33%" } }}>
               <TextField
                 fullWidth
-                label="价格"
-                type="number"
+                label='价格'
+                type='number'
                 value={newVariant.price || 0}
-                onChange={(e) => setNewVariant(prev => ({ ...prev, price: parseFloat(e.target.value) }))}
-                variant="outlined"
+                onChange={e =>
+                  setNewVariant(prev => ({
+                    ...prev,
+                    price: parseFloat(e.target.value),
+                  }))
+                }
+                variant='outlined'
               />
-            </Grid>
-            <Grid item xs={12} md={4}>
+            </Box>
+            <Box sx={{ width: { xs: "100%", md: "33.33%" } }}>
               <TextField
                 fullWidth
-                label="对比价格"
-                type="number"
+                label='对比价格'
+                type='number'
                 value={newVariant.compare_at_price || 0}
-                onChange={(e) => setNewVariant(prev => ({ ...prev, compare_at_price: parseFloat(e.target.value) }))}
-                variant="outlined"
+                onChange={e =>
+                  setNewVariant(prev => ({
+                    ...prev,
+                    compare_at_price: parseFloat(e.target.value),
+                  }))
+                }
+                variant='outlined'
               />
-            </Grid>
-            <Grid item xs={12} md={4}>
+            </Box>
+            <Box sx={{ width: { xs: "100%", md: "33.33%" } }}>
               <TextField
                 fullWidth
-                label="库存数量"
-                type="number"
+                label='库存数量'
+                type='number'
                 value={newVariant.inventory_quantity || 0}
-                onChange={(e) => setNewVariant(prev => ({ ...prev, inventory_quantity: parseInt(e.target.value) }))}
-                variant="outlined"
+                onChange={e =>
+                  setNewVariant(prev => ({
+                    ...prev,
+                    inventory_quantity: parseInt(e.target.value),
+                  }))
+                }
+                variant='outlined'
               />
-            </Grid>
-            <Grid item xs={12} md={6}>
+            </Box>
+            <Box sx={{ width: { xs: "100%", md: "50%" } }}>
               <FormControlLabel
                 control={
                   <Switch
                     checked={newVariant.is_active || false}
-                    onChange={(e) => setNewVariant(prev => ({ ...prev, is_active: e.target.checked }))}
+                    onChange={e =>
+                      setNewVariant(prev => ({
+                        ...prev,
+                        is_active: e.target.checked,
+                      }))
+                    }
                   />
                 }
-                label="变体激活"
+                label='变体激活'
               />
-            </Grid>
-            <Grid item xs={12} md={6}>
+            </Box>
+            <Box sx={{ width: { xs: "100%", md: "50%" } }}>
               <FormControlLabel
                 control={
                   <Switch
                     checked={newVariant.is_available || false}
-                    onChange={(e) => setNewVariant(prev => ({ ...prev, is_available: e.target.checked }))}
+                    onChange={e =>
+                      setNewVariant(prev => ({
+                        ...prev,
+                        is_available: e.target.checked,
+                      }))
+                    }
                   />
                 }
-                label="变体可用"
+                label='变体可用'
               />
-            </Grid>
-          </Grid>
+            </Box>
+          </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setVariantDialogOpen(false)}>
-            取消
-          </Button>
-          <Button onClick={handleSaveVariant} variant="contained">
+          <Button onClick={() => setVariantDialogOpen(false)}>取消</Button>
+          <Button onClick={handleSaveVariant} variant='contained'>
             保存
           </Button>
         </DialogActions>
@@ -747,89 +790,115 @@ export function ProductEdit({ productHashId }: ProductEditProps) {
       <Dialog
         open={dimensionDialogOpen}
         onClose={() => setDimensionDialogOpen(false)}
-        maxWidth="md"
+        maxWidth='md'
         fullWidth
       >
-        <DialogTitle>
-          {editingDimension ? '编辑维度' : '添加维度'}
-        </DialogTitle>
+        <DialogTitle>{editingDimension ? '编辑维度' : '添加维度'}</DialogTitle>
         <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12} md={6}>
+          <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2} sx={{ mt: 1 }}>
+            <Box sx={{ width: { xs: "100%", md: "50%" } }}>
               <TextField
                 fullWidth
-                label="维度名称"
+                label='维度名称'
                 value={newDimension.dimension_name || ''}
-                onChange={(e) => setNewDimension(prev => ({ ...prev, dimension_name: e.target.value }))}
-                variant="outlined"
-                helperText="如: color, size, material"
+                onChange={e =>
+                  setNewDimension(prev => ({
+                    ...prev,
+                    dimension_name: e.target.value,
+                  }))
+                }
+                variant='outlined'
+                helperText='如: color, size, material'
               />
-            </Grid>
-            <Grid item xs={12} md={6}>
+            </Box>
+            <Box sx={{ width: { xs: "100%", md: "50%" } }}>
               <TextField
                 fullWidth
-                label="显示名称"
+                label='显示名称'
                 value={newDimension.display_name || ''}
-                onChange={(e) => setNewDimension(prev => ({ ...prev, display_name: e.target.value }))}
-                variant="outlined"
-                helperText="如: 颜色, 尺寸, 材质"
+                onChange={e =>
+                  setNewDimension(prev => ({
+                    ...prev,
+                    display_name: e.target.value,
+                  }))
+                }
+                variant='outlined'
+                helperText='如: 颜色, 尺寸, 材质'
               />
-            </Grid>
-            <Grid item xs={12} md={6}>
+            </Box>
+            <Box sx={{ width: { xs: "100%", md: "50%" } }}>
               <FormControl fullWidth>
                 <InputLabel>维度类型</InputLabel>
                 <Select
                   value={newDimension.dimension_type || 'select'}
-                  onChange={(e) => setNewDimension(prev => ({ ...prev, dimension_type: e.target.value }))}
-                  label="维度类型"
+                  onChange={e =>
+                    setNewDimension(prev => ({
+                      ...prev,
+                      dimension_type: e.target.value,
+                    }))
+                  }
+                  label='维度类型'
                 >
-                  <MenuItem value="select">选择</MenuItem>
-                  <MenuItem value="text">文本</MenuItem>
-                  <MenuItem value="number">数字</MenuItem>
-                  <MenuItem value="boolean">布尔</MenuItem>
+                  <MenuItem value='select'>选择</MenuItem>
+                  <MenuItem value='text'>文本</MenuItem>
+                  <MenuItem value='number'>数字</MenuItem>
+                  <MenuItem value='boolean'>布尔</MenuItem>
                 </Select>
               </FormControl>
-            </Grid>
-            <Grid item xs={12} md={6}>
+            </Box>
+            <Box sx={{ width: { xs: "100%", md: "50%" } }}>
               <FormControlLabel
                 control={
                   <Switch
                     checked={newDimension.is_required || false}
-                    onChange={(e) => setNewDimension(prev => ({ ...prev, is_required: e.target.checked }))}
+                    onChange={e =>
+                      setNewDimension(prev => ({
+                        ...prev,
+                        is_required: e.target.checked,
+                      }))
+                    }
                   />
                 }
-                label="必需维度"
+                label='必需维度'
               />
-            </Grid>
-            <Grid item xs={12}>
+            </Box>
+            <Box sx={{ width: "100%" }}>
               <TextField
                 fullWidth
-                label="维度描述"
+                label='维度描述'
                 value={newDimension.description || ''}
-                onChange={(e) => setNewDimension(prev => ({ ...prev, description: e.target.value }))}
-                variant="outlined"
+                onChange={e =>
+                  setNewDimension(prev => ({
+                    ...prev,
+                    description: e.target.value,
+                  }))
+                }
+                variant='outlined'
                 multiline
                 rows={2}
               />
-            </Grid>
-            <Grid item xs={12}>
+            </Box>
+            <Box sx={{ width: "100%" }}>
               <FormControlLabel
                 control={
                   <Switch
                     checked={newDimension.is_active || false}
-                    onChange={(e) => setNewDimension(prev => ({ ...prev, is_active: e.target.checked }))}
+                    onChange={e =>
+                      setNewDimension(prev => ({
+                        ...prev,
+                        is_active: e.target.checked,
+                      }))
+                    }
                   />
                 }
-                label="维度激活"
+                label='维度激活'
               />
-            </Grid>
-          </Grid>
+            </Box>
+          </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDimensionDialogOpen(false)}>
-            取消
-          </Button>
-          <Button onClick={handleSaveDimension} variant="contained">
+          <Button onClick={() => setDimensionDialogOpen(false)}>取消</Button>
+          <Button onClick={handleSaveDimension} variant='contained'>
             保存
           </Button>
         </DialogActions>

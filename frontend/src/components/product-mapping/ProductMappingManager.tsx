@@ -76,7 +76,9 @@ export function ProductMappingManager() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mappings, setMappings] = useState<ProductMapping[]>([]);
-  const [filteredMappings, setFilteredMappings] = useState<ProductMapping[]>([]);
+  const [filteredMappings, setFilteredMappings] = useState<ProductMapping[]>(
+    []
+  );
   const [searchFilters, setSearchFilters] = useState<SearchFilters>({
     coreProduct: '',
     externalSystem: '',
@@ -84,7 +86,9 @@ export function ProductMappingManager() {
     mappingType: '',
   });
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [mappingToDelete, setMappingToDelete] = useState<ProductMapping | null>(null);
+  const [mappingToDelete, setMappingToDelete] = useState<ProductMapping | null>(
+    null
+  );
 
   const fetchMappings = async () => {
     try {
@@ -102,7 +106,9 @@ export function ProductMappingManager() {
       });
 
       const mappingsData = response.data.mappings || [];
-      frontendLogger.info('✅ 商品映射数据获取成功', { count: mappingsData.length });
+      frontendLogger.info('✅ 商品映射数据获取成功', {
+        count: mappingsData.length,
+      });
 
       setMappings(mappingsData);
       setFilteredMappings(mappingsData);
@@ -110,7 +116,9 @@ export function ProductMappingManager() {
       frontendLogger.error('❌ 获取商品映射数据失败', {
         error: err.response?.data?.detail || err.message,
       });
-      setError(err.response?.data?.detail || err.message || 'Failed to fetch mappings');
+      setError(
+        err.response?.data?.detail || err.message || 'Failed to fetch mappings'
+      );
     } finally {
       setLoading(false);
     }
@@ -126,22 +134,30 @@ export function ProductMappingManager() {
 
     if (searchFilters.coreProduct) {
       filtered = filtered.filter(mapping =>
-        mapping.core_product_title.toLowerCase().includes(searchFilters.coreProduct.toLowerCase())
+        mapping.core_product_title
+          .toLowerCase()
+          .includes(searchFilters.coreProduct.toLowerCase())
       );
     }
 
     if (searchFilters.externalSystem) {
       filtered = filtered.filter(mapping =>
-        mapping.external_system_name.toLowerCase().includes(searchFilters.externalSystem.toLowerCase())
+        mapping.external_system_name
+          .toLowerCase()
+          .includes(searchFilters.externalSystem.toLowerCase())
       );
     }
 
     if (searchFilters.syncStatus) {
-      filtered = filtered.filter(mapping => mapping.sync_status === searchFilters.syncStatus);
+      filtered = filtered.filter(
+        mapping => mapping.sync_status === searchFilters.syncStatus
+      );
     }
 
     if (searchFilters.mappingType) {
-      filtered = filtered.filter(mapping => mapping.mapping_type === searchFilters.mappingType);
+      filtered = filtered.filter(
+        mapping => mapping.mapping_type === searchFilters.mappingType
+      );
     }
 
     setFilteredMappings(filtered);
@@ -269,11 +285,17 @@ export function ProductMappingManager() {
     if (!mappingToDelete) return;
 
     try {
-      frontendLogger.info('🗑️ 开始删除商品映射', { mappingId: mappingToDelete.id });
+      frontendLogger.info('🗑️ 开始删除商品映射', {
+        mappingId: mappingToDelete.id,
+      });
 
-      await frontendApi.delete(`/api/products/mappings/${mappingToDelete.id_hashid}`);
+      await frontendApi.delete(
+        `/api/products/mappings/${mappingToDelete.id_hashid}`
+      );
 
-      frontendLogger.info('✅ 商品映射删除成功', { mappingId: mappingToDelete.id });
+      frontendLogger.info('✅ 商品映射删除成功', {
+        mappingId: mappingToDelete.id,
+      });
 
       // 刷新数据
       await fetchMappings();
@@ -284,7 +306,9 @@ export function ProductMappingManager() {
         error: err.response?.data?.detail || err.message,
         mappingId: mappingToDelete.id,
       });
-      setError(err.response?.data?.detail || err.message || 'Failed to delete mapping');
+      setError(
+        err.response?.data?.detail || err.message || 'Failed to delete mapping'
+      );
     }
   };
 
@@ -296,7 +320,12 @@ export function ProductMappingManager() {
 
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+      <Box
+        display='flex'
+        justifyContent='center'
+        alignItems='center'
+        minHeight='400px'
+      >
         <CircularProgress />
       </Box>
     );
@@ -304,13 +333,18 @@ export function ProductMappingManager() {
 
   return (
     <Box>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h4" component="h1">
+      <Box
+        display='flex'
+        justifyContent='space-between'
+        alignItems='center'
+        mb={3}
+      >
+        <Typography variant='h4' component='h1'>
           商品映射管理
         </Typography>
-        <Box display="flex" gap={2}>
+        <Box display='flex' gap={2}>
           <Button
-            variant="outlined"
+            variant='outlined'
             startIcon={<RefreshIcon />}
             onClick={fetchMappings}
             disabled={loading}
@@ -318,7 +352,7 @@ export function ProductMappingManager() {
             刷新数据
           </Button>
           <Button
-            variant="contained"
+            variant='contained'
             startIcon={<AddIcon />}
             onClick={handleCreateMapping}
           >
@@ -328,7 +362,7 @@ export function ProductMappingManager() {
       </Box>
 
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
+        <Alert severity='error' sx={{ mb: 2 }}>
           {error}
         </Alert>
       )}
@@ -336,95 +370,108 @@ export function ProductMappingManager() {
       {/* 搜索条件 */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Typography variant="h6" component="h2" mb={2}>
+          <Typography variant='h6' component='h2' mb={2}>
             搜索条件
           </Typography>
-          <Grid container spacing={2}>
-            <Grid item xs={12} md={3}>
+          <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2}>
+            <Box sx={{ width: "100%" }} md={3}>
               <TextField
                 fullWidth
-                label="核心商品"
+                label='核心商品'
                 value={searchFilters.coreProduct}
-                onChange={(e) => handleSearchChange('coreProduct', e.target.value)}
-                placeholder="输入核心商品名称"
-                size="small"
+                onChange={e =>
+                  handleSearchChange('coreProduct', e.target.value)
+                }
+                placeholder='输入核心商品名称'
+                size='small'
               />
-            </Grid>
-            <Grid item xs={12} md={3}>
+            </Box>
+            <Box sx={{ width: "100%" }} md={3}>
               <TextField
                 fullWidth
-                label="外部系统"
+                label='外部系统'
                 value={searchFilters.externalSystem}
-                onChange={(e) => handleSearchChange('externalSystem', e.target.value)}
-                placeholder="输入外部系统名称"
-                size="small"
+                onChange={e =>
+                  handleSearchChange('externalSystem', e.target.value)
+                }
+                placeholder='输入外部系统名称'
+                size='small'
               />
-            </Grid>
-            <Grid item xs={12} md={2}>
-              <FormControl fullWidth size="small">
+            </Box>
+            <Box sx={{ width: "100%" }} md={2}>
+              <FormControl fullWidth size='small'>
                 <InputLabel>同步状态</InputLabel>
                 <Select
                   value={searchFilters.syncStatus}
-                  onChange={(e) => handleSearchChange('syncStatus', e.target.value)}
-                  label="同步状态"
+                  onChange={e =>
+                    handleSearchChange('syncStatus', e.target.value)
+                  }
+                  label='同步状态'
                 >
-                  <MenuItem value="">全部</MenuItem>
-                  <MenuItem value="active">活跃</MenuItem>
-                  <MenuItem value="synced">已同步</MenuItem>
-                  <MenuItem value="pending">待处理</MenuItem>
-                  <MenuItem value="error">错误</MenuItem>
+                  <MenuItem value=''>全部</MenuItem>
+                  <MenuItem value='active'>活跃</MenuItem>
+                  <MenuItem value='synced'>已同步</MenuItem>
+                  <MenuItem value='pending'>待处理</MenuItem>
+                  <MenuItem value='error'>错误</MenuItem>
                 </Select>
               </FormControl>
-            </Grid>
-            <Grid item xs={12} md={2}>
-              <FormControl fullWidth size="small">
+            </Box>
+            <Box sx={{ width: "100%" }} md={2}>
+              <FormControl fullWidth size='small'>
                 <InputLabel>映射类型</InputLabel>
                 <Select
                   value={searchFilters.mappingType}
-                  onChange={(e) => handleSearchChange('mappingType', e.target.value)}
-                  label="映射类型"
+                  onChange={e =>
+                    handleSearchChange('mappingType', e.target.value)
+                  }
+                  label='映射类型'
                 >
-                  <MenuItem value="">全部</MenuItem>
-                  <MenuItem value="manual">手动</MenuItem>
-                  <MenuItem value="sync">同步</MenuItem>
-                  <MenuItem value="product">商品</MenuItem>
-                  <MenuItem value="variant">变体</MenuItem>
+                  <MenuItem value=''>全部</MenuItem>
+                  <MenuItem value='manual'>手动</MenuItem>
+                  <MenuItem value='sync'>同步</MenuItem>
+                  <MenuItem value='product'>商品</MenuItem>
+                  <MenuItem value='variant'>变体</MenuItem>
                 </Select>
               </FormControl>
-            </Grid>
-            <Grid item xs={12} md={2}>
-              <Box display="flex" gap={1}>
+            </Box>
+            <Box sx={{ width: "100%" }} md={2}>
+              <Box display='flex' gap={1}>
                 <Button
-                  variant="outlined"
+                  variant='outlined'
                   startIcon={<SearchIcon />}
                   onClick={() => {}} // 过滤逻辑在useEffect中处理
-                  size="small"
+                  size='small'
                 >
                   搜索
                 </Button>
                 <Button
-                  variant="text"
+                  variant='text'
                   onClick={handleClearFilters}
-                  size="small"
+                  size='small'
                 >
                   清空
                 </Button>
               </Box>
-            </Grid>
-          </Grid>
+            </Box>
+          </Box>
         </CardContent>
       </Card>
 
       {/* 映射列表 */}
       <Card>
         <CardContent>
-          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-            <Typography variant="h6" component="h2">
+          <Box
+            display='flex'
+            justifyContent='space-between'
+            alignItems='center'
+            mb={2}
+          >
+            <Typography variant='h6' component='h2'>
               映射列表 ({filteredMappings.length} 条)
             </Typography>
           </Box>
-          
-          <TableContainer component={Paper} variant="outlined">
+
+          <TableContainer component={Paper} variant='outlined'>
             <Table>
               <TableHead>
                 <TableRow>
@@ -442,27 +489,27 @@ export function ProductMappingManager() {
               <TableBody>
                 {filteredMappings.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} align="center">
-                      <Typography variant="body2" color="text.secondary">
+                    <TableCell colSpan={9} align='center'>
+                      <Typography variant='body2' color='text.secondary'>
                         暂无映射记录
                       </Typography>
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredMappings.map((mapping) => (
+                  filteredMappings.map(mapping => (
                     <TableRow key={mapping.id} hover>
                       <TableCell>
-                        <Typography variant="body2" fontWeight="medium">
+                        <Typography variant='body2' fontWeight='medium'>
                           {mapping.core_product_title}
                         </Typography>
                       </TableCell>
                       <TableCell>
-                        <Typography variant="body2">
+                        <Typography variant='body2'>
                           {mapping.core_variant_sku || '-'}
                         </Typography>
                       </TableCell>
                       <TableCell>
-                        <Box display="flex" alignItems="center">
+                        <Box display='flex' alignItems='center'>
                           <Avatar
                             sx={{
                               bgcolor: getSystemColor(mapping.system_type),
@@ -473,70 +520,74 @@ export function ProductMappingManager() {
                           >
                             {getSystemIcon(mapping.system_type)}
                           </Avatar>
-                          <Typography variant="body2">
+                          <Typography variant='body2'>
                             {mapping.external_system_name}
                           </Typography>
                         </Box>
                       </TableCell>
                       <TableCell>
-                        <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
-                          {mapping.external_product_id.length > 20 
+                        <Typography
+                          variant='body2'
+                          sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}
+                        >
+                          {mapping.external_product_id.length > 20
                             ? `${mapping.external_product_id.substring(0, 20)}...`
-                            : mapping.external_product_id
-                          }
+                            : mapping.external_product_id}
                         </Typography>
                       </TableCell>
                       <TableCell>
-                        <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
-                          {mapping.external_variant_id 
-                            ? (mapping.external_variant_id.length > 20 
-                                ? `${mapping.external_variant_id.substring(0, 20)}...`
-                                : mapping.external_variant_id)
-                            : '-'
-                          }
+                        <Typography
+                          variant='body2'
+                          sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}
+                        >
+                          {mapping.external_variant_id
+                            ? mapping.external_variant_id.length > 20
+                              ? `${mapping.external_variant_id.substring(0, 20)}...`
+                              : mapping.external_variant_id
+                            : '-'}
                         </Typography>
                       </TableCell>
                       <TableCell>
                         <Chip
                           label={getMappingTypeText(mapping.mapping_type)}
-                          size="small"
-                          variant="outlined"
+                          size='small'
+                          variant='outlined'
                         />
                       </TableCell>
                       <TableCell>
                         <Chip
                           label={getStatusText(mapping.sync_status)}
                           color={getStatusColor(mapping.sync_status) as any}
-                          size="small"
+                          size='small'
                         />
                       </TableCell>
                       <TableCell>
-                        <Typography variant="body2">
+                        <Typography variant='body2'>
                           {formatDate(mapping.created_at)}
                         </Typography>
                       </TableCell>
                       <TableCell>
-                        <Box display="flex" gap={1}>
-                          <Tooltip title="查看详情">
-                            <IconButton 
-                              size="small"
+                        <Box display='flex' gap={1}>
+                          <Tooltip title='查看详情'>
+                            <IconButton
+                              size='small'
                               onClick={() => handleViewMapping(mapping)}
                             >
                               <ViewIcon />
                             </IconButton>
                           </Tooltip>
-                          <Tooltip title="编辑">
-                            <IconButton 
-                              size="small"
+                          <Tooltip title='编辑'>
+                            <IconButton
+                              size='small'
                               onClick={() => handleEditMapping(mapping)}
                             >
                               <EditIcon />
                             </IconButton>
                           </Tooltip>
-                          <Tooltip title="删除">
-                            <IconButton 
-                              size="small" 
-                              color="error"
+                          <Tooltip title='删除'>
+                            <IconButton
+                              size='small'
+                              color='error'
                               onClick={() => handleDeleteMapping(mapping)}
                             >
                               <DeleteIcon />
@@ -557,31 +608,32 @@ export function ProductMappingManager() {
       <Dialog
         open={deleteDialogOpen}
         onClose={() => setDeleteDialogOpen(false)}
-        aria-labelledby="delete-dialog-title"
-        aria-describedby="delete-dialog-description"
+        aria-labelledby='delete-dialog-title'
+        aria-describedby='delete-dialog-description'
       >
-        <DialogTitle id="delete-dialog-title">
-          确认删除映射
-        </DialogTitle>
+        <DialogTitle id='delete-dialog-title'>确认删除映射</DialogTitle>
         <DialogContent>
-          <DialogContentText id="delete-dialog-description">
+          <DialogContentText id='delete-dialog-description'>
             您确定要删除以下商品映射吗？此操作不可撤销。
             {mappingToDelete && (
               <Box mt={2}>
-                <Typography variant="body2" color="text.secondary">
-                  <strong>核心商品:</strong> {mappingToDelete.core_product_title}<br/>
-                  <strong>外部系统:</strong> {mappingToDelete.external_system_name}<br/>
-                  <strong>外部商品ID:</strong> {mappingToDelete.external_product_id}
+                <Typography variant='body2' color='text.secondary'>
+                  <strong>核心商品:</strong>{' '}
+                  {mappingToDelete.core_product_title}
+                  <br />
+                  <strong>外部系统:</strong>{' '}
+                  {mappingToDelete.external_system_name}
+                  <br />
+                  <strong>外部商品ID:</strong>{' '}
+                  {mappingToDelete.external_product_id}
                 </Typography>
               </Box>
             )}
           </DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteDialogOpen(false)}>
-            取消
-          </Button>
-          <Button onClick={confirmDeleteMapping} color="error" autoFocus>
+          <Button onClick={() => setDeleteDialogOpen(false)}>取消</Button>
+          <Button onClick={confirmDeleteMapping} color='error' autoFocus>
             删除
           </Button>
         </DialogActions>
@@ -589,4 +641,3 @@ export function ProductMappingManager() {
     </Box>
   );
 }
-

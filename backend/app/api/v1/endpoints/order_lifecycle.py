@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 from enum import Enum
 
+from app.schemas.base import BaseResponse
+
 from app.core.database import get_async_db
 from app.core.tenant_auth_dependency import verify_tenant_auth
 from app.core.logging import get_logger
@@ -63,7 +65,7 @@ class StatusTransitionResponse(BaseModel):
     error: Optional[str] = None
 
 
-class OrderLifecycleResponse(BaseModel):
+class OrderLifecycleResponse(BaseResponse):
     """订单生命周期响应"""
     success: bool
     order_id: int
@@ -74,8 +76,6 @@ class OrderLifecycleResponse(BaseModel):
     lifecycle_progress: Dict[str, Any]
     status_history: List[Dict[str, Any]]
     available_transitions: List[Dict[str, Any]]
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
     error: Optional[str] = None
 
 

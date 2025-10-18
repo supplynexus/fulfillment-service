@@ -14,7 +14,7 @@ export async function PUT(
 
   try {
     const { product_hashid } = await params;
-    
+
     logger.requestStart(request.method, request.url, {
       product_hashid,
       userAgent: request.headers.get('user-agent'),
@@ -169,7 +169,7 @@ export async function GET(
 
   try {
     const { product_hashid } = await params;
-    
+
     logger.requestStart(request.method, request.url, {
       product_hashid,
       userAgent: request.headers.get('user-agent'),
@@ -329,7 +329,7 @@ export async function DELETE(
 
   try {
     const { product_hashid } = await params;
-    
+
     logger.requestStart(request.method, request.url, {
       product_hashid,
       userAgent: request.headers.get('user-agent'),

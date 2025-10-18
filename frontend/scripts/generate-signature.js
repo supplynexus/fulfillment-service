@@ -26,8 +26,8 @@ class SignatureGenerator {
     this.keyId = keyId;
   }
 
-  createSignatureString(method, path, timestamp, nonce, user_id, body = "") {
-    const userPart = user_id ? `${user_id}` : "";
+  createSignatureString(method, path, timestamp, nonce, user_id, body = '') {
+    const userPart = user_id ? `${user_id}` : '';
     return `${method.toUpperCase()}${path}${timestamp}${nonce}${userPart}${body}`;
   }
 
@@ -41,11 +41,11 @@ class SignatureGenerator {
     const {
       method,
       path,
-      body = "",
+      body = '',
       user_id,
       timestamp = Math.floor(Date.now() / 1000),
       nonce = crypto.randomBytes(16).toString('hex'),
-      key_id = this.keyId
+      key_id = this.keyId,
     } = options;
 
     // Create signature string
@@ -67,7 +67,7 @@ class SignatureGenerator {
       nonce,
       user_id,
       signature,
-      key_id
+      key_id,
     };
 
     // Encode to base64
@@ -76,27 +76,32 @@ class SignatureGenerator {
 
   generateHeaders(options) {
     const signature = this.generateSignature(options);
-    
+
     return {
       'X-Signature': signature,
       'X-Tenant-ID': 'PoRpOk2e', // 硬编码的租户 hashid
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
     };
   }
 }
 
 function main() {
-  console.log("=== Frontend Signature Generator ===\n");
+  console.log('=== Frontend Signature Generator ===\n');
 
   // Check if private key exists
-  const privateKeyPath = path.join(__dirname, '../keys/frontend_private_key.pem');
-  
+  const privateKeyPath = path.join(
+    __dirname,
+    '../keys/frontend_private_key.pem'
+  );
+
   if (!fs.existsSync(privateKeyPath)) {
     console.error(`❌ Private key not found at: ${privateKeyPath}`);
-    console.log("\nPlease generate the private key first:");
-    console.log("cd frontend/keys");
-    console.log("openssl genrsa -out frontend_private_key.pem 2048");
-    console.log("openssl rsa -in frontend_private_key.pem -pubout -out frontend_public_key.pem");
+    console.log('\nPlease generate the private key first:');
+    console.log('cd frontend/keys');
+    console.log('openssl genrsa -out frontend_private_key.pem 2048');
+    console.log(
+      'openssl rsa -in frontend_private_key.pem -pubout -out frontend_public_key.pem'
+    );
     return;
   }
 
@@ -104,20 +109,20 @@ function main() {
   const privateKey = fs.readFileSync(privateKeyPath, 'utf8');
   const generator = new SignatureGenerator(privateKey);
 
-  console.log("✅ Private key loaded successfully");
+  console.log('✅ Private key loaded successfully');
   console.log(`📁 Key path: ${privateKeyPath}\n`);
 
   // Generate test signatures
-  console.log("🔐 Generating test signatures...\n");
+  console.log('🔐 Generating test signatures...\n');
 
   // 1. Tenant-level API signature
   const tenantSignature = generator.generateSignature({
     method: 'GET',
     path: '/api/v1/orders',
-    body: ''
+    body: '',
   });
 
-  console.log("1. Tenant-level API signature:");
+  console.log('1. Tenant-level API signature:');
   console.log(`X-Signature: ${tenantSignature}\n`);
 
   // 2. User-level API signature
@@ -125,42 +130,42 @@ function main() {
     method: 'GET',
     path: '/api/v1/user/profile',
     user_id: 1,
-    body: ''
+    body: '',
   });
 
-  console.log("2. User-level API signature (user_id=1):");
+  console.log('2. User-level API signature (user_id=1):');
   console.log(`X-Signature: ${userSignature}\n`);
 
   // 3. POST request signature
   const postSignature = generator.generateSignature({
     method: 'POST',
     path: '/api/v1/orders',
-    body: JSON.stringify({ test: 'data' })
+    body: JSON.stringify({ test: 'data' }),
   });
 
-  console.log("3. POST request signature:");
+  console.log('3. POST request signature:');
   console.log(`X-Signature: ${postSignature}\n`);
 
   // Generate curl commands
-  console.log("📋 Curl test commands:\n");
+  console.log('📋 Curl test commands:\n');
 
   const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
   const tenantHashid = 'PoRpOk2e'; // 硬编码的租户 hashid
-  
-  console.log("# 1. Test tenant-level API");
+
+  console.log('# 1. Test tenant-level API');
   console.log(`curl -X GET '${baseUrl}/api/v1/orders' \\`);
   console.log(`  -H 'X-Tenant-ID: ${tenantHashid}' \\`);
   console.log(`  -H 'X-Signature: ${tenantSignature}'`);
   console.log();
 
-  console.log("# 2. Test user-level API");
+  console.log('# 2. Test user-level API');
   console.log(`curl -X GET '${baseUrl}/api/v1/user/profile' \\`);
   console.log(`  -H 'X-Tenant-ID: ${tenantHashid}' \\`);
   console.log(`  -H 'X-Signature: ${userSignature}'`);
   console.log();
 
-  console.log("# 3. Test POST request");
+  console.log('# 3. Test POST request');
   console.log(`curl -X POST '${baseUrl}/api/v1/orders' \\`);
   console.log(`  -H 'X-Tenant-ID: ${tenantHashid}' \\`);
   console.log(`  -H 'X-Signature: ${postSignature}' \\`);
@@ -168,7 +173,7 @@ function main() {
   console.log(`  -d '{"test": "data"}'`);
   console.log();
 
-  console.log("=== Signature generation completed ===");
+  console.log('=== Signature generation completed ===');
 }
 
 if (require.main === module) {

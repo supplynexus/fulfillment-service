@@ -22,7 +22,10 @@ export async function GET(
       );
     }
 
-    logger.requestStart('GET', `/api/external-systems/shopify/products/${productId}/json`);
+    logger.requestStart(
+      'GET',
+      `/api/external-systems/shopify/products/${productId}/json`
+    );
 
     // Get authorization header
     const authHeader = request.headers.get('authorization');
@@ -77,7 +80,7 @@ export async function GET(
 
     // Call backend API
     const backendUrl = `${process.env.BACKEND_API_URL}${backendPath}`;
-    
+
     logger.info('Forwarding request to backend', { backendUrl });
 
     const response = await fetch(backendUrl, {
@@ -94,9 +97,9 @@ export async function GET(
 
     if (!response.ok) {
       const errorData = await response.json();
-      logger.error('Backend API error', { 
-        status: response.status, 
-        error: errorData 
+      logger.error('Backend API error', {
+        status: response.status,
+        error: errorData,
       });
       return NextResponse.json(
         { error: errorData.detail || 'Failed to fetch product JSON' },
@@ -105,16 +108,20 @@ export async function GET(
     }
 
     const data = await response.json();
-    
-    logger.requestComplete('GET', `/api/external-systems/shopify/products/${productId}/json`, response.status, 0);
-    
-    return NextResponse.json(data);
 
+    logger.requestComplete(
+      'GET',
+      `/api/external-systems/shopify/products/${productId}/json`,
+      response.status,
+      0
+    );
+
+    return NextResponse.json(data);
   } catch (error) {
-    logger.error('Error fetching Shopify product JSON', { 
-      error: error instanceof Error ? error.message : 'Unknown error' 
+    logger.error('Error fetching Shopify product JSON', {
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
-    
+
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

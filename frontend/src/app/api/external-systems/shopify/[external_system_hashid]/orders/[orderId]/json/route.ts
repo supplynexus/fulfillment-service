@@ -5,22 +5,27 @@ import { jwtUtilsServer } from '@/lib/jwt-utils-server';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ external_system_hashid: string; orderId: string }> }
+  {
+    params,
+  }: { params: Promise<{ external_system_hashid: string; orderId: string }> }
 ) {
   try {
     const { external_system_hashid, orderId } = await params;
-    
+
     // 从完整的 Shopify Order ID 中提取数字 ID
     const numericOrderId = orderId.replace('gid://shopify/Order/', '');
 
     // 获取前端 JWT token
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 });
+      return NextResponse.json(
+        { error: 'Missing or invalid authorization header' },
+        { status: 401 }
+      );
     }
 
     const frontendToken = authHeader.substring(7);
-    
+
     // 验证前端 JWT token
     let decodedToken;
     try {
@@ -29,7 +34,7 @@ export async function GET(
       console.error('JWT verification failed:', error);
       return NextResponse.json({ error: 'Invalid JWT token' }, { status: 401 });
     }
-    
+
     const { tenant_name: tenantName, sub: userId } = decodedToken;
 
     // 生成后端签名
@@ -39,7 +44,13 @@ export async function GET(
     const signatureString = `GET${backendPath}${timestamp}${nonce}${tenantName}`;
 
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
-    const signature = generateBackendSignature(privateKey, signatureString, timestamp, nonce, tenantName);
+    const signature = generateBackendSignature(
+      privateKey,
+      signatureString,
+      timestamp,
+      nonce,
+      tenantName
+    );
 
     // 构建后端 URL
     const backendUrl = `${process.env.BACKEND_URL || 'http://localhost:8000'}${backendPath}`;
@@ -61,14 +72,16 @@ export async function GET(
       const errorText = await backendResponse.text();
       console.error('Backend API error:', backendResponse.status, errorText);
       return NextResponse.json(
-        { error: `Backend API error: ${backendResponse.status}`, detail: errorText },
+        {
+          error: `Backend API error: ${backendResponse.status}`,
+          detail: errorText,
+        },
         { status: backendResponse.status }
       );
     }
 
     const data = await backendResponse.json();
     return NextResponse.json(data);
-
   } catch (error: any) {
     console.error('Shopify order JSON API error:', error);
     return NextResponse.json(

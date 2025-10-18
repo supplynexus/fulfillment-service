@@ -42,6 +42,7 @@ import {
   CalendarToday as DateIcon,
   AttachMoney as PriceIcon,
   LocalShipping as ShippingIcon,
+  CheckCircle as CheckCircleIcon,
   CheckCircle as StatusIcon,
   Error as ErrorIcon,
   Info as InfoIcon,
@@ -53,7 +54,13 @@ import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 
 // 订单状态类型
-type OrderStatus = 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'on_hold';
+type OrderStatus =
+  | 'pending'
+  | 'processing'
+  | 'shipped'
+  | 'delivered'
+  | 'cancelled'
+  | 'on_hold';
 
 // Printify 订单接口
 interface PrintifyOrder {
@@ -94,7 +101,9 @@ function PrintifyOrdersPage() {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all');
-  const [selectedOrder, setSelectedOrder] = useState<PrintifyOrder | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<PrintifyOrder | null>(
+    null
+  );
   const [openOrderDialog, setOpenOrderDialog] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -105,54 +114,59 @@ function PrintifyOrdersPage() {
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
   // 获取订单列表
-  const fetchOrders = useCallback(async (page: number = 1) => {
-    try {
-      setLoadingOrders(true);
-      setError(null);
+  const fetchOrders = useCallback(
+    async (page: number = 1) => {
+      try {
+        setLoadingOrders(true);
+        setError(null);
 
-      frontendLogger.info('🔍 开始获取 Printify 订单列表', {
-        page: page,
-        status: statusFilter,
-        search: searchTerm,
-      });
-
-      const params = new URLSearchParams({
-        page: page.toString(),
-        limit: '20',
-      });
-
-      if (statusFilter !== 'all') {
-        params.append('status', statusFilter);
-      }
-
-      if (searchTerm) {
-        params.append('search', searchTerm);
-      }
-
-      const response = await frontendApi.get(`/api/printify-orders?${params.toString()}`);
-
-      if (response.data.success && response.data.orders) {
-        const ordersData = response.data.orders || [];
-        setOrders(ordersData);
-        setTotalCount(response.data.total_count || 0);
-        setTotalPages(response.data.total_pages || 1);
-        setCurrentPage(page);
-        frontendLogger.info('✅ Printify 订单列表获取成功', {
-          count: ordersData.length,
-          total: response.data.total_count,
+        frontendLogger.info('🔍 开始获取 Printify 订单列表', {
+          page: page,
+          status: statusFilter,
+          search: searchTerm,
         });
-      } else {
-        throw new Error(response.data.message || '获取订单列表失败');
+
+        const params = new URLSearchParams({
+          page: page.toString(),
+          limit: '20',
+        });
+
+        if (statusFilter !== 'all') {
+          params.append('status', statusFilter);
+        }
+
+        if (searchTerm) {
+          params.append('search', searchTerm);
+        }
+
+        const response = await frontendApi.get(
+          `/api/printify-orders?${params.toString()}`
+        );
+
+        if (response.data.success && response.data.orders) {
+          const ordersData = response.data.orders || [];
+          setOrders(ordersData);
+          setTotalCount(response.data.total_count || 0);
+          setTotalPages(response.data.total_pages || 1);
+          setCurrentPage(page);
+          frontendLogger.info('✅ Printify 订单列表获取成功', {
+            count: ordersData.length,
+            total: response.data.total_count,
+          });
+        } else {
+          throw new Error(response.data.message || '获取订单列表失败');
+        }
+      } catch (error) {
+        frontendLogger.error('❌ 获取 Printify 订单列表失败', {
+          error: String(error),
+        });
+        setError('获取订单列表失败');
+      } finally {
+        setLoadingOrders(false);
       }
-    } catch (error) {
-      frontendLogger.error('❌ 获取 Printify 订单列表失败', {
-        error: String(error),
-      });
-      setError('获取订单列表失败');
-    } finally {
-      setLoadingOrders(false);
-    }
-  }, [statusFilter, searchTerm]);
+    },
+    [statusFilter, searchTerm]
+  );
 
   // 刷新订单列表
   const handleRefresh = useCallback(async () => {
@@ -186,7 +200,10 @@ function PrintifyOrdersPage() {
   };
 
   // 分页处理
-  const handlePageChange = (event: React.ChangeEvent<unknown>, page: number) => {
+  const handlePageChange = (
+    event: React.ChangeEvent<unknown>,
+    page: number
+  ) => {
     setCurrentPage(page);
   };
 
@@ -199,25 +216,30 @@ function PrintifyOrdersPage() {
 
       frontendLogger.info('🔍 开始同步 Printify 订单物流信息');
 
-      const response = await frontendApi.post('/api/printify-orders/sync-logistics');
+      const response = await frontendApi.post(
+        '/api/printify-orders/sync-logistics'
+      );
 
       if (response.data.success) {
-        setSyncMessage(`✅ 同步完成！共同步了 ${response.data.synced_count || 0} 个订单的物流信息`);
+        setSyncMessage(
+          `✅ 同步完成！共同步了 ${response.data.synced_count || 0} 个订单的物流信息`
+        );
         frontendLogger.info('✅ Printify 订单物流信息同步成功', {
           syncedCount: response.data.synced_count,
           totalOrders: response.data.total_orders,
-          errorCount: response.data.error_count
+          errorCount: response.data.error_count,
         });
-        
+
         // 同步完成后刷新订单列表
         await fetchOrders(currentPage);
       } else {
         setSyncMessage(`⚠️ 同步失败: ${response.data.message || '未知错误'}`);
         frontendLogger.error('❌ Printify 订单物流信息同步失败', response.data);
       }
-
     } catch (error: any) {
-      frontendLogger.error('❌ Printify 订单物流信息同步失败', { error: error.message });
+      frontendLogger.error('❌ Printify 订单物流信息同步失败', {
+        error: error.message,
+      });
       setError(error.response?.data?.detail || '同步失败，请稍后重试');
       setSyncMessage(null);
     } finally {
@@ -273,7 +295,7 @@ function PrintifyOrdersPage() {
       case 'shipped':
         return <ShippingIcon />;
       case 'delivered':
-        return <CheckCircle />;
+        return <CheckCircleIcon />;
       case 'cancelled':
         return <ErrorIcon />;
       case 'on_hold':
@@ -305,7 +327,12 @@ function PrintifyOrdersPage() {
 
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+      <Box
+        display='flex'
+        justifyContent='center'
+        alignItems='center'
+        minHeight='400px'
+      >
         <CircularProgress />
       </Box>
     );
@@ -313,21 +340,26 @@ function PrintifyOrdersPage() {
 
   return (
     <Box>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h4" component="h1">
+      <Box
+        display='flex'
+        justifyContent='space-between'
+        alignItems='center'
+        mb={3}
+      >
+        <Typography variant='h4' component='h1'>
           Printify 订单管理
         </Typography>
-        <Box display="flex" gap={2}>
+        <Box display='flex' gap={2}>
           <Button
-            variant="outlined"
+            variant='outlined'
             startIcon={<ShippingIcon />}
             onClick={handleSyncLogistics}
             disabled={syncingLogistics}
-            color="primary"
+            color='primary'
           >
             {syncingLogistics ? '同步中...' : '同步物流信息'}
           </Button>
-          <Tooltip title="刷新">
+          <Tooltip title='刷新'>
             <IconButton onClick={handleRefresh} disabled={refreshing}>
               <RefreshIcon />
             </IconButton>
@@ -336,14 +368,14 @@ function PrintifyOrdersPage() {
       </Box>
 
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
+        <Alert severity='error' sx={{ mb: 2 }}>
           {error}
         </Alert>
       )}
 
       {syncMessage && (
-        <Alert 
-          severity={syncMessage.includes('✅') ? 'success' : 'warning'} 
+        <Alert
+          severity={syncMessage.includes('✅') ? 'success' : 'warning'}
           sx={{ mb: 2 }}
         >
           {syncMessage}
@@ -353,54 +385,59 @@ function PrintifyOrdersPage() {
       {/* 搜索和过滤 */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Grid container spacing={2} alignItems="center">
-            <Grid item xs={12} sm={6} md={4}>
+          <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2} alignItems='center'>
+            <Box sx={{ width: "100%" }} sm={6} md={4}>
               <TextField
                 fullWidth
-                label="搜索订单"
+                label='搜索订单'
                 value={searchTerm}
                 onChange={handleSearch}
                 InputProps={{
-                  startAdornment: <SearchIcon sx={{ mr: 1, color: 'text.secondary' }} />,
+                  startAdornment: (
+                    <SearchIcon sx={{ mr: 1, color: 'text.secondary' }} />
+                  ),
                 }}
-                placeholder="搜索订单ID或客户邮箱"
+                placeholder='搜索订单ID或客户邮箱'
               />
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
+            </Box>
+            <Box sx={{ width: "100%" }} sm={6} md={3}>
               <FormControl fullWidth>
                 <InputLabel>状态过滤</InputLabel>
                 <Select
                   value={statusFilter}
                   onChange={handleStatusFilter}
-                  label="状态过滤"
+                  label='状态过滤'
                 >
-                  <MenuItem value="all">全部状态</MenuItem>
-                  <MenuItem value="pending">待处理</MenuItem>
-                  <MenuItem value="processing">处理中</MenuItem>
-                  <MenuItem value="shipped">已发货</MenuItem>
-                  <MenuItem value="delivered">已送达</MenuItem>
-                  <MenuItem value="cancelled">已取消</MenuItem>
-                  <MenuItem value="on_hold">暂停</MenuItem>
+                  <MenuItem value='all'>全部状态</MenuItem>
+                  <MenuItem value='pending'>待处理</MenuItem>
+                  <MenuItem value='processing'>处理中</MenuItem>
+                  <MenuItem value='shipped'>已发货</MenuItem>
+                  <MenuItem value='delivered'>已送达</MenuItem>
+                  <MenuItem value='cancelled'>已取消</MenuItem>
+                  <MenuItem value='on_hold'>暂停</MenuItem>
                 </Select>
               </FormControl>
-            </Grid>
-          </Grid>
+            </Box>
+          </Box>
         </CardContent>
       </Card>
 
       {/* 订单列表 */}
       <Card>
         <CardContent>
-          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-            <Typography variant="h6">
-              订单列表 ({totalCount} 个订单)
-            </Typography>
+          <Box
+            display='flex'
+            justifyContent='space-between'
+            alignItems='center'
+            mb={2}
+          >
+            <Typography variant='h6'>订单列表 ({totalCount} 个订单)</Typography>
             {loadingOrders && <CircularProgress size={24} />}
           </Box>
 
           {orders.length === 0 ? (
-            <Box textAlign="center" py={4}>
-              <Typography variant="body1" color="text.secondary">
+            <Box textAlign='center' py={4}>
+              <Typography variant='body1' color='text.secondary'>
                 暂无订单数据
               </Typography>
             </Box>
@@ -420,33 +457,36 @@ function PrintifyOrdersPage() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {orders.map((order) => (
+                    {orders.map(order => (
                       <TableRow key={order.id}>
                         <TableCell>
-                          <Typography variant="body2" fontFamily="monospace">
+                          <Typography variant='body2' fontFamily='monospace'>
                             {order.external_order_id}
                           </Typography>
                         </TableCell>
                         <TableCell>
                           {order.scm_order ? (
-                            <Box display="flex" alignItems="center" gap={1}>
-                              <LinkIcon fontSize="small" color="primary" />
-                              <Typography variant="body2">
+                            <Box display='flex' alignItems='center' gap={1}>
+                              <LinkIcon fontSize='small' color='primary' />
+                              <Typography variant='body2'>
                                 SCM-{order.scm_order.id}
                               </Typography>
                             </Box>
                           ) : (
-                            <Typography variant="body2" color="text.secondary">
+                            <Typography variant='body2' color='text.secondary'>
                               N/A
                             </Typography>
                           )}
                         </TableCell>
                         <TableCell>
                           <Box>
-                            <Typography variant="body2">
+                            <Typography variant='body2'>
                               {order.customer_name || 'N/A'}
                             </Typography>
-                            <Typography variant="caption" color="text.secondary">
+                            <Typography
+                              variant='caption'
+                              color='text.secondary'
+                            >
                               {order.customer_email || 'N/A'}
                             </Typography>
                           </Box>
@@ -456,23 +496,23 @@ function PrintifyOrdersPage() {
                             icon={getStatusIcon(order.status)}
                             label={order.status}
                             color={getStatusColor(order.status) as any}
-                            size="small"
+                            size='small'
                           />
                         </TableCell>
                         <TableCell>
-                          <Typography variant="body2">
+                          <Typography variant='body2'>
                             {formatPrice(order.total_price, order.currency)}
                           </Typography>
                         </TableCell>
                         <TableCell>
-                          <Typography variant="body2">
+                          <Typography variant='body2'>
                             {formatDate(order.created_at)}
                           </Typography>
                         </TableCell>
                         <TableCell>
-                          <Tooltip title="查看详情">
+                          <Tooltip title='查看详情'>
                             <IconButton
-                              size="small"
+                              size='small'
                               onClick={() => handleViewOrder(order)}
                             >
                               <ViewIcon />
@@ -487,12 +527,12 @@ function PrintifyOrdersPage() {
 
               {/* 分页 */}
               {totalPages > 1 && (
-                <Box display="flex" justifyContent="center" mt={3}>
+                <Box display='flex' justifyContent='center' mt={3}>
                   <Pagination
                     count={totalPages}
                     page={currentPage}
                     onChange={handlePageChange}
-                    color="primary"
+                    color='primary'
                   />
                 </Box>
               )}
@@ -505,12 +545,12 @@ function PrintifyOrdersPage() {
       <Dialog
         open={openOrderDialog}
         onClose={() => setOpenOrderDialog(false)}
-        maxWidth="md"
+        maxWidth='md'
         fullWidth
       >
         <DialogTitle>
-          <Box display="flex" alignItems="center" gap={2}>
-            <OrderIcon color="primary" />
+          <Box display='flex' alignItems='center' gap={2}>
+            <OrderIcon color='primary' />
             订单详情
           </Box>
         </DialogTitle>
@@ -520,134 +560,145 @@ function PrintifyOrdersPage() {
               {/* 订单基本信息 */}
               <Card sx={{ mb: 2 }}>
                 <CardContent>
-                  <Typography variant="h6" gutterBottom>
+                  <Typography variant='h6' gutterBottom>
                     订单信息
                   </Typography>
-                  <Grid container spacing={2}>
-                    <Grid item xs={12} sm={6}>
-                      <Typography variant="body2" color="text.secondary">
+                  <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2}>
+                    <Box sx={{ width: "100%" }} sm={6}>
+                      <Typography variant='body2' color='text.secondary'>
                         订单ID
                       </Typography>
-                      <Typography variant="body1" fontFamily="monospace">
+                      <Typography variant='body1' fontFamily='monospace'>
                         {selectedOrder.external_order_id}
                       </Typography>
-                    </Grid>
-                    <Grid item xs={12} sm={6}>
-                      <Typography variant="body2" color="text.secondary">
+                    </Box>
+                    <Box sx={{ width: "100%" }} sm={6}>
+                      <Typography variant='body2' color='text.secondary'>
                         状态
                       </Typography>
                       <Chip
                         icon={getStatusIcon(selectedOrder.status)}
                         label={selectedOrder.status}
                         color={getStatusColor(selectedOrder.status) as any}
-                        size="small"
+                        size='small'
                       />
-                    </Grid>
-                    <Grid item xs={12} sm={6}>
-                      <Typography variant="body2" color="text.secondary">
+                    </Box>
+                    <Box sx={{ width: "100%" }} sm={6}>
+                      <Typography variant='body2' color='text.secondary'>
                         SCM订单
                       </Typography>
-                      <Typography variant="body1">
-                        {selectedOrder.scm_order ? `SCM-${selectedOrder.scm_order.id}` : 'N/A'}
+                      <Typography variant='body1'>
+                        {selectedOrder.scm_order
+                          ? `SCM-${selectedOrder.scm_order.id}`
+                          : 'N/A'}
                       </Typography>
-                    </Grid>
-                    <Grid item xs={12} sm={6}>
-                      <Typography variant="body2" color="text.secondary">
+                    </Box>
+                    <Box sx={{ width: "100%" }} sm={6}>
+                      <Typography variant='body2' color='text.secondary'>
                         总价
                       </Typography>
-                      <Typography variant="body1">
-                        {formatPrice(selectedOrder.total_price, selectedOrder.currency)}
+                      <Typography variant='body1'>
+                        {formatPrice(
+                          selectedOrder.total_price,
+                          selectedOrder.currency
+                        )}
                       </Typography>
-                    </Grid>
-                    <Grid item xs={12} sm={6}>
-                      <Typography variant="body2" color="text.secondary">
+                    </Box>
+                    <Box sx={{ width: "100%" }} sm={6}>
+                      <Typography variant='body2' color='text.secondary'>
                         创建时间
                       </Typography>
-                      <Typography variant="body1">
+                      <Typography variant='body1'>
                         {formatDate(selectedOrder.created_at)}
                       </Typography>
-                    </Grid>
-                    <Grid item xs={12} sm={6}>
-                      <Typography variant="body2" color="text.secondary">
+                    </Box>
+                    <Box sx={{ width: "100%" }} sm={6}>
+                      <Typography variant='body2' color='text.secondary'>
                         更新时间
                       </Typography>
-                      <Typography variant="body1">
-                        {selectedOrder.updated_at ? formatDate(selectedOrder.updated_at) : 'N/A'}
+                      <Typography variant='body1'>
+                        {selectedOrder.updated_at
+                          ? formatDate(selectedOrder.updated_at)
+                          : 'N/A'}
                       </Typography>
-                    </Grid>
-                  </Grid>
+                    </Box>
+                  </Box>
                 </CardContent>
               </Card>
 
               {/* 客户信息 */}
               <Card sx={{ mb: 2 }}>
                 <CardContent>
-                  <Typography variant="h6" gutterBottom>
+                  <Typography variant='h6' gutterBottom>
                     客户信息
                   </Typography>
-                  <Grid container spacing={2}>
-                    <Grid item xs={12} sm={6}>
-                      <Typography variant="body2" color="text.secondary">
+                  <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2}>
+                    <Box sx={{ width: "100%" }} sm={6}>
+                      <Typography variant='body2' color='text.secondary'>
                         姓名
                       </Typography>
-                      <Typography variant="body1">
+                      <Typography variant='body1'>
                         {selectedOrder.customer_name || 'N/A'}
                       </Typography>
-                    </Grid>
-                    <Grid item xs={12} sm={6}>
-                      <Typography variant="body2" color="text.secondary">
+                    </Box>
+                    <Box sx={{ width: "100%" }} sm={6}>
+                      <Typography variant='body2' color='text.secondary'>
                         邮箱
                       </Typography>
-                      <Typography variant="body1">
+                      <Typography variant='body1'>
                         {selectedOrder.customer_email || 'N/A'}
                       </Typography>
-                    </Grid>
-                  </Grid>
+                    </Box>
+                  </Box>
                 </CardContent>
               </Card>
 
               {/* 物流信息 */}
-              {(selectedOrder.tracking_number || selectedOrder.tracking_url) && (
+              {(selectedOrder.tracking_number ||
+                selectedOrder.tracking_url) && (
                 <Card sx={{ mb: 2 }}>
                   <CardContent>
-                    <Typography variant="h6" gutterBottom>
+                    <Typography variant='h6' gutterBottom>
                       物流信息
                     </Typography>
-                    <Grid container spacing={2}>
-                      <Grid item xs={12} sm={6}>
-                        <Typography variant="body2" color="text.secondary">
+                    <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} spacing={2}>
+                      <Box sx={{ width: "100%" }} sm={6}>
+                        <Typography variant='body2' color='text.secondary'>
                           跟踪号
                         </Typography>
-                        <Typography variant="body1">
+                        <Typography variant='body1'>
                           {selectedOrder.tracking_number || 'N/A'}
                         </Typography>
-                      </Grid>
-                      <Grid item xs={12} sm={6}>
-                        <Typography variant="body2" color="text.secondary">
+                      </Box>
+                      <Box sx={{ width: "100%" }} sm={6}>
+                        <Typography variant='body2' color='text.secondary'>
                           承运商
                         </Typography>
-                        <Typography variant="body1">
+                        <Typography variant='body1'>
                           {selectedOrder.carrier || 'N/A'}
                         </Typography>
-                      </Grid>
+                      </Box>
                       {selectedOrder.tracking_url && (
-                        <Grid item xs={12}>
-                          <Typography variant="body2" color="text.secondary">
+                        <Box sx={{ width: "100%" }}>
+                          <Typography variant='body2' color='text.secondary'>
                             跟踪链接
                           </Typography>
                           <Typography
-                            variant="body1"
-                            component="a"
+                            variant='body1'
+                            component='a'
                             href={selectedOrder.tracking_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            sx={{ color: 'primary.main', textDecoration: 'none' }}
+                            target='_blank'
+                            rel='noopener noreferrer'
+                            sx={{
+                              color: 'primary.main',
+                              textDecoration: 'none',
+                            }}
                           >
                             {selectedOrder.tracking_url}
                           </Typography>
-                        </Grid>
+                        </Box>
                       )}
-                    </Grid>
+                    </Box>
                   </CardContent>
                 </Card>
               )}

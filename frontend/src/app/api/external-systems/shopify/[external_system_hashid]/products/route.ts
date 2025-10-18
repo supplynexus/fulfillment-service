@@ -66,8 +66,7 @@ export async function GET(
       tenantName,
     });
 
-    const backendUrl =
-      `${process.env.BACKEND_API_URL}/api/v1/external-systems/shopify/${external_system_hashid}/products`;
+    const backendUrl = `${process.env.BACKEND_API_URL}/api/v1/external-systems/shopify/${external_system_hashid}/products`;
 
     logger.info('Forwarding request to backend', {
       backendEndpoint: backendUrl,
@@ -107,7 +106,12 @@ export async function GET(
 
     const data = await response.json();
 
-    logger.requestComplete(request.method, request.url, response.status, responseTime);
+    logger.requestComplete(
+      request.method,
+      request.url,
+      response.status,
+      responseTime
+    );
 
     return NextResponse.json(data);
   } catch (error) {

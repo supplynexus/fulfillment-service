@@ -14,7 +14,9 @@ interface ScmOrderDetailsPageProps {
   }>;
 }
 
-export default async function ScmOrderDetailsPage({ params }: ScmOrderDetailsPageProps) {
+export default async function ScmOrderDetailsPage({
+  params,
+}: ScmOrderDetailsPageProps) {
   const { id } = await params;
   return (
     <ProtectedRoute>
