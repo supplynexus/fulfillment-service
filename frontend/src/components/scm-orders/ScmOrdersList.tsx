@@ -34,7 +34,6 @@ import {
   Visibility as ViewIcon,
   FilterList as FilterIcon,
   LocalShipping as ShippingIcon,
-  Sync as SyncIcon,
   Delete as DeleteIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
@@ -79,8 +78,6 @@ export function ScmOrdersList() {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [syncing, setSyncing] = useState(false);
-  const [syncMessage, setSyncMessage] = useState<string | null>(null);
   
   // 删除相关状态
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
@@ -137,36 +134,6 @@ export function ScmOrdersList() {
     fetchScmOrders();
   };
 
-  const handleSyncPrintifyOrders = async () => {
-    try {
-      setSyncing(true);
-      setSyncMessage('正在同步 Printify 发货单...');
-      setError(null);
-
-      // 调用 Printify 发货单同步 API
-      const response = await frontendApi.post('/api/scm-orders/sync-printify-orders');
-
-      if (response.data.success) {
-        setSyncMessage(`✅ 同步完成！共同步了 ${response.data.synced_count || 0} 个发货单`);
-        console.log('✅ Printify 发货单同步成功:', response.data);
-      } else {
-        setSyncMessage(`⚠️ 同步失败: ${response.data.message || '未知错误'}`);
-        console.error('❌ Printify 发货单同步失败:', response.data);
-      }
-
-      // 同步完成后刷新订单列表
-      await fetchScmOrders();
-
-    } catch (error: any) {
-      console.error('❌ Printify 发货单同步失败:', error);
-      setError(error.response?.data?.detail || '同步失败，请稍后重试');
-      setSyncMessage(null);
-    } finally {
-      setSyncing(false);
-      // 3秒后清除同步消息
-      setTimeout(() => setSyncMessage(null), 3000);
-    }
-  };
 
   const handleViewOrder = (orderHashid: string) => {
     router.push(`/scm-orders/${orderHashid}`);
@@ -281,19 +248,10 @@ export function ScmOrdersList() {
         </Typography>
         <Box display='flex' gap={2}>
           <Button
-            variant='contained'
-            startIcon={syncing ? <CircularProgress size={16} /> : <SyncIcon />}
-            onClick={handleSyncPrintifyOrders}
-            disabled={syncing || loading}
-            color='primary'
-          >
-            {syncing ? '同步中...' : '同步 Printify 发货单'}
-          </Button>
-          <Button
             variant='outlined'
             startIcon={<RefreshIcon />}
             onClick={handleRefresh}
-            disabled={loading || syncing}
+            disabled={loading}
           >
             刷新
           </Button>
@@ -333,14 +291,6 @@ export function ScmOrdersList() {
         </Alert>
       )}
 
-      {syncMessage && (
-        <Alert 
-          severity={syncMessage.includes('✅') ? 'success' : syncMessage.includes('⚠️') ? 'warning' : 'info'} 
-          sx={{ mb: 2 }}
-        >
-          {syncMessage}
-        </Alert>
-      )}
 
       <Card>
         <CardContent>
