@@ -711,11 +711,20 @@ def upgrade() -> None:
         print("Index ix_scm_orders_shopify_order_id dropped successfully")
     else:
         print("Index ix_scm_orders_shopify_order_id does not exist, skipping")
-    op.drop_column("scm_orders", "total_amount")
-    op.drop_column("scm_orders", "target_system_type")
-    op.drop_column("scm_orders", "external_order_id")
-    op.drop_column("scm_orders", "external_order_number")
-    op.drop_column("scm_orders", "target_system_id")
+    # 安全地删除列（如果存在的话）
+    columns_to_drop = ["total_amount", "target_system_type", "external_order_id", "external_order_number", "target_system_id"]
+    
+    for column_name in columns_to_drop:
+        result = connection.execute(sa.text("""
+            SELECT column_name FROM information_schema.columns 
+            WHERE table_name = 'scm_orders' AND column_name = :column_name
+        """), {"column_name": column_name})
+        
+        if result.fetchone():
+            op.drop_column("scm_orders", column_name)
+            print(f"Column {column_name} dropped successfully from scm_orders")
+        else:
+            print(f"Column {column_name} does not exist in scm_orders, skipping")
     op.create_index(
         op.f("ix_shopify_orders_id"), "shopify_orders", ["id"], unique=False
     )
