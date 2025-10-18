@@ -678,7 +678,17 @@ def upgrade() -> None:
         "product_mappings",
         ["tenant_id", "core_product_id", "external_system_id"],
     )
-    op.drop_constraint("uq_products_handle", "products", type_="unique")
+    # 安全地删除约束（如果存在的话）
+    result = connection.execute(sa.text("""
+        SELECT constraint_name FROM information_schema.table_constraints 
+        WHERE table_name = 'products' AND constraint_name = 'uq_products_handle'
+    """))
+    
+    if result.fetchone():
+        op.drop_constraint("uq_products_handle", "products", type_="unique")
+        print("Constraint uq_products_handle dropped successfully")
+    else:
+        print("Constraint uq_products_handle does not exist, skipping")
     # 安全地删除索引（如果存在的话）
     try:
         op.drop_index("ix_scm_orders_printify_order_id", table_name="scm_orders")
