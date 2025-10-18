@@ -690,17 +690,27 @@ def upgrade() -> None:
     else:
         print("Constraint uq_products_handle does not exist, skipping")
     # 安全地删除索引（如果存在的话）
-    try:
-        op.drop_index("ix_scm_orders_printify_order_id", table_name="scm_orders")
-    except Exception as e:
-        print(f"Index ix_scm_orders_printify_order_id does not exist, skipping: {e}")
-        pass
+    result = connection.execute(sa.text("""
+        SELECT indexname FROM pg_indexes 
+        WHERE tablename = 'scm_orders' AND indexname = 'ix_scm_orders_printify_order_id'
+    """))
     
-    try:
+    if result.fetchone():
+        op.drop_index("ix_scm_orders_printify_order_id", table_name="scm_orders")
+        print("Index ix_scm_orders_printify_order_id dropped successfully")
+    else:
+        print("Index ix_scm_orders_printify_order_id does not exist, skipping")
+    
+    result = connection.execute(sa.text("""
+        SELECT indexname FROM pg_indexes 
+        WHERE tablename = 'scm_orders' AND indexname = 'ix_scm_orders_shopify_order_id'
+    """))
+    
+    if result.fetchone():
         op.drop_index("ix_scm_orders_shopify_order_id", table_name="scm_orders")
-    except Exception as e:
-        print(f"Index ix_scm_orders_shopify_order_id does not exist, skipping: {e}")
-        pass
+        print("Index ix_scm_orders_shopify_order_id dropped successfully")
+    else:
+        print("Index ix_scm_orders_shopify_order_id does not exist, skipping")
     op.drop_column("scm_orders", "total_amount")
     op.drop_column("scm_orders", "target_system_type")
     op.drop_column("scm_orders", "external_order_id")
