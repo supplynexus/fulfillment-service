@@ -595,7 +595,13 @@ def upgrade() -> None:
         nullable=True,
         existing_server_default=sa.text("now()"),
     )
-    op.drop_index("ix_orders_shopify_order_id", table_name="orders")
+    # 安全地删除索引（如果存在的话）
+    try:
+        op.drop_index("ix_orders_shopify_order_id", table_name="orders")
+    except Exception as e:
+        # 索引不存在，记录日志但继续执行
+        print(f"Index ix_orders_shopify_order_id does not exist, skipping: {e}")
+        pass
     op.drop_index(
         "uq_pm_core_product",
         table_name="product_mappings",
