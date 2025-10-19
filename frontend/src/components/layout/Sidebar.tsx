@@ -228,9 +228,22 @@ const menuItems: MenuItem[] = [
           },
           {
             id: 'printify-orders',
-            label: '订单列表',
+            label: '订单管理',
             icon: <OrdersIcon />,
-            path: '/external-systems/printify/orders',
+            children: [
+              {
+                id: 'printify-orders-realtime',
+                label: '实时订单',
+                icon: <OrdersIcon />,
+                path: '/external-systems/printify/orders',
+              },
+              {
+                id: 'printify-orders-synced',
+                label: '同步订单',
+                icon: <DatabaseIcon />,
+                path: '/external-systems/printify/synced-orders',
+              },
+            ],
           },
         ],
       },
@@ -273,6 +286,7 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
     'shopify',
     'shopify-orders',
     'printify',
+    'printify-orders',
     'settings',
   ]);
 

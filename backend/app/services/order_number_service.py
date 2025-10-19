@@ -85,7 +85,54 @@ class OrderNumberService:
     @staticmethod
     async def generate_scm_order_number(db: AsyncSession, tenant_id: int) -> str:
         """生成 SCM 订单编号"""
-        return await OrderNumberService.generate_order_number(db, tenant_id, "SCM")
+        try:
+            logger.info(f"🔍 开始生成SCM订单编号: tenant_id={tenant_id}")
+            
+            # 获取当前年份
+            current_year = datetime.now().year
+            
+            # 查询该租户当年SCM订单的最大编号
+            from app.models.scm_order import SCMOrder
+            
+            # 构建查询条件：租户ID + 订单编号前缀匹配
+            prefix_pattern = f"SCM-{current_year}-%"
+            
+            # 查询该租户当年SCM订单的最大编号
+            query = select(SCMOrder.scm_order_number).where(
+                SCMOrder.tenant_id == tenant_id,
+                SCMOrder.scm_order_number.like(prefix_pattern)
+            ).order_by(SCMOrder.scm_order_number.desc())
+            
+            result = await db.execute(query)
+            max_order_number = result.scalar()
+            
+            # 生成新编号
+            if max_order_number:
+                # 提取编号中的数字部分
+                try:
+                    # 格式: SCM-2025-001 -> 提取 001
+                    number_part = max_order_number.split('-')[-1]
+                    next_number = int(number_part) + 1
+                except (ValueError, IndexError):
+                    # 如果解析失败，从1开始
+                    next_number = 1
+            else:
+                # 没有找到匹配的编号，从1开始
+                next_number = 1
+            
+            # 格式化编号：SCM-2025-001
+            new_order_number = f"SCM-{current_year}-{next_number:03d}"
+            
+            logger.info(f"✅ SCM订单编号生成成功: {new_order_number}")
+            return new_order_number
+            
+        except Exception as e:
+            logger.error(f"❌ SCM订单编号生成失败: {str(e)}")
+            # 降级方案：使用时间戳
+            timestamp = int(datetime.now().timestamp())
+            fallback_number = f"SCM-{current_year}-{timestamp % 1000:03d}"
+            logger.warning(f"⚠️ 使用降级方案: {fallback_number}")
+            return fallback_number
     
     @staticmethod
     async def generate_payment_number(db: AsyncSession, tenant_id: int) -> str:

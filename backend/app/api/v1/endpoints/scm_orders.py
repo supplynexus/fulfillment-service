@@ -1640,6 +1640,47 @@ async def generate_printify_order(
         scm_order.routing_metadata['printify_status'] = printify_result.get('status')
         scm_order.routing_metadata['generated_at'] = datetime.utcnow().isoformat()
         
+        # 将 Printify 订单保存到数据库
+        from app.models.printify_order import PrintifyOrder
+        from app.models.external_system import ExternalSystem, ExternalSystemType
+        
+        # 获取 Printify 外部系统
+        external_system_result = await db.execute(
+            select(ExternalSystem).where(
+                and_(
+                    ExternalSystem.tenant_id == tenant.id,
+                    ExternalSystem.system_type == ExternalSystemType.PRINTIFY
+                )
+            )
+        )
+        external_system = external_system_result.scalar_one_or_none()
+        
+        if external_system:
+            # 创建 Printify 订单记录
+            printify_order = PrintifyOrder(
+                tenant_id=tenant.id,
+                external_system_id=external_system.id,
+                external_order_id=printify_result.get('fulfillment_id'),
+                scm_order_id=scm_order.id,  # 关联到 SCM 订单
+                status=printify_result.get('status', 'pending'),
+                total_price=printify_result.get('total_price', 0),
+                currency=printify_result.get('currency', 'USD'),
+                customer_email=scm_order.customer_email,
+                customer_name=scm_order.customer_name,
+                shipping_address=scm_order.shipping_address,
+                billing_address=scm_order.billing_address,
+                printify_data=printify_result,
+                external_data=printify_result,
+                tracking_number=printify_result.get('tracking_number'),
+                tracking_url=printify_result.get('tracking_url'),
+                carrier=printify_result.get('carrier'),
+            )
+            
+            db.add(printify_order)
+            logger.info(f"✅ Printify 订单已保存到数据库: external_order_id={printify_result.get('fulfillment_id')}, scm_order_id={scm_order.id}")
+        else:
+            logger.warning(f"⚠️ 未找到 Printify 外部系统，无法保存订单到数据库")
+        
         await db.commit()
         await db.refresh(scm_order)
         

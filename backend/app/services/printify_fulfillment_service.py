@@ -3,7 +3,7 @@ Printify 发货服务
 处理 SCM 订单到 Printify 的发货指示
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime
 import asyncio
 import aiohttp
@@ -256,8 +256,11 @@ class PrintifyFulfillmentService:
             # 构建发货订单数据
             fulfillment_data = await self._build_fulfillment_data(scm_order, db, tenant)
             
-            # 调用 Printify API - 使用正确的端点格式
+            # 验证产品是否存在于 Printify 店铺中
             shop_id = printify_credentials.get('store_url')  # store_url 实际上是 shop_id
+            await self._validate_printify_products(printify_credentials, shop_id, fulfillment_data.get('line_items', []), db, tenant)
+            
+            # 调用 Printify API - 使用正确的端点格式
             endpoint = f"/v1/shops/{shop_id}/orders.json"
             logger.info(f"🔍 调用 Printify API: endpoint={endpoint}, shop_id={shop_id}")
             logger.info(f"🔍 发货订单数据: {fulfillment_data}")
@@ -401,15 +404,26 @@ class PrintifyFulfillmentService:
             
             # 处理商品行项目
             for item in scm_order.line_items:
+                printify_product = None
+                
+                # 如果有 core_variant_id，直接查找
                 if item.get("core_variant_id"):
-                    # 这里需要根据 core_variant_id 查找对应的 Printify 产品
                     printify_product = await self._get_printify_product(item["core_variant_id"], db, tenant.id)
-                    if printify_product:
-                        fulfillment_data["line_items"].append({
-                            "product_id": printify_product["printify_product_id"],
-                            "variant_id": int(printify_product["printify_variant_id"]),  # 确保是整数
-                            "quantity": item["quantity"]
-                        })
+                else:
+                    # 如果没有 core_variant_id，尝试通过 SKU 查找
+                    sku = item.get("metadata", {}).get("sku")
+                    if sku:
+                        printify_product = await self._get_printify_product_by_sku(sku, db, tenant.id)
+                
+                if printify_product:
+                    fulfillment_data["line_items"].append({
+                        "product_id": printify_product["printify_product_id"],
+                        "variant_id": int(printify_product["printify_variant_id"]),  # 确保是整数
+                        "quantity": item["quantity"]
+                    })
+                    logger.info(f"✅ 添加商品到 line_items: product_id={printify_product['printify_product_id']}, variant_id={printify_product['printify_variant_id']}, quantity={item['quantity']}")
+                else:
+                    logger.warning(f"⚠️ 跳过商品，未找到 Printify 映射: {item}")
             
             logger.info(f"✅ 发货订单数据构建完成: line_items_count={len(fulfillment_data['line_items'])}")
             return fulfillment_data
@@ -468,6 +482,150 @@ class PrintifyFulfillmentService:
             logger.error(f"   异常堆栈: {traceback.format_exc()}")
             return None
     
+    async def _get_printify_product_by_sku(self, sku: str, db, tenant_id: int) -> Optional[Dict[str, Any]]:
+        """根据 SKU 获取对应的 Printify 产品"""
+        try:
+            from app.models.product import ProductVariant, ProductMapping
+            from app.models.external_system import ExternalSystem, ExternalSystemType
+            from sqlalchemy import select, and_
+            
+            # 查询 Printify 外部系统
+            external_system_result = await db.execute(
+                select(ExternalSystem).where(
+                    and_(
+                        ExternalSystem.tenant_id == tenant_id,
+                        ExternalSystem.system_type == ExternalSystemType.PRINTIFY
+                    )
+                )
+            )
+            external_system = external_system_result.scalar_one_or_none()
+            
+            if not external_system:
+                logger.error(f"❌ 未找到 Printify 外部系统: tenant_id={tenant_id}")
+                return None
+            
+            # 通过 SKU 查找核心变体
+            variant_result = await db.execute(
+                select(ProductVariant).where(
+                    and_(
+                        ProductVariant.tenant_id == tenant_id,
+                        ProductVariant.sku == sku
+                    )
+                )
+            )
+            core_variant = variant_result.scalar_one_or_none()
+            
+            if not core_variant:
+                logger.warning(f"⚠️ 未找到核心变体: sku={sku}")
+                return None
+            
+            # 查询产品映射
+            mapping_result = await db.execute(
+                select(ProductMapping).where(
+                    and_(
+                        ProductMapping.core_variant_id == core_variant.id,
+                        ProductMapping.tenant_id == tenant_id,
+                        ProductMapping.external_system_id == external_system.id
+                    )
+                )
+            )
+            mapping = mapping_result.scalar_one_or_none()
+            
+            if not mapping:
+                logger.warning(f"⚠️ 未找到 Printify 产品映射: sku={sku}, core_variant_id={core_variant.id}")
+                return None
+            
+            logger.info(f"✅ 通过 SKU 找到 Printify 产品映射: sku={sku}, external_product_id={mapping.external_product_id}, external_variant_id={mapping.external_variant_id}")
+            
+            return {
+                "printify_product_id": mapping.external_product_id,
+                "printify_variant_id": mapping.external_variant_id
+            }
+        except Exception as e:
+            logger.error(f"❌ 通过 SKU 获取 Printify 产品失败: {str(e)}")
+            import traceback
+            logger.error(f"   异常堆栈: {traceback.format_exc()}")
+            return None
+    
+    async def get_printify_products(self, credentials: Dict[str, str], shop_id: str) -> List[Dict[str, Any]]:
+        """获取 Printify 店铺中的产品列表"""
+        try:
+            endpoint = f"/v1/shops/{shop_id}/products.json"
+            products_data = await self._call_printify_api(credentials, endpoint, "GET")
+            return products_data.get("data", [])
+        except Exception as e:
+            logger.error(f"❌ 获取 Printify 产品列表失败: {str(e)}")
+            return []
+
+    async def _validate_printify_products(self, credentials: Dict[str, str], shop_id: str, line_items: List[Dict], db, tenant) -> None:
+        """验证产品是否存在于 Printify 店铺中，如果不存在则尝试更新映射"""
+        try:
+            # 获取店铺中的实际产品列表
+            actual_products = await self.get_printify_products(credentials, shop_id)
+            if not actual_products:
+                logger.warning(f"⚠️ 无法获取 Printify 店铺产品列表: shop_id={shop_id}")
+                return
+            
+            # 创建产品ID到产品信息的映射
+            product_map = {}
+            for product in actual_products:
+                product_id = product.get('id')
+                if product_id:
+                    product_map[product_id] = product
+            
+            # 检查每个line_item中的产品
+            for item in line_items:
+                product_id = item.get('product_id')
+                variant_id = item.get('variant_id')
+                
+                if product_id not in product_map:
+                    logger.error(f"❌ 产品不存在于 Printify 店铺: product_id={product_id}, shop_id={shop_id}")
+                    # 这里可以添加更新产品映射的逻辑
+                    await self._update_product_mapping_for_missing_product(product_id, variant_id, actual_products, db, tenant)
+                else:
+                    # 验证变体是否存在
+                    product = product_map[product_id]
+                    variants = product.get('variants', [])
+                    variant_exists = any(str(v.get('id')) == str(variant_id) for v in variants)
+                    
+                    if not variant_exists:
+                        logger.error(f"❌ 变体不存在于产品中: product_id={product_id}, variant_id={variant_id}")
+                        # 这里可以添加更新变体映射的逻辑
+                        await self._update_variant_mapping_for_missing_variant(product_id, variant_id, variants, db, tenant)
+                    else:
+                        logger.info(f"✅ 产品验证通过: product_id={product_id}, variant_id={variant_id}")
+                        
+        except Exception as e:
+            logger.error(f"❌ 验证 Printify 产品失败: {str(e)}")
+            import traceback
+            logger.error(f"   异常堆栈: {traceback.format_exc()}")
+
+    async def _update_product_mapping_for_missing_product(self, missing_product_id: str, variant_id: int, actual_products: List[Dict], db, tenant) -> None:
+        """当产品不存在时，尝试更新产品映射"""
+        try:
+            logger.info(f"🔍 尝试为缺失的产品更新映射: product_id={missing_product_id}")
+            
+            # 这里可以实现更复杂的映射逻辑
+            # 比如根据产品名称、SKU等匹配实际的产品
+            # 暂时只记录日志
+            logger.warning(f"⚠️ 需要手动更新产品映射: missing_product_id={missing_product_id}")
+            
+        except Exception as e:
+            logger.error(f"❌ 更新产品映射失败: {str(e)}")
+
+    async def _update_variant_mapping_for_missing_variant(self, product_id: str, missing_variant_id: int, variants: List[Dict], db, tenant) -> None:
+        """当变体不存在时，尝试更新变体映射"""
+        try:
+            logger.info(f"🔍 尝试为缺失的变体更新映射: product_id={product_id}, variant_id={missing_variant_id}")
+            
+            # 这里可以实现更复杂的映射逻辑
+            # 比如根据变体属性匹配实际的变体
+            # 暂时只记录日志
+            logger.warning(f"⚠️ 需要手动更新变体映射: product_id={product_id}, missing_variant_id={missing_variant_id}")
+            
+        except Exception as e:
+            logger.error(f"❌ 更新变体映射失败: {str(e)}")
+
     async def _call_printify_api(
         self, 
         credentials: Dict[str, str], 

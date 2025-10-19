@@ -34,7 +34,6 @@ import {
   Visibility as ViewIcon,
   FilterList as FilterIcon,
   LocalShipping as ShippingIcon,
-  Sync as SyncIcon,
   Delete as DeleteIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
@@ -71,7 +70,7 @@ interface ScmOrder {
 
 export function ScmOrdersList() {
   console.log('🔍 ScmOrdersList 组件文件加载');
-
+  
   const router = useRouter();
   const [orders, setOrders] = useState<ScmOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,9 +78,7 @@ export function ScmOrdersList() {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [syncing, setSyncing] = useState(false);
-  const [syncMessage, setSyncMessage] = useState<string | null>(null);
-
+  
   // 删除相关状态
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -94,7 +91,7 @@ export function ScmOrdersList() {
     error,
     searchTerm,
     currentPage,
-    totalPages,
+    totalPages
   });
 
   const fetchScmOrders = async () => {
@@ -113,7 +110,7 @@ export function ScmOrdersList() {
       console.log('🔍 SCM订单API响应:', response.data);
       console.log('🔍 SCM订单数据:', response.data.scm_orders);
       console.log('🔍 SCM订单数量:', response.data.scm_orders?.length || 0);
-
+      
       setOrders(response.data.scm_orders || []);
       setTotalPages(Math.ceil((response.data.total || 0) / ITEMS_PER_PAGE));
     } catch (err: any) {
@@ -137,39 +134,6 @@ export function ScmOrdersList() {
     fetchScmOrders();
   };
 
-  const handleSyncPrintifyOrders = async () => {
-    try {
-      setSyncing(true);
-      setSyncMessage('正在同步 Printify 发货单...');
-      setError(null);
-
-      // 调用 Printify 发货单同步 API
-      const response = await frontendApi.post(
-        '/api/scm-orders/sync-printify-orders'
-      );
-
-      if (response.data.success) {
-        setSyncMessage(
-          `✅ 同步完成！共同步了 ${response.data.synced_count || 0} 个发货单`
-        );
-        console.log('✅ Printify 发货单同步成功:', response.data);
-      } else {
-        setSyncMessage(`⚠️ 同步失败: ${response.data.message || '未知错误'}`);
-        console.error('❌ Printify 发货单同步失败:', response.data);
-      }
-
-      // 同步完成后刷新订单列表
-      await fetchScmOrders();
-    } catch (error: any) {
-      console.error('❌ Printify 发货单同步失败:', error);
-      setError(error.response?.data?.detail || '同步失败，请稍后重试');
-      setSyncMessage(null);
-    } finally {
-      setSyncing(false);
-      // 3秒后清除同步消息
-      setTimeout(() => setSyncMessage(null), 3000);
-    }
-  };
 
   const handleViewOrder = (orderHashid: string) => {
     router.push(`/scm-orders/${orderHashid}`);
@@ -284,19 +248,10 @@ export function ScmOrdersList() {
         </Typography>
         <Box display='flex' gap={2}>
           <Button
-            variant='contained'
-            startIcon={syncing ? <CircularProgress size={16} /> : <SyncIcon />}
-            onClick={handleSyncPrintifyOrders}
-            disabled={syncing || loading}
-            color='primary'
-          >
-            {syncing ? '同步中...' : '同步 Printify 发货单'}
-          </Button>
-          <Button
             variant='outlined'
             startIcon={<RefreshIcon />}
             onClick={handleRefresh}
-            disabled={loading || syncing}
+            disabled={loading}
           >
             刷新
           </Button>
@@ -313,9 +268,7 @@ export function ScmOrdersList() {
             <Button
               variant='contained'
               color='error'
-              startIcon={
-                bulkDeleting ? <CircularProgress size={16} /> : <DeleteIcon />
-              }
+              startIcon={bulkDeleting ? <CircularProgress size={16} /> : <DeleteIcon />}
               onClick={handleBulkDelete}
               disabled={bulkDeleting}
             >
@@ -338,20 +291,6 @@ export function ScmOrdersList() {
         </Alert>
       )}
 
-      {syncMessage && (
-        <Alert
-          severity={
-            syncMessage.includes('✅')
-              ? 'success'
-              : syncMessage.includes('⚠️')
-                ? 'warning'
-                : 'info'
-          }
-          sx={{ mb: 2 }}
-        >
-          {syncMessage}
-        </Alert>
-      )}
 
       <Card>
         <CardContent>
@@ -378,16 +317,10 @@ export function ScmOrdersList() {
             <Table>
               <TableHead>
                 <TableRow>
-                  <TableCell padding='checkbox'>
+                  <TableCell padding="checkbox">
                     <Checkbox
-                      checked={
-                        selectedOrders.size === orders.length &&
-                        orders.length > 0
-                      }
-                      indeterminate={
-                        selectedOrders.size > 0 &&
-                        selectedOrders.size < orders.length
-                      }
+                      checked={selectedOrders.size === orders.length && orders.length > 0}
+                      indeterminate={selectedOrders.size > 0 && selectedOrders.size < orders.length}
                       onChange={handleSelectAll}
                     />
                   </TableCell>
@@ -417,7 +350,7 @@ export function ScmOrdersList() {
                 ) : (
                   orders.map(order => (
                     <TableRow key={order.id_hashid} hover>
-                      <TableCell padding='checkbox'>
+                      <TableCell padding="checkbox">
                         <Checkbox
                           checked={selectedOrders.has(order.id_hashid)}
                           onChange={() => handleSelectOrder(order.id_hashid)}
@@ -439,11 +372,7 @@ export function ScmOrdersList() {
                         </Typography>
                       </TableCell>
                       <TableCell>
-                        <Typography
-                          variant='body2'
-                          fontWeight='medium'
-                          fontFamily='monospace'
-                        >
+                        <Typography variant='body2' fontWeight='medium' fontFamily="monospace">
                           N/A
                         </Typography>
                         {order.routing_metadata?.printify_order_id && (
@@ -463,9 +392,7 @@ export function ScmOrdersList() {
                         {order.fulfillment_status ? (
                           <Chip
                             label={order.fulfillment_status}
-                            color={
-                              getStatusColor(order.fulfillment_status) as any
-                            }
+                            color={getStatusColor(order.fulfillment_status) as any}
                             size='small'
                           />
                         ) : (
@@ -483,11 +410,7 @@ export function ScmOrdersList() {
                             {order.customer_email}
                           </Typography>
                           {order.customer_phone && (
-                            <Typography
-                              variant='caption'
-                              color='text.secondary'
-                              display='block'
-                            >
+                            <Typography variant='caption' color='text.secondary' display='block'>
                               {order.customer_phone}
                             </Typography>
                           )}
@@ -501,67 +424,33 @@ export function ScmOrdersList() {
                       <TableCell>
                         {order.tracking_number ? (
                           <Box>
-                            <Typography
-                              variant='body2'
-                              fontFamily='monospace'
-                              fontSize='0.75rem'
-                            >
+                            <Typography variant='body2' fontFamily="monospace" fontSize="0.75rem">
                               {order.tracking_number}
                             </Typography>
                             {order.tracking_url && (
                               <Button
-                                size='small'
+                                size="small"
                                 href={order.tracking_url}
-                                target='_blank'
-                                rel='noopener noreferrer'
-                                variant='outlined'
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                variant="outlined"
                                 sx={{ mt: 0.5, fontSize: '0.7rem', py: 0.2 }}
                               >
                                 查看
                               </Button>
                             )}
-                            {/* 显示物流公司、发货时间、送达时间 */}
-                            <Box
-                              sx={{
-                                mt: 1,
-                                fontSize: '0.7rem',
-                                color: 'text.secondary',
-                              }}
-                            >
-                              <Typography variant='caption' display='block'>
-                                物流公司:{' '}
-                                {order.carrier ||
-                                  order.routing_metadata?.shipments?.[0]
-                                    ?.carrier ||
-                                  '未提供'}
-                              </Typography>
-                              <Typography variant='caption' display='block'>
-                                发货时间:{' '}
-                                {order.shipped_at
-                                  ? new Date(order.shipped_at).toLocaleString(
-                                      'zh-CN'
-                                    )
-                                  : order.routing_metadata?.shipments?.[0]
-                                        ?.shipped_at
-                                    ? new Date(
-                                        order.routing_metadata.shipments[0].shipped_at
-                                      ).toLocaleString('zh-CN')
-                                    : '未发货'}
-                              </Typography>
-                              <Typography variant='caption' display='block'>
-                                送达时间:{' '}
-                                {order.delivered_at
-                                  ? new Date(order.delivered_at).toLocaleString(
-                                      'zh-CN'
-                                    )
-                                  : order.routing_metadata?.shipments?.[0]
-                                        ?.delivered_at
-                                    ? new Date(
-                                        order.routing_metadata.shipments[0].delivered_at
-                                      ).toLocaleString('zh-CN')
-                                    : '未送达'}
-                              </Typography>
-                            </Box>
+                 {/* 显示物流公司、发货时间、送达时间 */}
+                 <Box sx={{ mt: 1, fontSize: '0.7rem', color: 'text.secondary' }}>
+                   <Typography variant="caption" display="block">
+                     物流公司: {order.carrier || order.routing_metadata?.shipments?.[0]?.carrier || '未提供'}
+                   </Typography>
+                   <Typography variant="caption" display="block">
+                     发货时间: {order.shipped_at ? new Date(order.shipped_at).toLocaleString('zh-CN') : order.routing_metadata?.shipments?.[0]?.shipped_at ? new Date(order.routing_metadata.shipments[0].shipped_at).toLocaleString('zh-CN') : '未发货'}
+                   </Typography>
+                   <Typography variant="caption" display="block">
+                     送达时间: {order.delivered_at ? new Date(order.delivered_at).toLocaleString('zh-CN') : order.routing_metadata?.shipments?.[0]?.delivered_at ? new Date(order.routing_metadata.shipments[0].delivered_at).toLocaleString('zh-CN') : '未送达'}
+                   </Typography>
+                 </Box>
                           </Box>
                         ) : (
                           <Typography variant='body2' color='text.secondary'>
@@ -591,11 +480,7 @@ export function ScmOrdersList() {
                               disabled={deletingOrders}
                               color='error'
                             >
-                              {deletingOrders ? (
-                                <CircularProgress size={16} />
-                              ) : (
-                                <DeleteIcon />
-                              )}
+                              {deletingOrders ? <CircularProgress size={16} /> : <DeleteIcon />}
                             </IconButton>
                           </Tooltip>
                         </Box>
@@ -624,32 +509,29 @@ export function ScmOrdersList() {
       <Dialog
         open={deleteDialogOpen}
         onClose={() => setDeleteDialogOpen(false)}
-        maxWidth='sm'
+        maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>确认删除 SCM 订单</DialogTitle>
+        <DialogTitle>
+          确认删除 SCM 订单
+        </DialogTitle>
         <DialogContent>
-          <Typography variant='body1' gutterBottom>
+          <Typography variant="body1" gutterBottom>
             您确定要删除选中的 {selectedOrders.size} 个 SCM 订单吗？
           </Typography>
-          <Typography variant='body2' color='text.secondary'>
+          <Typography variant="body2" color="text.secondary">
             此操作不可撤销，删除的 SCM 订单将从数据库中永久移除。
           </Typography>
           <Box sx={{ mt: 2 }}>
-            <Typography variant='subtitle2' gutterBottom>
+            <Typography variant="subtitle2" gutterBottom>
               将要删除的 SCM 订单：
             </Typography>
             <Box sx={{ maxHeight: '200px', overflow: 'auto' }}>
               {Array.from(selectedOrders).map(orderHashid => {
                 const order = orders.find(o => o.id_hashid === orderHashid);
                 return order ? (
-                  <Typography
-                    key={orderHashid}
-                    variant='body2'
-                    color='text.secondary'
-                  >
-                    • {order.scm_order_number || orderHashid} -{' '}
-                    {order.customer_name || order.customer_email}
+                  <Typography key={orderHashid} variant="body2" color="text.secondary">
+                    • {order.scm_order_number || orderHashid} - {order.customer_name || order.customer_email}
                   </Typography>
                 ) : null;
               })}
@@ -657,13 +539,13 @@ export function ScmOrdersList() {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteDialogOpen(false)}>取消</Button>
+          <Button onClick={() => setDeleteDialogOpen(false)}>
+            取消
+          </Button>
           <Button
-            variant='contained'
-            color='error'
-            startIcon={
-              bulkDeleting ? <CircularProgress size={16} /> : <DeleteIcon />
-            }
+            variant="contained"
+            color="error"
+            startIcon={bulkDeleting ? <CircularProgress size={16} /> : <DeleteIcon />}
             onClick={handleConfirmDelete}
             disabled={bulkDeleting}
           >

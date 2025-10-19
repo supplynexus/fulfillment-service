@@ -259,10 +259,18 @@ async def login(
         )
 
         if not user:
+            logger.error(f"❌ 用户不存在: username={username}, tenant_id={tenant_id}")
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
+        # 添加密码验证调试日志
+        logger.info(f"🔍 开始密码验证: username={username}, password_length={len(password)}, hash_length={len(user.hashed_password) if user.hashed_password else 0}")
+        
         # Verify password (assuming password is stored as hash)
-        if not user_service.verify_password(password, user.hashed_password):
+        password_valid = await user_service.verify_password(password, user.hashed_password)
+        logger.info(f"🔍 密码验证结果: {password_valid}")
+        
+        if not password_valid:
+            logger.error(f"❌ 密码验证失败: username={username}")
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
         logger.info(
@@ -382,10 +390,18 @@ async def login_tenant(
         )
 
         if not user:
+            logger.error(f"❌ 用户不存在: username={username}, tenant_id={tenant_id}")
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
+        # 添加密码验证调试日志
+        logger.info(f"🔍 开始密码验证: username={username}, password_length={len(password)}, hash_length={len(user.hashed_password) if user.hashed_password else 0}")
+        
         # Verify password (assuming password is stored as hash)
-        if not user_service.verify_password(password, user.hashed_password):
+        password_valid = await user_service.verify_password(password, user.hashed_password)
+        logger.info(f"🔍 密码验证结果: {password_valid}")
+        
+        if not password_valid:
+            logger.error(f"❌ 密码验证失败: username={username}")
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
         logger.info(

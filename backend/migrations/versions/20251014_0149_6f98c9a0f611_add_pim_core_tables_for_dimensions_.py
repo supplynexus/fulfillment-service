@@ -813,44 +813,6 @@ def downgrade() -> None:
         type_="unique",
     )
     op.create_index(
-        "uq_pm_ext_variant",
-        "product_mappings",
-        [
-            "tenant_id",
-            "external_system_id",
-            "external_product_id",
-            "external_variant_id",
-        ],
-        unique=False,
-        postgresql_where="(external_variant_id IS NOT NULL)",
-    )
-    op.create_index(
-        "uq_pm_ext_product",
-        "product_mappings",
-        ["tenant_id", "external_system_id", "external_product_id"],
-        unique=False,
-        postgresql_where="(external_variant_id IS NULL)",
-    )
-    op.create_index(
-        "uq_pm_core_variant",
-        "product_mappings",
-        [
-            "tenant_id",
-            "external_system_id",
-            "core_product_id",
-            "core_variant_id",
-        ],
-        unique=False,
-        postgresql_where="(core_variant_id IS NOT NULL)",
-    )
-    op.create_index(
-        "uq_pm_core_product",
-        "product_mappings",
-        ["tenant_id", "external_system_id", "core_product_id"],
-        unique=False,
-        postgresql_where="(core_variant_id IS NULL)",
-    )
-    op.create_index(
         "ix_orders_shopify_order_id",
         "orders",
         ["shopify_order_id"],
