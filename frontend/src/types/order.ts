@@ -23,6 +23,7 @@ export interface Order {
   last_retry_at?: string;
   tracking_number?: string;
   tracking_url?: string;
+  carrier?: string;
   fulfillment_status?: string;
   order_date: string;
   processed_at?: string;
@@ -30,6 +31,20 @@ export interface Order {
   created_at: string;
   updated_at?: string;
   customer_id?: number;
+  raw_data?: {
+    fulfillments?: any[];
+    tracking_number?: string;
+    tracking_url?: string;
+    carrier?: string;
+    [key: string]: any;
+  };
+  external_data?: {
+    fulfillments?: any[];
+    tracking_number?: string;
+    tracking_url?: string;
+    carrier?: string;
+    [key: string]: any;
+  };
 }
 
 export interface OrderCreate {
@@ -80,6 +95,7 @@ export interface LineItem {
   variant_title?: string;
   quantity: number;
   price: number;
+  cost?: number;
   sku?: string;
   vendor?: string;
   properties?: { [key: string]: any };

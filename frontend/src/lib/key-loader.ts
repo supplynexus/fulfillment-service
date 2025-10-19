@@ -28,7 +28,9 @@ export class KeyLoader {
       }
     } else {
       // 默认使用项目根目录下的 keys 文件夹
+      // 在Next.js API路由中，process.cwd()指向frontend目录
       this.keysDir = path.join(process.cwd(), 'keys');
+      console.log(`🔑 Using keys directory: ${this.keysDir}`);
     }
 
     console.log(`🔑 Keys directory configured: ${this.keysDir}`);
@@ -77,6 +79,15 @@ export class KeyLoader {
     const keyPath = path.join(this.keysDir, `${tenantName}_private_key.pem`);
 
     try {
+      console.log(`🔍 Looking for private key at: ${keyPath}`);
+      console.log(`🔍 Keys directory: ${this.keysDir}`);
+      console.log(`🔍 Directory exists: ${fs.existsSync(this.keysDir)}`);
+      
+      if (fs.existsSync(this.keysDir)) {
+        const files = fs.readdirSync(this.keysDir);
+        console.log(`🔍 Files in keys directory: ${files.join(', ')}`);
+      }
+
       if (!fs.existsSync(keyPath)) {
         throw new Error(`Private key file not found: ${keyPath}`);
       }

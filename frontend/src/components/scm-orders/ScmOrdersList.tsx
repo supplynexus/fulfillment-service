@@ -35,6 +35,7 @@ import {
   FilterList as FilterIcon,
   LocalShipping as ShippingIcon,
   Delete as DeleteIcon,
+  Sync as SyncIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
 import { frontendApi } from '@/lib/api';
@@ -84,6 +85,10 @@ export function ScmOrdersList() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingOrders, setDeletingOrders] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  
+  // 批量更新 Shopify fulfillment 相关状态
+  const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
 
   console.log('🔍 ScmOrdersList 组件渲染，当前状态:', {
     orders: orders.length,
@@ -195,6 +200,54 @@ export function ScmOrdersList() {
     }
   };
 
+  // 批量更新 Shopify fulfillment 处理函数
+  const handleBulkUpdateShopifyFulfillment = () => {
+    setUpdateDialogOpen(true);
+  };
+
+  const handleConfirmUpdate = async () => {
+    try {
+      setBulkUpdating(true);
+      setError(null);
+      
+      const response = await frontendApi.post('/api/scm-orders/batch-update-shopify-fulfillment', {
+        scm_order_hashids: Array.from(selectedOrders)
+      });
+      
+      console.log('✅ 批量更新 Shopify fulfillment 成功:', response.data);
+      
+      // 显示成功消息
+      const results = response.data.results;
+      const successCount = results.success.length;
+      const failedCount = results.failed.length;
+      const skippedCount = response.data.skipped_orders?.length || 0;
+      
+      let message = `更新完成: ${successCount} 个成功`;
+      if (failedCount > 0) {
+        message += `, ${failedCount} 个失败`;
+      }
+      if (skippedCount > 0) {
+        message += `, ${skippedCount} 个跳过（缺少跟踪号）`;
+      }
+      
+      if (failedCount > 0 || skippedCount > 0) {
+        setError(message);
+      } else {
+        setError(null);
+      }
+      
+      setSelectedOrders(new Set());
+      setUpdateDialogOpen(false);
+      await fetchScmOrders();
+      
+    } catch (error: any) {
+      console.error('❌ 批量更新 Shopify fulfillment 失败:', error);
+      setError(error.response?.data?.detail || '批量更新失败');
+    } finally {
+      setBulkUpdating(false);
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
       case 'pending':
@@ -267,17 +320,26 @@ export function ScmOrdersList() {
             </Typography>
             <Button
               variant='contained'
+              color='primary'
+              startIcon={bulkUpdating ? <CircularProgress size={16} /> : <SyncIcon />}
+              onClick={handleBulkUpdateShopifyFulfillment}
+              disabled={bulkUpdating || bulkDeleting}
+            >
+              {bulkUpdating ? '更新中...' : '更新 Shopify 发货'}
+            </Button>
+            <Button
+              variant='contained'
               color='error'
               startIcon={bulkDeleting ? <CircularProgress size={16} /> : <DeleteIcon />}
               onClick={handleBulkDelete}
-              disabled={bulkDeleting}
+              disabled={bulkDeleting || bulkUpdating}
             >
               {bulkDeleting ? '删除中...' : '删除订单'}
             </Button>
             <Button
               variant='outlined'
               onClick={() => setSelectedOrders(new Set())}
-              disabled={bulkDeleting}
+              disabled={bulkDeleting || bulkUpdating}
             >
               取消选择
             </Button>
@@ -550,6 +612,58 @@ export function ScmOrdersList() {
             disabled={bulkDeleting}
           >
             {bulkDeleting ? '删除中...' : '确认删除'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 更新 Shopify fulfillment 确认对话框 */}
+      <Dialog
+        open={updateDialogOpen}
+        onClose={() => setUpdateDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          确认更新 Shopify 发货信息
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" gutterBottom>
+            您确定要更新选中的 {selectedOrders.size} 个 SCM 订单的 Shopify 发货信息吗？
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            此操作将把 SCM 订单的物流信息同步到对应的 Shopify 订单中。
+          </Typography>
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="subtitle2" gutterBottom>
+              将要更新的 SCM 订单：
+            </Typography>
+            <Box sx={{ maxHeight: '200px', overflow: 'auto' }}>
+              {Array.from(selectedOrders).map(orderHashid => {
+                const order = orders.find(o => o.id_hashid === orderHashid);
+                return order ? (
+                  <Typography key={orderHashid} variant="body2" color="text.secondary">
+                    • {order.scm_order_number || orderHashid} - {order.customer_name || order.customer_email}
+                    {order.tracking_number && (
+                      <span> (跟踪号: {order.tracking_number})</span>
+                    )}
+                  </Typography>
+                ) : null;
+              })}
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setUpdateDialogOpen(false)}>
+            取消
+          </Button>
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={bulkUpdating ? <CircularProgress size={16} /> : <SyncIcon />}
+            onClick={handleConfirmUpdate}
+            disabled={bulkUpdating}
+          >
+            {bulkUpdating ? '更新中...' : '确认更新'}
           </Button>
         </DialogActions>
       </Dialog>

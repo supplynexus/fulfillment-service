@@ -62,6 +62,8 @@ export function OrdersList() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
   const [sortBy, setSortBy] = useState<'created_at' | 'order_date'>(
     'created_at'
   );
@@ -131,69 +133,51 @@ export function OrdersList() {
     setCurrentPage(1); // 排序时重置到第一页
   };
 
-  const handleSyncShopifyOrders = async () => {
+  // 批量更新 Shopify 订单状态
+  const handleBulkUpdateShopifyStatus = () => {
+    if (selectedOrders.size === 0) {
+      setError('请先选择要更新的订单');
+      return;
+    }
+    setUpdateDialogOpen(true);
+  };
+
+  const handleConfirmUpdate = async () => {
     try {
-      setSyncing(true);
-      setSyncMessage('正在同步 Shopify 订单...');
+      setBulkUpdating(true);
       setError(null);
 
-      // 首先获取所有 Shopify 店铺
-      const storesResponse = await frontendApi.get(
-        '/api/external-systems?system_type=shopify'
-      );
-      const shopifyStores = storesResponse.data.external_systems || [];
+      const response = await frontendApi.post('/api/orders/batch-update-shopify-status', {
+        order_ids: Array.from(selectedOrders)
+      });
 
-      if (shopifyStores.length === 0) {
-        setSyncMessage('没有找到 Shopify 店铺，请先配置 Shopify 连接');
-        return;
+      console.log('✅ 批量更新 Shopify 订单状态成功:', response.data);
+
+      // 显示成功消息
+      const results = response.data.results;
+      const successCount = results.success.length;
+      const failedCount = results.failed.length;
+
+      let message = `更新完成: ${successCount} 个成功`;
+      if (failedCount > 0) {
+        message += `, ${failedCount} 个失败`;
       }
 
-      let totalSynced = 0;
-      let totalErrors = 0;
-
-      // 为每个 Shopify 店铺同步订单
-      for (const store of shopifyStores) {
-        try {
-          setSyncMessage(`正在同步店铺: ${store.name}...`);
-
-          const syncResponse = await frontendApi.post(
-            `/api/external-systems/shopify/${store.id_hashid}/sync-orders`,
-            {
-              limit: 100, // 每次同步最多100个订单
-              status: 'any', // 同步所有状态的订单
-            }
-          );
-
-          if (syncResponse.data.success) {
-            totalSynced += syncResponse.data.orders_synced || 0;
-            console.log(
-              `✅ 店铺 ${store.name} 同步成功: ${syncResponse.data.orders_synced || 0} 个订单`
-            );
-          }
-        } catch (storeError: any) {
-          console.error(`❌ 店铺 ${store.name} 同步失败:`, storeError);
-          totalErrors++;
-        }
-      }
-
-      if (totalErrors === 0) {
-        setSyncMessage(`✅ 同步完成！共同步了 ${totalSynced} 个订单`);
+      if (failedCount > 0) {
+        setError(message);
       } else {
-        setSyncMessage(
-          `⚠️ 同步完成，成功同步 ${totalSynced} 个订单，${totalErrors} 个店铺同步失败`
-        );
+        setError(null);
       }
 
-      // 同步完成后刷新订单列表
+      setSelectedOrders(new Set());
+      setUpdateDialogOpen(false);
       await fetchOrders();
+
     } catch (error: any) {
-      console.error('❌ Shopify 订单同步失败:', error);
-      setError(error.response?.data?.detail || '同步失败，请稍后重试');
-      setSyncMessage(null);
+      console.error('❌ 批量更新 Shopify 订单状态失败:', error);
+      setError(error.response?.data?.detail || '批量更新失败');
     } finally {
-      setSyncing(false);
-      // 3秒后清除同步消息
-      setTimeout(() => setSyncMessage(null), 3000);
+      setBulkUpdating(false);
     }
   };
 
@@ -380,19 +364,10 @@ export function OrdersList() {
         </Typography>
         <Box display='flex' gap={2}>
           <Button
-            variant='contained'
-            startIcon={syncing ? <CircularProgress size={16} /> : <SyncIcon />}
-            onClick={handleSyncShopifyOrders}
-            disabled={syncing || loading}
-            color='primary'
-          >
-            {syncing ? '同步中...' : '同步 Shopify 订单'}
-          </Button>
-          <Button
             variant='outlined'
             startIcon={<RefreshIcon />}
             onClick={handleRefresh}
-            disabled={loading || syncing}
+            disabled={loading}
           >
             刷新
           </Button>
@@ -444,6 +419,17 @@ export function OrdersList() {
           {/* 批量操作区域 */}
           {selectedOrders.size > 0 && (
             <Box sx={{ mb: 2, display: 'flex', gap: 1, alignItems: 'center' }}>
+              <Button
+                variant='contained'
+                color='primary'
+                startIcon={
+                  bulkUpdating ? <CircularProgress size={16} /> : <SyncIcon />
+                }
+                onClick={handleBulkUpdateShopifyStatus}
+                disabled={bulkUpdating}
+              >
+                {bulkUpdating ? '更新中...' : '同步更新 Shopify 订单状态'}
+              </Button>
               <Button
                 variant='contained'
                 color='error'
@@ -632,6 +618,55 @@ export function OrdersList() {
           </Box>
         </CardContent>
       </Card>
+
+      {/* 更新 Shopify 订单状态确认对话框 */}
+      <Dialog
+        open={updateDialogOpen}
+        onClose={() => setUpdateDialogOpen(false)}
+        maxWidth='sm'
+        fullWidth
+      >
+        <DialogTitle>
+          确认同步更新 Shopify 订单状态
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant='body1' gutterBottom>
+            您确定要同步更新选中的 {selectedOrders.size} 个订单的 Shopify 状态吗？
+          </Typography>
+          <Typography variant='body2' color='text.secondary'>
+            此操作将从 Shopify 获取最新的履行信息并更新到核心订单中。
+          </Typography>
+          <Box sx={{ mt: 2 }}>
+            <Typography variant='subtitle2' gutterBottom>
+              将要更新的订单：
+            </Typography>
+            <Box sx={{ maxHeight: '200px', overflow: 'auto' }}>
+              {Array.from(selectedOrders).map(orderId => {
+                const order = orders.find(o => o.id_hashid === orderId);
+                return order ? (
+                  <Typography key={orderId} variant='body2' color='text.secondary'>
+                    • {order.order_number || order.id_hashid} - {order.external_order_name || order.external_order_id}
+                  </Typography>
+                ) : null;
+              })}
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setUpdateDialogOpen(false)}>
+            取消
+          </Button>
+          <Button
+            variant='contained'
+            color='primary'
+            startIcon={bulkUpdating ? <CircularProgress size={16} /> : <SyncIcon />}
+            onClick={handleConfirmUpdate}
+            disabled={bulkUpdating}
+          >
+            {bulkUpdating ? '更新中...' : '确认更新'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* 删除确认对话框 */}
       <Dialog

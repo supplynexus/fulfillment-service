@@ -13,7 +13,7 @@ from app.core.tenant_auth_dependency import verify_tenant_auth
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.models.external_system import ExternalSystemType
-from app.schemas.order import OrderResponse, OrderListResponse, OrderSyncResponse
+from app.schemas.order import OrderResponse, OrderListResponse, OrderSyncResponse, BatchUpdateShopifyStatusRequest
 from app.services.shopify.order_service import ShopifyOrderService
 from app.services.printify_service import PrintifyService
 from app.services.external_system_service import ExternalSystemService
@@ -175,12 +175,16 @@ async def get_order(
     logger.info(f"🔍 开始处理订单详情请求: order_id={order_id}, tenant_id={tenant.id}")
 
     try:
-        order_service = ShopifyOrderService(db)
-
-        # 获取订单详情
-        order = await order_service.get_order_by_id(
-            order_id=order_id, tenant_id=tenant.id
+        # 直接查询Order模型
+        from app.models.order import Order
+        from sqlalchemy import select
+        
+        order_query = select(Order).where(
+            Order.id == order_id,
+            Order.tenant_id == tenant.id
         )
+        order_result = await db.execute(order_query)
+        order = order_result.scalar_one_or_none()
 
         if not order:
             logger.warning(f"⚠️ 订单不存在: order_id={order_id}, tenant_id={tenant.id}")
@@ -222,11 +226,15 @@ async def get_order(
         from app.core.hashids_utils import encode_id
         
         order_data = {
+            "id": order.id,
             "id_hashid": encode_id(order.id),
             "order_number": order.order_number,
-            "external_order_id": order.external_order_id,
+            "external_order_id": order.external_order_id or order.shopify_order_id,
             "external_order_number": order.external_order_number,
             "external_order_name": order.external_order_name,
+            "shopify_order_id": order.shopify_order_id,
+            "shopify_order_number": order.external_order_number,
+            "shopify_order_name": order.external_order_name,
             "status": order.status,
             "total_amount": float(order.total_amount) if order.total_amount else 0.0,
             "currency": order.currency,
@@ -240,6 +248,7 @@ async def get_order(
             "fulfillment_status": order.fulfillment_status,
             "tracking_number": order.tracking_number,
             "tracking_url": order.tracking_url,
+            "external_data": order.external_data,
             "created_at": order.created_at,
             "updated_at": order.updated_at,
         }
@@ -482,6 +491,108 @@ async def create_shipping_label(
         raise HTTPException(status_code=500, detail=f"创建发货单失败: {str(e)}")
 
 
+@router.put("/{order_hashid}")
+async def update_order(
+    order_hashid: str,
+    status: Optional[str] = None,
+    fulfillment_status: Optional[str] = None,
+    customer_name: Optional[str] = None,
+    customer_email: Optional[str] = None,
+    customer_phone: Optional[str] = None,
+    order_number: Optional[str] = None,
+    external_order_id: Optional[str] = None,
+    shopify_order_number: Optional[str] = None,
+    shopify_order_name: Optional[str] = None,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
+):
+    """
+    更新核心订单
+    """
+    from app.core.logging import RequestLogger
+    from app.core.hashids_utils import decode_id
+    from app.models.order import Order
+    from sqlalchemy import select, update, and_
+    
+    logger = RequestLogger("orders.update_order")
+    tenant, user = auth
+
+    try:
+        # 解码 hashid
+        order_id = decode_id(order_hashid)
+        logger.info(f"✅ Hashid 解码成功: {order_hashid} -> {order_id}")
+
+        # 查询订单
+        query = select(Order).where(
+            and_(
+                Order.id == order_id,
+                Order.tenant_id == tenant.id
+            )
+        )
+        result = await db.execute(query)
+        order = result.scalar_one_or_none()
+
+        if not order:
+            logger.error(f"❌ 订单不存在: order_id={order_id}, tenant_id={tenant.id}")
+            raise HTTPException(status_code=404, detail="Order not found")
+
+        # 准备更新字段
+        update_fields = {}
+        if status is not None:
+            update_fields["status"] = status
+        if fulfillment_status is not None:
+            update_fields["fulfillment_status"] = fulfillment_status
+        if customer_name is not None:
+            update_fields["customer_name"] = customer_name
+        if customer_email is not None:
+            update_fields["customer_email"] = customer_email
+        if customer_phone is not None:
+            update_fields["customer_phone"] = customer_phone
+        if order_number is not None:
+            update_fields["order_number"] = order_number
+        if external_order_id is not None:
+            update_fields["external_order_id"] = external_order_id
+        if shopify_order_number is not None:
+            update_fields["shopify_order_number"] = shopify_order_number
+        if shopify_order_name is not None:
+            update_fields["shopify_order_name"] = shopify_order_name
+
+        if not update_fields:
+            logger.warning(f"⚠️ 没有字段需要更新: order_id={order_id}")
+            return OrderResponse.from_orm(order)
+
+        # 更新订单
+        update_query = (
+            update(Order)
+            .where(
+                and_(
+                    Order.id == order_id,
+                    Order.tenant_id == tenant.id
+                )
+            )
+            .values(**update_fields)
+        )
+        
+        await db.execute(update_query)
+        await db.commit()
+
+        # 重新查询更新后的订单
+        result = await db.execute(query)
+        updated_order = result.scalar_one_or_none()
+
+        logger.info(f"✅ 订单更新成功: order_id={order_id}, updated_fields={list(update_fields.keys())}")
+        return OrderResponse.from_orm(updated_order)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"❌ 更新订单失败: {str(e)}")
+        import traceback
+        logger.error(f"   异常堆栈: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
 @router.delete("/{order_hashid}")
 async def delete_order(
     order_hashid: str,
@@ -559,6 +670,276 @@ async def delete_order(
     except Exception as e:
         await db.rollback()
         logger.error(f"❌ 删除订单失败: {str(e)}")
+        import traceback
+        logger.error(f"   异常堆栈: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.post("/batch-update-shopify-status", response_model=dict)
+async def batch_update_shopify_status(
+    request_data: BatchUpdateShopifyStatusRequest,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
+) -> dict:
+    """
+    批量更新 Shopify 订单状态
+    """
+    from app.core.logging import RequestLogger
+    from app.core.hashids_utils import decode_id
+    from app.models.order import Order
+    from app.models.external_system import ExternalSystem, ExternalSystemType
+    from app.core.security import decrypt_data
+    from sqlalchemy import select, and_
+    import httpx
+    import asyncio
+    
+    logger = RequestLogger("orders.batch_update_shopify_status")
+    tenant, user = auth
+
+    try:
+        order_ids = request_data.order_ids
+        if not order_ids:
+            raise HTTPException(status_code=400, detail="No order IDs provided")
+
+        logger.info(f"🔍 开始批量更新 Shopify 订单状态: order_count={len(order_ids)}, tenant_id={tenant.id}")
+
+        # 解码订单 ID
+        decoded_order_ids = []
+        for order_id_hashid in order_ids:
+            try:
+                order_id = decode_id(order_id_hashid)
+                decoded_order_ids.append(order_id)
+                logger.info(f"✅ 订单 ID 解码成功: {order_id_hashid} -> {order_id}")
+            except Exception as e:
+                logger.error(f"❌ 订单 ID 解码失败: {order_id_hashid}, 错误: {str(e)}")
+                continue
+
+        if not decoded_order_ids:
+            raise HTTPException(status_code=400, detail="No valid order IDs found")
+
+        # 查询订单
+        query = select(Order).where(
+            and_(
+                Order.id.in_(decoded_order_ids),
+                Order.tenant_id == tenant.id
+            )
+        )
+        result = await db.execute(query)
+        orders = result.scalars().all()
+
+        if not orders:
+            raise HTTPException(status_code=404, detail="No orders found")
+
+        logger.info(f"✅ 找到 {len(orders)} 个订单")
+
+        # 获取 Shopify 外部系统配置
+        shopify_query = select(ExternalSystem).where(
+            and_(
+                ExternalSystem.tenant_id == tenant.id,
+                ExternalSystem.system_type == ExternalSystemType.SHOPIFY,
+                ExternalSystem.is_active == True
+            )
+        )
+        shopify_result = await db.execute(shopify_query)
+        shopify_system = shopify_result.scalar_one_or_none()
+
+        if not shopify_system:
+            raise HTTPException(status_code=404, detail="Shopify system not configured")
+
+        # 解密 Shopify 凭据
+        try:
+            access_token = decrypt_data(shopify_system.credentials.get('access_token'))
+            store_url = decrypt_data(shopify_system.credentials.get('store_url'))
+        except Exception:
+            access_token = shopify_system.credentials.get('access_token')
+            store_url = shopify_system.credentials.get('store_url')
+
+        if store_url.startswith('https://'):
+            shop_domain = store_url[8:]
+        elif store_url.startswith('http://'):
+            shop_domain = store_url[7:]
+        else:
+            shop_domain = store_url
+
+        logger.info(f"✅ Shopify 配置获取成功: shop_domain={shop_domain}")
+
+        # 批量更新订单状态
+        success_orders = []
+        failed_orders = []
+
+        async with httpx.AsyncClient(timeout=30) as client:
+            for order in orders:
+                try:
+                    # 从订单的 external_order_id 中提取 Shopify 订单 ID
+                    shopify_order_id = order.external_order_id
+                    if not shopify_order_id:
+                        logger.warning(f"⚠️ 订单 {order.id} 缺少 external_order_id")
+                        failed_orders.append({
+                            'order_id': order.id,
+                            'error': 'Missing external_order_id'
+                        })
+                        continue
+
+                    logger.info(f"🔍 原始 shopify_order_id: {shopify_order_id}")
+                    
+                    # 确保 shopify_order_id 是正确的格式
+                    if not shopify_order_id.startswith('gid://shopify/Order/'):
+                        shopify_order_id = f"gid://shopify/Order/{shopify_order_id}"
+                        logger.info(f"🔍 添加前缀后的 shopify_order_id: {shopify_order_id}")
+                    else:
+                        logger.info(f"🔍 已有正确前缀的 shopify_order_id: {shopify_order_id}")
+
+                    # 查询 Shopify 订单详情
+                    query = '''
+                        query getOrder($id: ID!) {
+                            order(id: $id) {
+                                id
+                                name
+                                displayFulfillmentStatus
+                                fulfillments {
+                                    id
+                                    status
+                                    trackingInfo {
+                                        number
+                                        url
+                                        company
+                                    }
+                                    createdAt
+                                    updatedAt
+                                }
+                            }
+                        }
+                    '''
+                    variables = {'id': shopify_order_id}
+                    
+                    url = f'https://{shop_domain}/admin/api/2024-01/graphql.json'
+                    headers = {
+                        'X-Shopify-Access-Token': access_token,
+                        'Content-Type': 'application/json'
+                    }
+                    payload = {'query': query, 'variables': variables}
+
+                    logger.info(f"🔍 调用 Shopify API: {url}")
+                    logger.info(f"🔍 请求头: {headers}")
+                    logger.info(f"🔍 请求体: {payload}")
+                    
+                    response = await client.post(url, headers=headers, json=payload)
+                    
+                    logger.info(f"🔍 Shopify API 响应状态: {response.status_code}")
+                    logger.info(f"🔍 Shopify API 响应内容: {response.text}")
+                    
+                    if response.status_code != 200:
+                        logger.error(f"❌ Shopify API 请求失败: order_id={order.id}, status={response.status_code}, response={response.text}")
+                        failed_orders.append({
+                            'order_id': order.id,
+                            'error': f'Shopify API error: {response.status_code} - {response.text}'
+                        })
+                        continue
+
+                    data = response.json()
+                    logger.info(f"🔍 解析的响应数据: {data}")
+                    
+                    if 'errors' in data:
+                        logger.error(f"❌ Shopify GraphQL 错误: order_id={order.id}, errors={data['errors']}")
+                        failed_orders.append({
+                            'order_id': order.id,
+                            'error': f"GraphQL errors: {data['errors']}"
+                        })
+                        continue
+
+                    order_data = data.get('data', {}).get('order')
+                    if not order_data:
+                        logger.error(f"❌ Shopify 订单不存在: order_id={order.id}, shopify_order_id={shopify_order_id}, response={data}")
+                        failed_orders.append({
+                            'order_id': order.id,
+                            'error': 'Order not found in Shopify'
+                        })
+                        continue
+
+                    # 更新订单状态和履行信息
+                    order.fulfillment_status = order_data.get('displayFulfillmentStatus', order.fulfillment_status)
+                    
+                    # 更新履行信息
+                    fulfillments = order_data.get('fulfillments', [])
+                    logger.info(f"🔍 Shopify API 返回的履行信息: {fulfillments}")
+                    
+                    if fulfillments:
+                        # 将履行信息存储到订单的 external_data 中
+                        if not order.external_data:
+                            order.external_data = {}
+                        
+                        # 创建新的 external_data 副本
+                        updated_external_data = order.external_data.copy()
+                        updated_external_data['fulfillments'] = fulfillments
+                        logger.info(f"✅ 履行信息已存储到 external_data: {len(fulfillments)} 个履行")
+                        
+                        # 提取最新的跟踪信息
+                        latest_fulfillment = fulfillments[0]  # 取第一个履行信息
+                        tracking_info = latest_fulfillment.get('trackingInfo', [])
+                        logger.info(f"🔍 跟踪信息: {tracking_info}")
+                        
+                        if tracking_info and len(tracking_info) > 0:
+                            tracking = tracking_info[0]  # 取第一个跟踪信息
+                            updated_external_data['tracking_number'] = tracking.get('number')
+                            updated_external_data['tracking_url'] = tracking.get('url')
+                            updated_external_data['carrier'] = tracking.get('company')
+                            logger.info(f"✅ 跟踪信息已存储: {tracking}")
+                        
+                        # 使用 UPDATE 语句直接更新数据库
+                        from sqlalchemy import update
+                        update_stmt = update(Order).where(Order.id == order.id).values(
+                            external_data=updated_external_data
+                        )
+                        await db.execute(update_stmt)
+                        logger.info(f"✅ 使用 UPDATE 语句更新 external_data 成功")
+                    else:
+                        logger.warning(f"⚠️ 订单 {order.id} 没有履行信息")
+
+                    await db.commit()
+                    await db.refresh(order)
+
+                    success_orders.append({
+                        'order_id': order.id,
+                        'shopify_order_id': shopify_order_id,
+                        'fulfillment_status': order.fulfillment_status
+                    })
+
+                    logger.info(f"✅ 订单状态更新成功: order_id={order.id}, fulfillment_status={order.fulfillment_status}")
+
+                except httpx.HTTPStatusError as e:
+                    logger.error(f"❌ 调用 Shopify API 失败: order_id={order.id}, status_code={e.response.status_code}, response={e.response.text}")
+                    failed_orders.append({
+                        'order_id': order.id,
+                        'error': f"Shopify API error: {e.response.text}"
+                    })
+                except httpx.ConnectError as e:
+                    logger.error(f"❌ 连接 Shopify API 失败: order_id={order.id}, 错误: {str(e)}")
+                    failed_orders.append({
+                        'order_id': order.id,
+                        'error': f"Network connection error: {str(e)}"
+                    })
+                except Exception as e:
+                    logger.error(f"❌ 批量更新 Shopify 订单状态失败: order_id={order.id}, error={e}", exc_info=True)
+                    failed_orders.append({
+                        'order_id': order.id,
+                        'error': str(e)
+                    })
+
+        logger.info(f"✅ 批量更新完成: 成功 {len(success_orders)} 个, 失败 {len(failed_orders)} 个")
+
+        return {
+            "success": True,
+            "message": f"Batch update completed: {len(success_orders)} successful, {len(failed_orders)} failed",
+            "results": {
+                "success": success_orders,
+                "failed": failed_orders
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 批量更新 Shopify 订单状态失败: {str(e)}")
         import traceback
         logger.error(f"   异常堆栈: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")

@@ -22,6 +22,9 @@ import {
   Stack,
   Checkbox,
   TextField,
+  FormControl,
+  Select,
+  MenuItem,
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -32,7 +35,6 @@ import {
 import { useRouter } from 'next/navigation';
 import { Order, OrderStatus } from '@/types/order';
 import { frontendApi } from '@/lib/api';
-import { CreatePrintifyOrderButton } from './CreatePrintifyOrderButton';
 
 interface OrderDetailsProps {
   orderId: string;
@@ -51,6 +53,22 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
   >({});
   const [creatingScm, setCreatingScm] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+
+  // 编辑相关状态
+  const [isEditing, setIsEditing] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editFormData, setEditFormData] = useState({
+    status: '',
+    fulfillment_status: '',
+    customer_name: '',
+    customer_email: '',
+    customer_phone: '',
+    order_number: '',
+    external_order_id: '',
+    shopify_order_number: '',
+    shopify_order_name: '',
+  });
 
   const fetchOrderDetails = async () => {
     try {
@@ -77,6 +95,101 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
 
   const handleRefresh = () => {
     fetchOrderDetails();
+  };
+
+  const handleEditClick = () => {
+    if (!order) return;
+    
+    setEditFormData({
+      status: order.status || '',
+      fulfillment_status: order.fulfillment_status || '',
+      customer_name: order.customer_name || '',
+      customer_email: order.customer_email || '',
+      customer_phone: order.customer_phone || '',
+      order_number: order.order_number || '',
+      external_order_id: order.external_order_id || order.shopify_order_id || '',
+      shopify_order_number: order.shopify_order_number || '',
+      shopify_order_name: order.shopify_order_name || '',
+    });
+    setIsEditing(true);
+    setEditError(null);
+  };
+
+  const handleEditCancel = () => {
+    setIsEditing(false);
+    setEditError(null);
+    setEditFormData({
+      status: '',
+      fulfillment_status: '',
+      customer_name: '',
+      customer_email: '',
+      customer_phone: '',
+      order_number: '',
+      external_order_id: '',
+      shopify_order_number: '',
+      shopify_order_name: '',
+    });
+  };
+
+  const handleEditSave = async () => {
+    if (!order) return;
+
+    try {
+      setEditing(true);
+      setEditError(null);
+
+      // 准备更新数据，只发送有变化的字段
+      const updateData: any = {};
+      if (editFormData.status !== order.status) {
+        updateData.status = editFormData.status;
+      }
+      if (editFormData.fulfillment_status !== (order.fulfillment_status || '')) {
+        updateData.fulfillment_status = editFormData.fulfillment_status || null;
+      }
+      if (editFormData.customer_name !== (order.customer_name || '')) {
+        updateData.customer_name = editFormData.customer_name || null;
+      }
+      if (editFormData.customer_email !== order.customer_email) {
+        updateData.customer_email = editFormData.customer_email;
+      }
+      if (editFormData.customer_phone !== (order.customer_phone || '')) {
+        updateData.customer_phone = editFormData.customer_phone || null;
+      }
+      if (editFormData.order_number !== (order.order_number || '')) {
+        updateData.order_number = editFormData.order_number || null;
+      }
+      if (editFormData.external_order_id !== (order.external_order_id || order.shopify_order_id || '')) {
+        updateData.external_order_id = editFormData.external_order_id || null;
+      }
+      if (editFormData.shopify_order_number !== (order.shopify_order_number || '')) {
+        updateData.shopify_order_number = editFormData.shopify_order_number || null;
+      }
+      if (editFormData.shopify_order_name !== (order.shopify_order_name || '')) {
+        updateData.shopify_order_name = editFormData.shopify_order_name || null;
+      }
+
+      // 如果没有变化，直接退出编辑模式
+      if (Object.keys(updateData).length === 0) {
+        setIsEditing(false);
+        return;
+      }
+
+      console.log('🔍 更新核心订单:', updateData);
+
+      const response = await frontendApi.put(`/api/orders/${orderId}`, updateData);
+      console.log('✅ 核心订单更新成功:', response.data);
+
+      // 刷新订单详情
+      await fetchOrderDetails();
+      
+      // 退出编辑模式
+      setIsEditing(false);
+    } catch (error: any) {
+      console.error('❌ 更新核心订单失败:', error);
+      setEditError(error?.response?.data?.detail || '更新核心订单失败');
+    } finally {
+      setEditing(false);
+    }
   };
 
   const toggleSelectItem = (id: string, defaultQty: number) => {
@@ -256,19 +369,26 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
               <RefreshIcon />
             </IconButton>
           </Tooltip>
-          <CreatePrintifyOrderButton
-            orderId={order.id_hashid}
-            orderData={{
-              customer_name: order.customer_name,
-              customer_email: order.customer_email,
-              shipping_address: order.shipping_address,
-            }}
-          />
-          <Tooltip title='编辑'>
-            <IconButton disabled>
-              <EditIcon />
-            </IconButton>
-          </Tooltip>
+          {!isEditing ? (
+            <Tooltip title='编辑'>
+              <IconButton onClick={handleEditClick}>
+                <EditIcon />
+              </IconButton>
+            </Tooltip>
+          ) : (
+            <>
+              <Tooltip title='保存'>
+                <IconButton onClick={handleEditSave} disabled={editing} color='primary'>
+                  {editing ? <CircularProgress size={20} /> : '✓'}
+                </IconButton>
+              </Tooltip>
+              <Tooltip title='取消'>
+                <IconButton onClick={handleEditCancel} disabled={editing}>
+                  ✕
+                </IconButton>
+              </Tooltip>
+            </>
+          )}
           <Tooltip title='打印'>
             <IconButton disabled>
               <PrintIcon />
@@ -290,11 +410,27 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
                 <Typography variant='h6' gutterBottom>
                   订单状态
                 </Typography>
-                <Chip
-                  label={order.status}
-                  color={getStatusColor(order.status) as any}
-                  size='medium'
-                />
+                {isEditing ? (
+                  <FormControl size='small' sx={{ minWidth: 150 }}>
+                    <Select
+                      value={editFormData.status}
+                      onChange={(e) => setEditFormData(prev => ({ ...prev, status: e.target.value }))}
+                    >
+                      <MenuItem value="pending">待处理</MenuItem>
+                      <MenuItem value="processing">处理中</MenuItem>
+                      <MenuItem value="fulfilled">已完成</MenuItem>
+                      <MenuItem value="cancelled">已取消</MenuItem>
+                      <MenuItem value="failed">失败</MenuItem>
+                      <MenuItem value="refunded">已退款</MenuItem>
+                    </Select>
+                  </FormControl>
+                ) : (
+                  <Chip
+                    label={order.status}
+                    color={getStatusColor(order.status) as any}
+                    size='medium'
+                  />
+                )}
               </Box>
               <Box flex={1}>
                 <Typography variant='h6' gutterBottom>
@@ -316,44 +452,78 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
                 订单信息
               </Typography>
               <Stack spacing={1}>
-                <Box display='flex' justifyContent='space-between'>
+                <Box display='flex' justifyContent='space-between' alignItems='center'>
                   <Typography variant='body2' color='text.secondary'>
                     Shopify订单ID:
                   </Typography>
-                  <Typography variant='body2' fontWeight='medium'>
-                    {order.external_order_id || order.shopify_order_id}
-                  </Typography>
+                  {isEditing ? (
+                    <TextField
+                      size='small'
+                      value={editFormData.external_order_id}
+                      onChange={(e) => setEditFormData(prev => ({ ...prev, external_order_id: e.target.value }))}
+                      placeholder='输入Shopify订单ID'
+                      sx={{ width: 200 }}
+                    />
+                  ) : (
+                    <Typography variant='body2' fontWeight='medium'>
+                      {order.external_order_id || order.shopify_order_id || '未设置'}
+                    </Typography>
+                  )}
                 </Box>
-                {order.order_number && (
-                  <Box display='flex' justifyContent='space-between'>
-                    <Typography variant='body2' color='text.secondary'>
-                      订单号:
-                    </Typography>
+                <Box display='flex' justifyContent='space-between' alignItems='center'>
+                  <Typography variant='body2' color='text.secondary'>
+                    订单号:
+                  </Typography>
+                  {isEditing ? (
+                    <TextField
+                      size='small'
+                      value={editFormData.order_number}
+                      onChange={(e) => setEditFormData(prev => ({ ...prev, order_number: e.target.value }))}
+                      placeholder='输入订单号'
+                      sx={{ width: 200 }}
+                    />
+                  ) : (
                     <Typography variant='body2' fontWeight='medium'>
-                      {order.order_number}
+                      {order.order_number || '未设置'}
                     </Typography>
-                  </Box>
-                )}
-                {order.shopify_order_number && (
-                  <Box display='flex' justifyContent='space-between'>
-                    <Typography variant='body2' color='text.secondary'>
-                      Shopify订单号:
-                    </Typography>
+                  )}
+                </Box>
+                <Box display='flex' justifyContent='space-between' alignItems='center'>
+                  <Typography variant='body2' color='text.secondary'>
+                    Shopify订单号:
+                  </Typography>
+                  {isEditing ? (
+                    <TextField
+                      size='small'
+                      value={editFormData.shopify_order_number}
+                      onChange={(e) => setEditFormData(prev => ({ ...prev, shopify_order_number: e.target.value }))}
+                      placeholder='输入Shopify订单号'
+                      sx={{ width: 200 }}
+                    />
+                  ) : (
                     <Typography variant='body2' fontWeight='medium'>
-                      {order.shopify_order_number}
+                      {order.shopify_order_number || '未设置'}
                     </Typography>
-                  </Box>
-                )}
-                {order.shopify_order_name && (
-                  <Box display='flex' justifyContent='space-between'>
-                    <Typography variant='body2' color='text.secondary'>
-                      订单名称:
-                    </Typography>
+                  )}
+                </Box>
+                <Box display='flex' justifyContent='space-between' alignItems='center'>
+                  <Typography variant='body2' color='text.secondary'>
+                    订单名称:
+                  </Typography>
+                  {isEditing ? (
+                    <TextField
+                      size='small'
+                      value={editFormData.shopify_order_name}
+                      onChange={(e) => setEditFormData(prev => ({ ...prev, shopify_order_name: e.target.value }))}
+                      placeholder='输入订单名称'
+                      sx={{ width: 200 }}
+                    />
+                  ) : (
                     <Typography variant='body2' fontWeight='medium'>
-                      {order.shopify_order_name}
+                      {order.shopify_order_name || '未设置'}
                     </Typography>
-                  </Box>
-                )}
+                  )}
+                </Box>
                 <Box display='flex' justifyContent='space-between'>
                   <Typography variant='body2' color='text.secondary'>
                     订单日期:
@@ -382,6 +552,37 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
                     </Typography>
                   </Box>
                 )}
+                <Box display='flex' justifyContent='space-between' alignItems='center'>
+                  <Typography variant='body2' color='text.secondary'>
+                    履行状态:
+                  </Typography>
+                  {isEditing ? (
+                    <FormControl size='small' sx={{ width: 200 }}>
+                      <Select
+                        value={editFormData.fulfillment_status}
+                        onChange={(e) => setEditFormData(prev => ({ ...prev, fulfillment_status: e.target.value }))}
+                        displayEmpty
+                      >
+                        <MenuItem value="">未设置</MenuItem>
+                        <MenuItem value="unfulfilled">未履行</MenuItem>
+                        <MenuItem value="partial">部分履行</MenuItem>
+                        <MenuItem value="fulfilled">已履行</MenuItem>
+                        <MenuItem value="shipped">已发货</MenuItem>
+                        <MenuItem value="delivered">已送达</MenuItem>
+                      </Select>
+                    </FormControl>
+                  ) : (
+                    order.fulfillment_status ? (
+                      <Typography variant='body2' fontWeight='medium'>
+                        {order.fulfillment_status}
+                      </Typography>
+                    ) : (
+                      <Typography variant='body2' color='text.secondary'>
+                        未设置
+                      </Typography>
+                    )
+                  )}
+                </Box>
               </Stack>
             </CardContent>
           </Card>
@@ -393,32 +594,60 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
                 客户信息
               </Typography>
               <Stack spacing={1}>
-                <Box display='flex' justifyContent='space-between'>
+                <Box display='flex' justifyContent='space-between' alignItems='center'>
                   <Typography variant='body2' color='text.secondary'>
                     姓名:
                   </Typography>
-                  <Typography variant='body2' fontWeight='medium'>
-                    {order.customer_name || '未知'}
-                  </Typography>
+                  {isEditing ? (
+                    <TextField
+                      size='small'
+                      value={editFormData.customer_name}
+                      onChange={(e) => setEditFormData(prev => ({ ...prev, customer_name: e.target.value }))}
+                      placeholder='输入客户姓名'
+                      sx={{ width: 200 }}
+                    />
+                  ) : (
+                    <Typography variant='body2' fontWeight='medium'>
+                      {order.customer_name || '未知'}
+                    </Typography>
+                  )}
                 </Box>
-                <Box display='flex' justifyContent='space-between'>
+                <Box display='flex' justifyContent='space-between' alignItems='center'>
                   <Typography variant='body2' color='text.secondary'>
                     邮箱:
                   </Typography>
-                  <Typography variant='body2' fontWeight='medium'>
-                    {order.customer_email}
-                  </Typography>
-                </Box>
-                {order.customer_phone && (
-                  <Box display='flex' justifyContent='space-between'>
-                    <Typography variant='body2' color='text.secondary'>
-                      电话:
-                    </Typography>
+                  {isEditing ? (
+                    <TextField
+                      size='small'
+                      value={editFormData.customer_email}
+                      onChange={(e) => setEditFormData(prev => ({ ...prev, customer_email: e.target.value }))}
+                      placeholder='输入客户邮箱'
+                      sx={{ width: 200 }}
+                    />
+                  ) : (
                     <Typography variant='body2' fontWeight='medium'>
-                      {order.customer_phone}
+                      {order.customer_email}
                     </Typography>
-                  </Box>
-                )}
+                  )}
+                </Box>
+                <Box display='flex' justifyContent='space-between' alignItems='center'>
+                  <Typography variant='body2' color='text.secondary'>
+                    电话:
+                  </Typography>
+                  {isEditing ? (
+                    <TextField
+                      size='small'
+                      value={editFormData.customer_phone}
+                      onChange={(e) => setEditFormData(prev => ({ ...prev, customer_phone: e.target.value }))}
+                      placeholder='输入客户电话'
+                      sx={{ width: 200 }}
+                    />
+                  ) : (
+                    <Typography variant='body2' fontWeight='medium'>
+                      {order.customer_phone || '未设置'}
+                    </Typography>
+                  )}
+                </Box>
                 {order.customer_id && (
                   <Box display='flex' justifyContent='space-between'>
                     <Typography variant='body2' color='text.secondary'>
@@ -711,49 +940,104 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
           </Card>
         )}
 
-        {/* Tracking Information */}
-        {(order.tracking_number || order.tracking_url) && (
+        {/* 编辑错误提示 */}
+        {editError && (
+          <Alert severity="error" onClose={() => setEditError(null)}>
+            {editError}
+          </Alert>
+        )}
+
+
+        {/* Shopify Fulfillment Information */}
+        {order.external_data?.fulfillments && order.external_data.fulfillments.length > 0 && (
           <Card>
             <CardContent>
               <Typography variant='h6' gutterBottom>
-                物流信息
+                Shopify 履行信息
               </Typography>
-              <Stack spacing={1}>
-                {order.tracking_number && (
-                  <Box display='flex' justifyContent='space-between'>
-                    <Typography variant='body2' color='text.secondary'>
-                      追踪号:
+              <Stack spacing={2}>
+                {order.external_data.fulfillments.map((fulfillment: any, index: number) => (
+                  <Box key={index} sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                    <Typography variant='subtitle2' gutterBottom>
+                      履行 #{index + 1}
                     </Typography>
-                    <Typography variant='body2' fontWeight='medium'>
-                      {order.tracking_number}
-                    </Typography>
+                    <Stack spacing={1}>
+                      <Box display='flex' justifyContent='space-between'>
+                        <Typography variant='body2' color='text.secondary'>
+                          履行ID:
+                        </Typography>
+                        <Typography variant='body2' fontWeight='medium' fontFamily="monospace" fontSize="0.75rem">
+                          {fulfillment.id}
+                        </Typography>
+                      </Box>
+                      <Box display='flex' justifyContent='space-between'>
+                        <Typography variant='body2' color='text.secondary'>
+                          状态:
+                        </Typography>
+                        <Typography variant='body2' fontWeight='medium'>
+                          {fulfillment.status}
+                        </Typography>
+                      </Box>
+                      {fulfillment.trackingInfo && fulfillment.trackingInfo.length > 0 && (
+                        <Box>
+                          <Typography variant='body2' color='text.secondary' gutterBottom>
+                            跟踪信息:
+                          </Typography>
+                          {fulfillment.trackingInfo.map((tracking: any, trackingIndex: number) => (
+                            <Box key={trackingIndex} sx={{ ml: 2, mt: 1 }}>
+                              {tracking.number && (
+                                <Box display='flex' justifyContent='space-between' mb={0.5}>
+                                  <Typography variant='body2' color='text.secondary'>
+                                    跟踪号:
+                                  </Typography>
+                                  <Typography variant='body2' fontWeight='medium' fontFamily="monospace" fontSize="0.75rem">
+                                    {tracking.number}
+                                  </Typography>
+                                </Box>
+                              )}
+                              {tracking.company && (
+                                <Box display='flex' justifyContent='space-between' mb={0.5}>
+                                  <Typography variant='body2' color='text.secondary'>
+                                    承运商:
+                                  </Typography>
+                                  <Typography variant='body2' fontWeight='medium'>
+                                    {tracking.company}
+                                  </Typography>
+                                </Box>
+                              )}
+                              {tracking.url && (
+                                <Box display='flex' justifyContent='space-between' mb={0.5}>
+                                  <Typography variant='body2' color='text.secondary'>
+                                    跟踪链接:
+                                  </Typography>
+                                  <Button
+                                    size='small'
+                                    href={tracking.url}
+                                    target='_blank'
+                                    rel='noopener noreferrer'
+                                    variant='outlined'
+                                  >
+                                    查看物流
+                                  </Button>
+                                </Box>
+                              )}
+                            </Box>
+                          ))}
+                        </Box>
+                      )}
+                      {fulfillment.createdAt && (
+                        <Box display='flex' justifyContent='space-between'>
+                          <Typography variant='body2' color='text.secondary'>
+                            创建时间:
+                          </Typography>
+                          <Typography variant='body2' fontWeight='medium'>
+                            {formatDate(fulfillment.createdAt)}
+                          </Typography>
+                        </Box>
+                      )}
+                    </Stack>
                   </Box>
-                )}
-                {order.tracking_url && (
-                  <Box display='flex' justifyContent='space-between'>
-                    <Typography variant='body2' color='text.secondary'>
-                      追踪链接:
-                    </Typography>
-                    <Button
-                      size='small'
-                      href={order.tracking_url}
-                      target='_blank'
-                      rel='noopener noreferrer'
-                    >
-                      查看物流
-                    </Button>
-                  </Box>
-                )}
-                {order.fulfillment_status && (
-                  <Box display='flex' justifyContent='space-between'>
-                    <Typography variant='body2' color='text.secondary'>
-                      履行状态:
-                    </Typography>
-                    <Typography variant='body2' fontWeight='medium'>
-                      {order.fulfillment_status}
-                    </Typography>
-                  </Box>
-                )}
+                ))}
               </Stack>
             </CardContent>
           </Card>

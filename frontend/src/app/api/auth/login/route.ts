@@ -96,14 +96,43 @@ export async function POST(request: NextRequest) {
       tenantName,
     });
 
-    const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
-    const signature = generateBackendSignature(
-      privateKey,
-      signatureString,
-      timestamp,
-      nonce,
-      tenantName
-    );
+    let privateKey;
+    try {
+      privateKey = await keyLoader.getTenantPrivateKey(tenantName);
+      logger.info('Private key loaded successfully', { tenantName });
+    } catch (keyError) {
+      logger.error('Failed to load private key', {
+        tenantName,
+        error: String(keyError),
+        errorStack: keyError instanceof Error ? keyError.stack : undefined,
+      });
+      return NextResponse.json(
+        { detail: `Failed to load private key: ${keyError}` },
+        { status: 500 }
+      );
+    }
+
+    let signature;
+    try {
+      signature = generateBackendSignature(
+        privateKey,
+        signatureString,
+        timestamp,
+        nonce,
+        tenantName
+      );
+      logger.info('Backend signature generated successfully', { tenantName });
+    } catch (signatureError) {
+      logger.error('Failed to generate signature', {
+        tenantName,
+        error: String(signatureError),
+        errorStack: signatureError instanceof Error ? signatureError.stack : undefined,
+      });
+      return NextResponse.json(
+        { detail: `Failed to generate signature: ${signatureError}` },
+        { status: 500 }
+      );
+    }
 
     logger.info('Backend signature generated successfully', {
       signatureLength: signature.length,

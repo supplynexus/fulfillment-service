@@ -722,12 +722,21 @@ const ShopifyProductsPage: React.FC = () => {
                 </Card>
               ) : (
                 <>
-                  <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                  <Box
+                    sx={{
+                      display: 'grid',
+                      gridTemplateColumns: {
+                        xs: 'repeat(auto-fit, minmax(280px, 1fr))',
+                        sm: 'repeat(auto-fit, minmax(300px, 1fr))',
+                        md: 'repeat(auto-fit, minmax(320px, 1fr))',
+                        lg: 'repeat(auto-fit, minmax(300px, 1fr))',
+                      },
+                      gap: 3,
+                      justifyContent: 'center',
+                    }}
+                  >
                     {products.map(product => (
-                      <Box
-                        size={{ xs: 12, sm: 6, md: 4, lg: 3 }}
-                        key={product.id}
-                      >
+                      <Box key={product.id}>
                         <Card
                           sx={{
                             height: '100%',
@@ -737,7 +746,6 @@ const ShopifyProductsPage: React.FC = () => {
                         >
                           <CardMedia
                             component='img'
-                            height='200'
                             image={
                               product.image?.url ||
                               product.variant?.image?.url ||
@@ -748,7 +756,16 @@ const ShopifyProductsPage: React.FC = () => {
                               product.variant?.image?.alt_text ||
                               product.title
                             }
-                            sx={{ objectFit: 'cover' }}
+                            sx={{ 
+                              objectFit: 'cover',
+                              width: '100%',
+                              height: { xs: '150px', sm: '180px', md: '200px' },
+                              minHeight: '150px',
+                              maxHeight: '200px',
+                              maxWidth: { xs: '150px', sm: '180px', md: '200px' },
+                              display: 'block',
+                              margin: '0 auto'
+                            }}
                           />
                           <CardContent
                             sx={{

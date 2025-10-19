@@ -49,6 +49,7 @@ class OrderResponse(BaseModel):
     fulfillment_status: Optional[str] = None
     tracking_number: Optional[str] = None
     tracking_url: Optional[str] = None
+    external_data: Optional[Dict[str, Any]] = None
     error_message: Optional[str] = None
     retry_count: int = 0
     created_at: datetime
@@ -78,3 +79,9 @@ class OrderSyncResponse(BaseModel):
     orders_updated: int
     errors: List[str]
     error: Optional[str] = None
+
+
+class BatchUpdateShopifyStatusRequest(BaseModel):
+    """批量更新 Shopify 订单状态请求 schema"""
+
+    order_ids: List[str]  # 订单 hashids 列表

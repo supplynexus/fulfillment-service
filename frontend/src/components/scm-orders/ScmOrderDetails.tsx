@@ -23,6 +23,10 @@ import {
   TableHead,
   TableRow,
   Checkbox,
+  TextField,
+  FormControl,
+  Select,
+  MenuItem,
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -100,6 +104,22 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
   const [printifyError, setPrintifyError] = useState<string | null>(null);
   const [printifySuccess, setPrintifySuccess] = useState<string | null>(null);
 
+  // 编辑相关状态
+  const [isEditing, setIsEditing] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editFormData, setEditFormData] = useState({
+    status: '',
+    target_system_id: '',
+    tracking_number: '',
+    tracking_url: '',
+    fulfillment_status: '',
+    customer_name: '',
+    customer_email: '',
+    customer_phone: '',
+    scm_order_number: '',
+  });
+
   useEffect(() => {
     fetchOrderDetails();
   }, [orderId]);
@@ -128,6 +148,89 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
 
   const handleRefresh = () => {
     fetchOrderDetails();
+  };
+
+  const handleEditClick = () => {
+    if (!order) return;
+    
+    setEditFormData({
+      status: order.status || '',
+      target_system_id: order.routing_metadata?.target_system_id || '',
+      tracking_number: order.tracking_number || '',
+      tracking_url: order.tracking_url || '',
+      fulfillment_status: order.fulfillment_status || '',
+      customer_name: order.customer_name || '',
+      customer_email: order.customer_email || '',
+      customer_phone: order.customer_phone || '',
+      scm_order_number: order.scm_order_number || '',
+    });
+    setIsEditing(true);
+    setEditError(null);
+  };
+
+  const handleEditCancel = () => {
+    setIsEditing(false);
+    setEditError(null);
+    setEditFormData({
+      status: '',
+      target_system_id: '',
+      tracking_number: '',
+      tracking_url: '',
+      fulfillment_status: '',
+      customer_name: '',
+      customer_email: '',
+      customer_phone: '',
+      scm_order_number: '',
+    });
+  };
+
+  const handleEditSave = async () => {
+    if (!order) return;
+
+    try {
+      setEditing(true);
+      setEditError(null);
+
+      // 准备更新数据，只发送有变化的字段
+      const updateData: any = {};
+      if (editFormData.status !== order.status) {
+        updateData.status = editFormData.status;
+      }
+      if (editFormData.target_system_id !== (order.routing_metadata?.target_system_id || '')) {
+        updateData.target_system_id = editFormData.target_system_id || null;
+      }
+      if (editFormData.tracking_number !== (order.tracking_number || '')) {
+        updateData.tracking_number = editFormData.tracking_number || null;
+      }
+      if (editFormData.tracking_url !== (order.tracking_url || '')) {
+        updateData.tracking_url = editFormData.tracking_url || null;
+      }
+      if (editFormData.fulfillment_status !== (order.fulfillment_status || '')) {
+        updateData.fulfillment_status = editFormData.fulfillment_status || null;
+      }
+
+      // 如果没有变化，直接关闭对话框
+      if (Object.keys(updateData).length === 0) {
+        setEditDialogOpen(false);
+        return;
+      }
+
+      console.log('🔍 更新SCM订单:', updateData);
+
+      const response = await frontendApi.put(`/api/scm-orders/${orderId}`, updateData);
+      console.log('✅ SCM订单更新成功:', response.data);
+
+      // 刷新订单详情
+      await fetchOrderDetails();
+      
+      // 退出编辑模式
+      setIsEditing(false);
+    } catch (error: any) {
+      console.error('❌ 更新SCM订单失败:', error);
+      setEditError(error?.response?.data?.detail || '更新SCM订单失败');
+    } finally {
+      setEditing(false);
+    }
   };
 
   const checkProductMapping = async () => {
@@ -374,11 +477,26 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
               <RefreshIcon />
             </IconButton>
           </Tooltip>
-          <Tooltip title='编辑'>
-            <IconButton disabled>
-              <EditIcon />
-            </IconButton>
-          </Tooltip>
+          {!isEditing ? (
+            <Tooltip title='编辑'>
+              <IconButton onClick={handleEditClick}>
+                <EditIcon />
+              </IconButton>
+            </Tooltip>
+          ) : (
+            <>
+              <Tooltip title='保存'>
+                <IconButton onClick={handleEditSave} disabled={editing} color='primary'>
+                  {editing ? <CircularProgress size={20} /> : '✓'}
+                </IconButton>
+              </Tooltip>
+              <Tooltip title='取消'>
+                <IconButton onClick={handleEditCancel} disabled={editing}>
+                  ✕
+                </IconButton>
+              </Tooltip>
+            </>
+          )}
           <Tooltip title='打印'>
             <IconButton disabled>
               <PrintIcon />
@@ -390,7 +508,8 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
               disabled={
                 fulfilling ||
                 checkingMapping ||
-                order?.fulfillment_status === 'fulfilled'
+                order?.fulfillment_status === 'fulfilled' ||
+                isEditing
               }
               color='primary'
             >
@@ -452,11 +571,26 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
                 <Typography variant='h6' gutterBottom>
                   订单状态
                 </Typography>
-                <Chip
-                  label={order.status}
-                  color={getStatusColor(order.status) as any}
-                  size='medium'
-                />
+                {isEditing ? (
+                  <FormControl size='small' sx={{ minWidth: 150 }}>
+                    <Select
+                      value={editFormData.status}
+                      onChange={(e) => setEditFormData(prev => ({ ...prev, status: e.target.value }))}
+                    >
+                      <MenuItem value="pending">待处理</MenuItem>
+                      <MenuItem value="processing">处理中</MenuItem>
+                      <MenuItem value="completed">已完成</MenuItem>
+                      <MenuItem value="failed">失败</MenuItem>
+                      <MenuItem value="cancelled">已取消</MenuItem>
+                    </Select>
+                  </FormControl>
+                ) : (
+                  <Chip
+                    label={order.status}
+                    color={getStatusColor(order.status) as any}
+                    size='medium'
+                  />
+                )}
               </Box>
               {/* 核心SCM订单不展示金额 */}
             </Stack>
@@ -483,16 +617,24 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
                     {orderId}
                   </Typography>
                 </Box>
-                {order.scm_order_number && (
-                  <Box display='flex' justifyContent='space-between'>
-                    <Typography variant='body2' color='text.secondary'>
-                      SCM 订单号:
-                    </Typography>
+                <Box display='flex' justifyContent='space-between' alignItems='center'>
+                  <Typography variant='body2' color='text.secondary'>
+                    SCM 订单号:
+                  </Typography>
+                  {isEditing ? (
+                    <TextField
+                      size='small'
+                      value={editFormData.scm_order_number}
+                      onChange={(e) => setEditFormData(prev => ({ ...prev, scm_order_number: e.target.value }))}
+                      placeholder='输入SCM订单号'
+                      sx={{ width: 200 }}
+                    />
+                  ) : (
                     <Typography variant='body2' fontWeight='medium'>
-                      {order.scm_order_number}
+                      {order.scm_order_number || '未设置'}
                     </Typography>
-                  </Box>
-                )}
+                  )}
+                </Box>
                 {order.routing_metadata?.printify_order_id && (
                   <Box display='flex' justifyContent='space-between'>
                     <Typography variant='body2' color='text.secondary'>
@@ -531,18 +673,57 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
                     </Typography>
                   </Box>
                 )}
-                {order.fulfillment_status && (
-                  <Box display='flex' justifyContent='space-between'>
-                    <Typography variant='body2' color='text.secondary'>
-                      履行状态:
-                    </Typography>
-                    <Chip
-                      label={order.fulfillment_status}
-                      color={getStatusColor(order.fulfillment_status) as any}
+                <Box display='flex' justifyContent='space-between' alignItems='center'>
+                  <Typography variant='body2' color='text.secondary'>
+                    目标系统ID:
+                  </Typography>
+                  {isEditing ? (
+                    <TextField
                       size='small'
+                      value={editFormData.target_system_id}
+                      onChange={(e) => setEditFormData(prev => ({ ...prev, target_system_id: e.target.value }))}
+                      placeholder='输入目标系统ID'
+                      sx={{ width: 200 }}
                     />
-                  </Box>
-                )}
+                  ) : (
+                    <Typography variant='body2' fontWeight='medium'>
+                      {order.routing_metadata?.target_system_id || '未设置'}
+                    </Typography>
+                  )}
+                </Box>
+                <Box display='flex' justifyContent='space-between' alignItems='center'>
+                  <Typography variant='body2' color='text.secondary'>
+                    履行状态:
+                  </Typography>
+                  {isEditing ? (
+                    <FormControl size='small' sx={{ width: 200 }}>
+                      <Select
+                        value={editFormData.fulfillment_status}
+                        onChange={(e) => setEditFormData(prev => ({ ...prev, fulfillment_status: e.target.value }))}
+                        displayEmpty
+                      >
+                        <MenuItem value="">未设置</MenuItem>
+                        <MenuItem value="unfulfilled">未履行</MenuItem>
+                        <MenuItem value="partial">部分履行</MenuItem>
+                        <MenuItem value="fulfilled">已履行</MenuItem>
+                        <MenuItem value="shipped">已发货</MenuItem>
+                        <MenuItem value="delivered">已送达</MenuItem>
+                      </Select>
+                    </FormControl>
+                  ) : (
+                    order.fulfillment_status ? (
+                      <Chip
+                        label={order.fulfillment_status}
+                        color={getStatusColor(order.fulfillment_status) as any}
+                        size='small'
+                      />
+                    ) : (
+                      <Typography variant='body2' color='text.secondary'>
+                        未设置
+                      </Typography>
+                    )
+                  )}
+                </Box>
                 <Box display='flex' justifyContent='space-between'>
                   <Typography variant='body2' color='text.secondary'>
                     创建时间:
@@ -572,34 +753,60 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
                 客户信息
               </Typography>
               <Stack spacing={1}>
-                <Box display='flex' justifyContent='space-between'>
+                <Box display='flex' justifyContent='space-between' alignItems='center'>
                   <Typography variant='body2' color='text.secondary'>
                     客户邮箱:
                   </Typography>
-                  <Typography variant='body2' fontWeight='medium'>
-                    {order.customer_email}
-                  </Typography>
+                  {isEditing ? (
+                    <TextField
+                      size='small'
+                      value={editFormData.customer_email}
+                      onChange={(e) => setEditFormData(prev => ({ ...prev, customer_email: e.target.value }))}
+                      placeholder='输入客户邮箱'
+                      sx={{ width: 200 }}
+                    />
+                  ) : (
+                    <Typography variant='body2' fontWeight='medium'>
+                      {order.customer_email}
+                    </Typography>
+                  )}
                 </Box>
-                {order.customer_name && (
-                  <Box display='flex' justifyContent='space-between'>
-                    <Typography variant='body2' color='text.secondary'>
-                      客户姓名:
-                    </Typography>
+                <Box display='flex' justifyContent='space-between' alignItems='center'>
+                  <Typography variant='body2' color='text.secondary'>
+                    客户姓名:
+                  </Typography>
+                  {isEditing ? (
+                    <TextField
+                      size='small'
+                      value={editFormData.customer_name}
+                      onChange={(e) => setEditFormData(prev => ({ ...prev, customer_name: e.target.value }))}
+                      placeholder='输入客户姓名'
+                      sx={{ width: 200 }}
+                    />
+                  ) : (
                     <Typography variant='body2' fontWeight='medium'>
-                      {order.customer_name}
+                      {order.customer_name || '未设置'}
                     </Typography>
-                  </Box>
-                )}
-                {order.customer_phone && (
-                  <Box display='flex' justifyContent='space-between'>
-                    <Typography variant='body2' color='text.secondary'>
-                      客户电话:
-                    </Typography>
+                  )}
+                </Box>
+                <Box display='flex' justifyContent='space-between' alignItems='center'>
+                  <Typography variant='body2' color='text.secondary'>
+                    客户电话:
+                  </Typography>
+                  {isEditing ? (
+                    <TextField
+                      size='small'
+                      value={editFormData.customer_phone}
+                      onChange={(e) => setEditFormData(prev => ({ ...prev, customer_phone: e.target.value }))}
+                      placeholder='输入客户电话'
+                      sx={{ width: 200 }}
+                    />
+                  ) : (
                     <Typography variant='body2' fontWeight='medium'>
-                      {order.customer_phone}
+                      {order.customer_phone || '未设置'}
                     </Typography>
-                  </Box>
-                )}
+                  )}
+                </Box>
               </Stack>
             </CardContent>
           </Card>
@@ -782,35 +989,57 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
                 物流信息
               </Typography>
               <Stack spacing={1}>
-                {order.tracking_number && (
-                  <Box display='flex' justifyContent='space-between'>
-                    <Typography variant='body2' color='text.secondary'>
-                      跟踪号:
-                    </Typography>
+                <Box display='flex' justifyContent='space-between' alignItems='center'>
+                  <Typography variant='body2' color='text.secondary'>
+                    跟踪号:
+                  </Typography>
+                  {isEditing ? (
+                    <TextField
+                      size='small'
+                      value={editFormData.tracking_number}
+                      onChange={(e) => setEditFormData(prev => ({ ...prev, tracking_number: e.target.value }))}
+                      placeholder='输入跟踪号'
+                      sx={{ width: 200 }}
+                    />
+                  ) : (
                     <Typography
                       variant='body2'
                       fontWeight='medium'
                       fontFamily='monospace'
                     >
-                      {order.tracking_number}
+                      {order.tracking_number || '未设置'}
                     </Typography>
-                  </Box>
-                )}
-                {order.tracking_url && (
-                  <Box display='flex' justifyContent='space-between'>
-                    <Typography variant='body2' color='text.secondary'>
-                      跟踪链接:
-                    </Typography>
-                    <Button
+                  )}
+                </Box>
+                <Box display='flex' justifyContent='space-between' alignItems='center'>
+                  <Typography variant='body2' color='text.secondary'>
+                    跟踪链接:
+                  </Typography>
+                  {isEditing ? (
+                    <TextField
                       size='small'
-                      href={order.tracking_url}
-                      target='_blank'
-                      rel='noopener noreferrer'
-                    >
-                      查看跟踪
-                    </Button>
-                  </Box>
-                )}
+                      value={editFormData.tracking_url}
+                      onChange={(e) => setEditFormData(prev => ({ ...prev, tracking_url: e.target.value }))}
+                      placeholder='输入跟踪链接'
+                      sx={{ width: 200 }}
+                    />
+                  ) : (
+                    order.tracking_url ? (
+                      <Button
+                        size='small'
+                        href={order.tracking_url}
+                        target='_blank'
+                        rel='noopener noreferrer'
+                      >
+                        查看跟踪
+                      </Button>
+                    ) : (
+                      <Typography variant='body2' color='text.secondary'>
+                        未设置
+                      </Typography>
+                    )
+                  )}
+                </Box>
                 {/* 从订单字段和 shipments 数据中提取物流公司、发货时间、送达时间 */}
                 <Box display='flex' justifyContent='space-between'>
                   <Typography variant='body2' color='text.secondary'>
@@ -1135,6 +1364,13 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
             )}
           </CardContent>
         </Card>
+
+        {/* 编辑错误提示 */}
+        {editError && (
+          <Alert severity="error" onClose={() => setEditError(null)}>
+            {editError}
+          </Alert>
+        )}
       </Stack>
     </Box>
   );
