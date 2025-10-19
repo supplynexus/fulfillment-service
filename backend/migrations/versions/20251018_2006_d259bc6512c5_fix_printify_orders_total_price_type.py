@@ -23,8 +23,30 @@ def upgrade() -> None:
                type_=sa.Numeric(precision=10, scale=2),
                existing_nullable=True,
                 postgresql_using="total_price::numeric(10,2)")
-    op.drop_constraint(op.f('uq_product_mappings_tenant_core_variant_external'), 'product_mappings', type_='unique')
-    op.create_unique_constraint('uq_product_mappings_tenant_core_external', 'product_mappings', ['tenant_id', 'core_product_id', 'external_system_id'])
+    # 安全地删除旧约束（如果存在）
+    connection = op.get_bind()
+    result = connection.execute(sa.text("""
+        SELECT constraint_name FROM information_schema.table_constraints
+        WHERE table_name = 'product_mappings' AND constraint_name = 'uq_product_mappings_tenant_core_variant_external'
+    """))
+    
+    if result.fetchone():
+        op.drop_constraint('uq_product_mappings_tenant_core_variant_external', 'product_mappings', type_='unique')
+        print("Constraint uq_product_mappings_tenant_core_variant_external dropped successfully")
+    else:
+        print("Constraint uq_product_mappings_tenant_core_variant_external does not exist, skipping")
+    
+    # 安全地创建新约束（如果不存在）
+    result = connection.execute(sa.text("""
+        SELECT constraint_name FROM information_schema.table_constraints
+        WHERE table_name = 'product_mappings' AND constraint_name = 'uq_product_mappings_tenant_core_external'
+    """))
+    
+    if not result.fetchone():
+        op.create_unique_constraint('uq_product_mappings_tenant_core_external', 'product_mappings', ['tenant_id', 'core_product_id', 'external_system_id'])
+        print("Constraint uq_product_mappings_tenant_core_external created successfully")
+    else:
+        print("Constraint uq_product_mappings_tenant_core_external already exists, skipping")
     # ### end Alembic commands ###
 
 
