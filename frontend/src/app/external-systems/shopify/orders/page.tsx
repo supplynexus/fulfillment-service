@@ -356,6 +356,8 @@ const ShopifyOrdersPage: React.FC = () => {
                 edge.node.originalUnitPriceSet?.shopMoney?.currencyCode ||
                 'USD',
             })) || [],
+          fulfillments: data.order.fulfillments || [],
+          refunds: data.order.refunds || [],
         };
 
         setSelectedOrder(transformedOrder);
@@ -1298,31 +1300,33 @@ const ShopifyOrdersPage: React.FC = () => {
                                     <Typography variant='subtitle2'>
                                       履行 #{index + 1} - {fulfillment.status}
                                     </Typography>
-                                    {fulfillment.trackingInfo && (
+                                    {fulfillment.trackingInfo && fulfillment.trackingInfo.length > 0 && (
                                       <Box sx={{ mt: 1 }}>
-                                        <Typography variant='body2'>
-                                          跟踪号:{' '}
-                                          {fulfillment.trackingInfo.number}
-                                        </Typography>
-                                        {fulfillment.trackingInfo.company && (
-                                          <Typography variant='body2'>
-                                            承运商:{' '}
-                                            {fulfillment.trackingInfo.company}
-                                          </Typography>
-                                        )}
-                                        {fulfillment.trackingInfo.url && (
-                                          <Typography variant='body2'>
-                                            <a
-                                              href={
-                                                fulfillment.trackingInfo.url
-                                              }
-                                              target='_blank'
-                                              rel='noopener noreferrer'
-                                            >
-                                              跟踪链接
-                                            </a>
-                                          </Typography>
-                                        )}
+                                        {fulfillment.trackingInfo.map((tracking: any, trackingIndex: number) => (
+                                          <Box key={trackingIndex}>
+                                            <Typography variant='body2'>
+                                              跟踪号:{' '}
+                                              {tracking.number}
+                                            </Typography>
+                                            {tracking.company && (
+                                              <Typography variant='body2'>
+                                                承运商:{' '}
+                                                {tracking.company}
+                                              </Typography>
+                                            )}
+                                            {tracking.url && (
+                                              <Typography variant='body2'>
+                                                <a
+                                                  href={tracking.url}
+                                                  target='_blank'
+                                                  rel='noopener noreferrer'
+                                                >
+                                                  跟踪链接
+                                                </a>
+                                              </Typography>
+                                            )}
+                                          </Box>
+                                        ))}
                                       </Box>
                                     )}
                                   </CardContent>

@@ -545,7 +545,7 @@ async def create_scm_order(
     )
 
 
-@router.put("/{scm_order_id}", response_model=SCMOrderResponse)
+@router.put("/by-id/{scm_order_id}", response_model=SCMOrderResponse)
 async def update_scm_order(
     scm_order_id: int,
     status: Optional[str] = None,
@@ -560,6 +560,59 @@ async def update_scm_order(
     更新SCM订单
     """
     tenant, user = auth
+
+    routing_service = OrderRoutingService(db)
+
+    # 准备更新字段
+    update_fields = {}
+    if status is not None:
+        update_fields["status"] = status
+    if target_system_id is not None:
+        update_fields["target_system_id"] = target_system_id
+    if tracking_number is not None:
+        update_fields["tracking_number"] = tracking_number
+    if tracking_url is not None:
+        update_fields["tracking_url"] = tracking_url
+    if fulfillment_status is not None:
+        update_fields["fulfillment_status"] = fulfillment_status
+
+    scm_order = await routing_service.update_scm_order_status(
+        scm_order_id, status or "updated", tenant.id, **update_fields
+    )
+
+    if not scm_order:
+        raise HTTPException(status_code=404, detail="SCM order not found")
+
+    return SCMOrderResponse.from_orm(scm_order)
+
+
+@router.put("/{scm_order_hashid}", response_model=SCMOrderResponse)
+async def update_scm_order_by_hashid(
+    scm_order_hashid: str,
+    status: Optional[str] = None,
+    target_system_id: Optional[str] = None,
+    tracking_number: Optional[str] = None,
+    tracking_url: Optional[str] = None,
+    fulfillment_status: Optional[str] = None,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
+) -> SCMOrderResponse:
+    """
+    通过hashid更新SCM订单
+    """
+    from app.core.hashids_utils import decode_id
+    from app.core.logging import RequestLogger
+    
+    logger = RequestLogger("scm_orders.update_scm_order_by_hashid")
+    tenant, user = auth
+
+    try:
+        # 解码 hashid
+        scm_order_id = decode_id(scm_order_hashid)
+        logger.info(f"✅ Hashid 解码成功: {scm_order_hashid} -> {scm_order_id}")
+    except Exception as e:
+        logger.error(f"❌ Hashid 解码失败: {scm_order_hashid}, 错误: {str(e)}")
+        raise HTTPException(status_code=400, detail="Invalid SCM order ID")
 
     routing_service = OrderRoutingService(db)
 
@@ -1702,3 +1755,133 @@ async def generate_printify_order(
         import traceback
         logger.error(f"   异常堆栈: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Failed to generate Printify order: {str(e)}")
+
+
+@router.post("/batch-update-shopify-fulfillment", response_model=dict)
+async def batch_update_shopify_fulfillment(
+    request_data: dict,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
+) -> dict:
+    """
+    批量更新 Shopify fulfillment
+    """
+    from app.core.hashids_utils import decode_id
+    from app.core.logging import RequestLogger
+    from app.services.shopify_fulfillment_service import ShopifyFulfillmentService
+    
+    logger = RequestLogger("scm_orders.batch_update_shopify_fulfillment")
+    tenant, user = auth
+    
+    try:
+        scm_order_hashids = request_data.get('scm_order_hashids', [])
+        if not scm_order_hashids:
+            raise HTTPException(status_code=400, detail="No SCM orders provided")
+        
+        logger.info(f"🚀 开始批量更新 Shopify fulfillment: count={len(scm_order_hashids)}")
+        
+        # 解码 SCM 订单 hashids
+        scm_order_ids = []
+        for hashid in scm_order_hashids:
+            try:
+                scm_order_id = decode_id(hashid)
+                scm_order_ids.append(scm_order_id)
+                logger.info(f"✅ Hashid 解码成功: {hashid} -> {scm_order_id}")
+            except Exception as e:
+                logger.error(f"❌ Hashid 解码失败: {hashid}, 错误: {str(e)}")
+                raise HTTPException(status_code=400, detail=f"Invalid SCM order ID: {hashid}")
+        
+        # 查询 SCM 订单
+        result = await db.execute(
+            select(SCMOrder).where(
+                SCMOrder.id.in_(scm_order_ids),
+                SCMOrder.tenant_id == tenant.id
+            )
+        )
+        scm_orders = result.scalars().all()
+        
+        if not scm_orders:
+            logger.error(f"❌ 未找到 SCM 订单: scm_order_ids={scm_order_ids}")
+            raise HTTPException(status_code=404, detail="SCM orders not found")
+        
+        logger.info(f"✅ 找到 {len(scm_orders)} 个 SCM 订单")
+        
+        # 检查订单状态 - 只处理有跟踪号的订单
+        orders_with_tracking = []
+        orders_without_tracking = []
+        
+        for scm_order in scm_orders:
+            if scm_order.tracking_number and scm_order.tracking_number.strip() and scm_order.tracking_number != 'N/A':
+                orders_with_tracking.append(scm_order)
+            else:
+                orders_without_tracking.append(scm_order)
+                logger.warning(f"⚠️ SCM 订单缺少跟踪号: {scm_order.scm_order_number}")
+        
+        if not orders_with_tracking:
+            logger.error(f"❌ 没有找到有跟踪号的 SCM 订单")
+            raise HTTPException(
+                status_code=400, 
+                detail="No SCM orders with tracking numbers found. Please ensure orders have tracking numbers before updating Shopify fulfillment."
+            )
+        
+        if orders_without_tracking:
+            logger.info(f"ℹ️ 跳过 {len(orders_without_tracking)} 个没有跟踪号的订单")
+        
+        # 只处理有跟踪号的订单
+        scm_orders = orders_with_tracking
+        
+        # 创建 Shopify fulfillment 服务
+        fulfillment_service = ShopifyFulfillmentService()
+        
+        # 批量创建 fulfillments
+        results = await fulfillment_service.batch_create_fulfillments(
+            scm_orders=scm_orders,
+            tenant=tenant,
+            db=db
+        )
+        
+        # 更新 SCM 订单的 Shopify fulfillment 信息
+        for scm_order in scm_orders:
+            # 查找对应的成功结果
+            success_result = next(
+                (r for r in results["success"] if r["scm_order_id"] == scm_order.id), 
+                None
+            )
+            
+            if success_result:
+                scm_order.shopify_fulfillment_id = success_result["fulfillment_id"]
+                scm_order.shopify_order_id = success_result["shopify_order_id"]
+                
+                # 更新路由元数据
+                if not scm_order.routing_metadata:
+                    scm_order.routing_metadata = {}
+                scm_order.routing_metadata['shopify_fulfillment_id'] = success_result["fulfillment_id"]
+                scm_order.routing_metadata['shopify_updated_at'] = datetime.utcnow().isoformat()
+        
+        await db.commit()
+        
+        logger.info(f"✅ 批量更新 Shopify fulfillment 完成: success={len(results['success'])}, failed={len(results['failed'])}")
+        
+        # 构建跳过的订单信息
+        skipped_orders = []
+        for order in orders_without_tracking:
+            skipped_orders.append({
+                "scm_order_id": order.id,
+                "scm_order_number": order.scm_order_number,
+                "reason": "Missing tracking number"
+            })
+        
+        return {
+            "success": True,
+            "message": f"Batch update completed: {len(results['success'])} successful, {len(results['failed'])} failed, {len(skipped_orders)} skipped",
+            "results": results,
+            "skipped_orders": skipped_orders
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 批量更新 Shopify fulfillment 失败: {str(e)}")
+        import traceback
+        logger.error(f"   异常堆栈: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Failed to batch update Shopify fulfillment: {str(e)}")

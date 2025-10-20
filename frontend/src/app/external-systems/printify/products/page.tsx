@@ -527,12 +527,13 @@ function PrintifyProductsPage() {
                     sx={{
                       display: 'grid',
                       gridTemplateColumns: {
-                        xs: '1fr',
-                        sm: 'repeat(2, 1fr)',
-                        md: 'repeat(3, 1fr)',
-                        lg: 'repeat(4, 1fr)',
+                        xs: 'repeat(auto-fit, minmax(280px, 1fr))',
+                        sm: 'repeat(auto-fit, minmax(300px, 1fr))',
+                        md: 'repeat(auto-fit, minmax(320px, 1fr))',
+                        lg: 'repeat(auto-fit, minmax(300px, 1fr))',
                       },
                       gap: 3,
+                      justifyContent: 'center',
                     }}
                   >
                     {currentProducts.map(product => (
@@ -546,10 +547,18 @@ function PrintifyProductsPage() {
                         >
                           <CardMedia
                             component='img'
-                            height='150'
                             image={getProductImage(product)}
                             alt={product.title}
-                            sx={{ objectFit: 'cover' }}
+                            sx={{ 
+                              objectFit: 'cover',
+                              width: '100%',
+                              height: { xs: '150px', sm: '180px', md: '200px' },
+                              minHeight: '150px',
+                              maxHeight: '200px',
+                              maxWidth: { xs: '150px', sm: '180px', md: '200px' },
+                              display: 'block',
+                              margin: '0 auto'
+                            }}
                           />
                           <CardContent
                             sx={{
