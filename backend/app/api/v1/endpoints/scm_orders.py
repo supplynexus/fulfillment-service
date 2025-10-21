@@ -2,7 +2,7 @@
 SCM Orders API endpoints
 """
 
-from typing import List, Optional
+from typing import List, Optional, Any
 import time
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -1885,3 +1885,383 @@ async def batch_update_shopify_fulfillment(
         import traceback
         logger.error(f"   异常堆栈: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Failed to batch update Shopify fulfillment: {str(e)}")
+
+
+@router.post("/{scm_order_hashid}/bind-printify-order", response_model=dict)
+async def bind_printify_order_to_scm(
+    scm_order_hashid: str,
+    request_data: dict,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
+) -> dict:
+    """
+    将 Printify 订单绑定到 SCM 订单
+    """
+    from app.core.hashids_utils import decode_id
+    from app.core.logging import RequestLogger
+    from app.models.scm_order import SCMOrder
+    from app.models.printify_order import PrintifyOrder
+    from sqlalchemy import select, and_
+    from fastapi import HTTPException
+    from datetime import datetime
+
+    logger = RequestLogger("scm_orders.bind_printify_order")
+    tenant, user = auth
+
+    try:
+        # 解码 SCM 订单 hashid
+        scm_order_id = decode_id(scm_order_hashid)
+        logger.info(f"✅ SCM 订单 Hashid 解码成功: {scm_order_hashid} -> {scm_order_id}")
+    except Exception as e:
+        logger.error(f"❌ SCM 订单 Hashid 解码失败: {scm_order_hashid}, 错误: {str(e)}")
+        raise HTTPException(status_code=400, detail="Invalid SCM order ID")
+
+    try:
+        # 获取 Printify 订单 ID
+        printify_order_id = request_data.get('printify_order_id')
+        if not printify_order_id:
+            raise HTTPException(status_code=400, detail="Printify order ID is required")
+
+        # 查询 SCM 订单
+        scm_result = await db.execute(
+            select(SCMOrder).where(
+                and_(
+                    SCMOrder.id == scm_order_id,
+                    SCMOrder.tenant_id == tenant.id
+                )
+            )
+        )
+        scm_order = scm_result.scalar_one_or_none()
+
+        if not scm_order:
+            logger.error(f"❌ SCM 订单不存在: scm_order_id={scm_order_id}, tenant_id={tenant.id}")
+            raise HTTPException(status_code=404, detail="SCM order not found")
+
+        # 查询 Printify 订单
+        printify_result = await db.execute(
+            select(PrintifyOrder).where(
+                and_(
+                    PrintifyOrder.id == printify_order_id,
+                    PrintifyOrder.tenant_id == tenant.id
+                )
+            )
+        )
+        printify_order = printify_result.scalar_one_or_none()
+
+        if not printify_order:
+            logger.error(f"❌ Printify 订单不存在: printify_order_id={printify_order_id}, tenant_id={tenant.id}")
+            raise HTTPException(status_code=404, detail="Printify order not found")
+
+        # 检查 Printify 订单是否已经绑定到其他 SCM 订单
+        if printify_order.scm_order_id and printify_order.scm_order_id != scm_order_id:
+            logger.warning(f"⚠️ Printify 订单已绑定到其他 SCM 订单: printify_order_id={printify_order_id}, existing_scm_order_id={printify_order.scm_order_id}")
+            raise HTTPException(status_code=400, detail="Printify order is already bound to another SCM order")
+
+        # 检查 SCM 订单是否已经绑定到其他 Printify 订单
+        existing_printify_result = await db.execute(
+            select(PrintifyOrder).where(
+                and_(
+                    PrintifyOrder.scm_order_id == scm_order_id,
+                    PrintifyOrder.tenant_id == tenant.id,
+                    PrintifyOrder.id != printify_order_id
+                )
+            )
+        )
+        existing_printify_order = existing_printify_result.scalar_one_or_none()
+
+        if existing_printify_order:
+            logger.warning(f"⚠️ SCM 订单已绑定到其他 Printify 订单: scm_order_id={scm_order_id}, existing_printify_order_id={existing_printify_order.id}")
+            raise HTTPException(status_code=400, detail="SCM order is already bound to another Printify order")
+
+        # 执行绑定
+        printify_order.scm_order_id = scm_order_id
+        scm_order.printify_order_id = printify_order.external_order_id
+        scm_order.printify_shop_id = str(printify_order.external_system_id)
+
+        # 更新路由元数据
+        if not scm_order.routing_metadata:
+            scm_order.routing_metadata = {}
+        scm_order.routing_metadata['printify_order_id'] = printify_order.external_order_id
+        scm_order.routing_metadata['printify_bind_at'] = datetime.utcnow().isoformat()
+        scm_order.routing_metadata['printify_bind_by'] = user.email
+
+        await db.commit()
+
+        logger.info(f"✅ Printify 订单绑定成功: scm_order_id={scm_order_id}, printify_order_id={printify_order_id}")
+
+        return {
+            "success": True,
+            "message": "Printify order bound to SCM order successfully",
+            "scm_order_id": scm_order_id,
+            "printify_order_id": printify_order_id,
+            "scm_order_number": scm_order.scm_order_number,
+            "printify_external_order_id": printify_order.external_order_id
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 绑定 Printify 订单失败: {str(e)}")
+        import traceback
+        logger.error(f"   异常堆栈: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Failed to bind Printify order: {str(e)}")
+
+
+@router.post("/{scm_order_hashid}/unbind-printify-order", response_model=dict)
+async def unbind_printify_order_from_scm(
+    scm_order_hashid: str,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
+) -> dict:
+    """
+    解绑 SCM 订单与 Printify 订单的关联
+    """
+    from app.core.hashids_utils import decode_id
+    from app.core.logging import RequestLogger
+    from app.models.scm_order import SCMOrder
+    from app.models.printify_order import PrintifyOrder
+    from sqlalchemy import select, and_
+    from fastapi import HTTPException
+    from datetime import datetime
+
+    logger = RequestLogger("scm_orders.unbind_printify_order")
+    tenant, user = auth
+
+    try:
+        # 解码 SCM 订单 hashid
+        scm_order_id = decode_id(scm_order_hashid)
+        logger.info(f"✅ SCM 订单 Hashid 解码成功: {scm_order_hashid} -> {scm_order_id}")
+    except Exception as e:
+        logger.error(f"❌ SCM 订单 Hashid 解码失败: {scm_order_hashid}, 错误: {str(e)}")
+        raise HTTPException(status_code=400, detail="Invalid SCM order ID")
+
+    try:
+        # 查询 SCM 订单
+        scm_result = await db.execute(
+            select(SCMOrder).where(
+                and_(
+                    SCMOrder.id == scm_order_id,
+                    SCMOrder.tenant_id == tenant.id
+                )
+            )
+        )
+        scm_order = scm_result.scalar_one_or_none()
+
+        if not scm_order:
+            logger.error(f"❌ SCM 订单不存在: scm_order_id={scm_order_id}, tenant_id={tenant.id}")
+            raise HTTPException(status_code=404, detail="SCM order not found")
+
+        # 查询绑定的 Printify 订单
+        printify_result = await db.execute(
+            select(PrintifyOrder).where(
+                and_(
+                    PrintifyOrder.scm_order_id == scm_order_id,
+                    PrintifyOrder.tenant_id == tenant.id
+                )
+            )
+        )
+        printify_order = printify_result.scalar_one_or_none()
+
+        if not printify_order:
+            logger.warning(f"⚠️ SCM 订单没有绑定任何 Printify 订单: scm_order_id={scm_order_id}")
+            raise HTTPException(status_code=404, detail="No Printify order bound to this SCM order")
+
+        # 执行解绑
+        printify_order.scm_order_id = None
+        scm_order.printify_order_id = None
+        scm_order.printify_shop_id = None
+
+        # 更新路由元数据
+        if scm_order.routing_metadata:
+            scm_order.routing_metadata.pop('printify_order_id', None)
+            scm_order.routing_metadata['printify_unbind_at'] = datetime.utcnow().isoformat()
+            scm_order.routing_metadata['printify_unbind_by'] = user.email
+
+        await db.commit()
+
+        logger.info(f"✅ Printify 订单解绑成功: scm_order_id={scm_order_id}, printify_order_id={printify_order.id}")
+
+        return {
+            "success": True,
+            "message": "Printify order unbound from SCM order successfully",
+            "scm_order_id": scm_order_id,
+            "printify_order_id": printify_order.id,
+            "scm_order_number": scm_order.scm_order_number,
+            "printify_external_order_id": printify_order.external_order_id
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 解绑 Printify 订单失败: {str(e)}")
+        import traceback
+        logger.error(f"   异常堆栈: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Failed to unbind Printify order: {str(e)}")
+
+
+@router.post("/{scm_order_hashid}/bind-core-order", response_model=dict)
+async def bind_core_order_to_scm(
+    scm_order_hashid: str,
+    request: dict,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
+) -> Any:
+    """
+    绑定核心订单到 SCM 订单
+    """
+    from app.core.logging import get_logger
+    from app.core.hashids_utils import decode_id
+    
+    logger = get_logger(__name__)
+    tenant, user = auth
+    logger.info(f"🔗 开始绑定核心订单到 SCM 订单: scm_order_hashid={scm_order_hashid}, tenant_id={tenant.id}")
+
+    try:
+        # 解码 SCM 订单 hashid
+        try:
+            scm_order_id = decode_id(scm_order_hashid)
+            logger.info(f"✅ SCM 订单 hashid 解码成功: {scm_order_hashid} -> {scm_order_id}")
+        except Exception as e:
+            logger.error(f"❌ SCM 订单 hashid 解码失败: {scm_order_hashid}, 错误: {str(e)}")
+            raise HTTPException(status_code=400, detail="Invalid SCM order ID")
+
+        # 获取核心订单 hashid
+        core_order_hashid = request.get("core_order_hashid")
+        if not core_order_hashid:
+            logger.error("❌ 缺少核心订单 hashid")
+            raise HTTPException(status_code=400, detail="Core order hashid is required")
+
+        # 解码核心订单 hashid
+        try:
+            core_order_id = decode_id(core_order_hashid)
+            logger.info(f"✅ 核心订单 hashid 解码成功: {core_order_hashid} -> {core_order_id}")
+        except Exception as e:
+            logger.error(f"❌ 核心订单 hashid 解码失败: {core_order_hashid}, 错误: {str(e)}")
+            raise HTTPException(status_code=400, detail="Invalid core order ID")
+
+        # 获取 SCM 订单
+        scm_order = await db.get(SCMOrder, scm_order_id)
+        if not scm_order or scm_order.tenant_id != tenant.id:
+            logger.error(f"❌ SCM 订单不存在: scm_order_id={scm_order_id}, tenant_id={tenant.id}")
+            raise HTTPException(status_code=404, detail="SCM order not found")
+
+        # 获取核心订单
+        core_order = await db.get(Order, core_order_id)
+        if not core_order or core_order.tenant_id != tenant.id:
+            logger.error(f"❌ 核心订单不存在: core_order_id={core_order_id}, tenant_id={tenant.id}")
+            raise HTTPException(status_code=404, detail="Core order not found")
+
+        # 检查 SCM 订单是否已绑定到其他核心订单
+        if scm_order.source_order_id and scm_order.source_order_id != core_order_id:
+            logger.warning(f"⚠️ SCM 订单已绑定到其他核心订单: scm_order_id={scm_order_id}, existing_source_order_id={scm_order.source_order_id}")
+            raise HTTPException(status_code=400, detail="SCM order is already bound to another core order")
+
+        # 检查核心订单是否已绑定到其他 SCM 订单
+        existing_scm_order = await db.execute(
+            select(SCMOrder).where(
+                SCMOrder.source_order_id == core_order_id,
+                SCMOrder.tenant_id == tenant.id,
+                SCMOrder.id != scm_order_id
+            )
+        )
+        existing_scm_order = existing_scm_order.scalar_one_or_none()
+        if existing_scm_order:
+            logger.warning(f"⚠️ 核心订单已绑定到其他 SCM 订单: core_order_id={core_order_id}, existing_scm_order_id={existing_scm_order.id}")
+            raise HTTPException(status_code=400, detail="Core order is already bound to another SCM order")
+
+        # 执行绑定
+        scm_order.source_order_id = core_order_id
+        
+        # 更新 Shopify 订单 ID（从核心订单复制）
+        if core_order.external_order_id:
+            scm_order.shopify_order_id = core_order.external_order_id
+            logger.info(f"✅ 更新 SCM 订单 Shopify 订单 ID: {core_order.external_order_id}")
+
+        # 更新路由元数据
+        if not scm_order.routing_metadata:
+            scm_order.routing_metadata = {}
+        scm_order.routing_metadata['core_order_id'] = core_order_id
+        scm_order.routing_metadata['core_bind_at'] = datetime.utcnow().isoformat()
+        scm_order.routing_metadata['core_bind_by'] = user.email
+
+        # 提交更改
+        await db.commit()
+        await db.refresh(scm_order)
+
+        logger.info(f"✅ SCM 订单绑定核心订单成功: scm_order_id={scm_order_id}, core_order_id={core_order_id}")
+
+        return {"message": "SCM order bound to core order successfully"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 绑定核心订单失败: {str(e)}")
+        import traceback
+        logger.error(f"   异常堆栈: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Failed to bind core order: {str(e)}")
+
+
+@router.post("/{scm_order_hashid}/unbind-core-order", response_model=dict)
+async def unbind_core_order_from_scm(
+    scm_order_hashid: str,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
+) -> Any:
+    """
+    解绑 SCM 订单与核心订单
+    """
+    from app.core.logging import get_logger
+    from app.core.hashids_utils import decode_id
+    
+    logger = get_logger(__name__)
+    tenant, user = auth
+    logger.info(f"🔗 开始解绑 SCM 订单与核心订单: scm_order_hashid={scm_order_hashid}, tenant_id={tenant.id}")
+
+    try:
+        # 解码 SCM 订单 hashid
+        try:
+            scm_order_id = decode_id(scm_order_hashid)
+            logger.info(f"✅ SCM 订单 hashid 解码成功: {scm_order_hashid} -> {scm_order_id}")
+        except Exception as e:
+            logger.error(f"❌ SCM 订单 hashid 解码失败: {scm_order_hashid}, 错误: {str(e)}")
+            raise HTTPException(status_code=400, detail="Invalid SCM order ID")
+
+        # 获取 SCM 订单
+        scm_order = await db.get(SCMOrder, scm_order_id)
+        if not scm_order or scm_order.tenant_id != tenant.id:
+            logger.error(f"❌ SCM 订单不存在: scm_order_id={scm_order_id}, tenant_id={tenant.id}")
+            raise HTTPException(status_code=404, detail="SCM order not found")
+
+        if not scm_order.source_order_id:
+            logger.warning(f"⚠️ SCM 订单未绑定核心订单: scm_order_id={scm_order_id}")
+            raise HTTPException(status_code=400, detail="SCM order is not bound to any core order")
+
+        # 执行解绑
+        scm_order.source_order_id = None
+        
+        # 清理 Shopify 订单 ID（因为不再与核心订单关联）
+        if scm_order.shopify_order_id:
+            logger.info(f"✅ 清理 SCM 订单 Shopify 订单 ID: {scm_order.shopify_order_id}")
+            scm_order.shopify_order_id = None
+
+        # 更新路由元数据
+        if scm_order.routing_metadata:
+            scm_order.routing_metadata.pop('core_order_id', None)
+            scm_order.routing_metadata['core_unbind_at'] = datetime.utcnow().isoformat()
+            scm_order.routing_metadata['core_unbind_by'] = user.email
+
+        # 提交更改
+        await db.commit()
+        await db.refresh(scm_order)
+
+        logger.info(f"✅ SCM 订单解绑核心订单成功: scm_order_id={scm_order_id}")
+
+        return {"message": "SCM order unbound from core order successfully"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 解绑核心订单失败: {str(e)}")
+        import traceback
+        logger.error(f"   异常堆栈: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Failed to unbind core order: {str(e)}")

@@ -370,15 +370,27 @@ class ShopifyFulfillmentService:
             # 使用第一个 fulfillment order
             fulfillment_order = fulfillment_orders[0]['node']
             fulfillment_order_id = fulfillment_order['id']
+            fulfillment_status = fulfillment_order.get('status', '')
             line_items = fulfillment_order['lineItems']['edges']
+            
+            # 检查 fulfillment order 状态
+            if fulfillment_status == 'CLOSED':
+                raise Exception(f"Shopify fulfillment order 已关闭 (状态: {fulfillment_status})，无法创建新的 fulfillment")
             
             # 匹配 SCM 商品和 Shopify fulfillment order line items
             matched_line_items = []
             for shopify_variant in shopify_variants:
                 for item_edge in line_items:
                     item_node = item_edge['node']
+                    remaining_quantity = item_node.get('remainingQuantity', 0)
+                    
+                    # 检查剩余数量
+                    if remaining_quantity <= 0:
+                        logger.warning(f"⚠️ SKU {item_node['lineItem']['sku']} 剩余数量为 0，跳过")
+                        continue
+                    
                     if (item_node['lineItem']['sku'] == shopify_variant['sku'] and 
-                        item_node['remainingQuantity'] >= shopify_variant['quantity']):
+                        remaining_quantity >= shopify_variant['quantity']):
                         matched_line_items.append({
                             "id": item_node['id'],
                             "quantity": shopify_variant['quantity']
@@ -386,7 +398,7 @@ class ShopifyFulfillmentService:
                         break
             
             if not matched_line_items:
-                raise Exception("没有匹配的 fulfillment order line items")
+                raise Exception("没有匹配的 fulfillment order line items（可能所有商品都已完全履行）")
             
             logger.info(f"✅ 获取到 fulfillment order: {fulfillment_order_id}")
             logger.info(f"✅ 匹配到 {len(matched_line_items)} 个 line items")

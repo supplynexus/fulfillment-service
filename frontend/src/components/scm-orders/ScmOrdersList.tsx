@@ -242,7 +242,16 @@ export function ScmOrdersList() {
       
     } catch (error: any) {
       console.error('❌ 批量更新 Shopify fulfillment 失败:', error);
-      setError(error.response?.data?.detail || '批量更新失败');
+      
+      // 处理特定的业务逻辑错误
+      const errorMessage = error.response?.data?.detail || '批量更新失败';
+      if (errorMessage.includes('Shopify fulfillment order 已关闭')) {
+        setError('该Shopify订单已经完全履行，无法再创建新的发货信息。这是正常的业务状态。');
+      } else if (errorMessage.includes('没有匹配的 fulfillment order line items')) {
+        setError('该Shopify订单的所有商品都已完全履行，无法再创建新的发货信息。');
+      } else {
+        setError(errorMessage);
+      }
     } finally {
       setBulkUpdating(false);
     }

@@ -31,6 +31,7 @@ import {
   Tooltip,
   Pagination,
   Stack,
+  Autocomplete,
 } from '@mui/material';
 import {
   Refresh as RefreshIcon,
@@ -47,6 +48,7 @@ import {
   Error as ErrorIcon,
   Info as InfoIcon,
   Link as LinkIcon,
+  LinkOff as LinkOffIcon,
 } from '@mui/icons-material';
 import { frontendApi } from '@/lib/api';
 import { frontendLogger } from '@/lib/frontend-logger';
@@ -112,6 +114,15 @@ function PrintifyOrdersPage() {
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [syncingLogistics, setSyncingLogistics] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+
+  // 绑定相关状态
+  const [bindDialogOpen, setBindDialogOpen] = useState(false);
+  const [scmOrders, setScmOrders] = useState<any[]>([]);
+  const [selectedScmOrder, setSelectedScmOrder] = useState<any>(null);
+  const [binding, setBinding] = useState(false);
+  const [bindError, setBindError] = useState<string | null>(null);
+  const [unbinding, setUnbinding] = useState(false);
+  const [unbindError, setUnbindError] = useState<string | null>(null);
 
   // 获取订单列表
   const fetchOrders = useCallback(
@@ -248,6 +259,67 @@ function PrintifyOrdersPage() {
       setTimeout(() => setSyncMessage(null), 3000);
     }
   }, [fetchOrders, currentPage]);
+
+  // 获取 SCM 订单列表
+  const fetchScmOrders = async () => {
+    try {
+      const response = await frontendApi.get('/api/scm-orders');
+      setScmOrders(response.data.orders || []);
+    } catch (err: any) {
+      console.error('Failed to fetch SCM orders:', err);
+      setBindError('Failed to fetch SCM orders');
+    }
+  };
+
+  // 绑定 SCM 订单
+  const handleBindScmOrder = async (printifyOrderId: number) => {
+    if (!selectedScmOrder) return;
+
+    try {
+      setBinding(true);
+      setBindError(null);
+      const response = await frontendApi.post(`/api/printify-orders/${printifyOrderId}/bind-scm`, {
+        scm_order_hashid: selectedScmOrder.id_hashid
+      });
+      
+      if (response.data.success) {
+        setBindDialogOpen(false);
+        setSelectedScmOrder(null);
+        fetchOrders(currentPage); // 刷新订单列表
+      }
+    } catch (err: any) {
+      console.error('Failed to bind SCM order:', err);
+      setBindError(err.response?.data?.error || 'Failed to bind SCM order');
+    } finally {
+      setBinding(false);
+    }
+  };
+
+  // 解绑 SCM 订单
+  const handleUnbindScmOrder = async (printifyOrderId: number) => {
+    try {
+      setUnbinding(true);
+      setUnbindError(null);
+      const response = await frontendApi.post(`/api/printify-orders/${printifyOrderId}/unbind-scm`);
+      
+      if (response.data.success) {
+        fetchOrders(currentPage); // 刷新订单列表
+      }
+    } catch (err: any) {
+      console.error('Failed to unbind SCM order:', err);
+      setUnbindError(err.response?.data?.error || 'Failed to unbind SCM order');
+    } finally {
+      setUnbinding(false);
+    }
+  };
+
+  // 打开绑定对话框
+  const handleOpenBindDialog = (printifyOrderId: number) => {
+    setBindDialogOpen(true);
+    setSelectedScmOrder(null);
+    setBindError(null);
+    fetchScmOrders();
+  };
 
   // 初始加载
   useEffect(() => {
@@ -510,14 +582,38 @@ function PrintifyOrdersPage() {
                           </Typography>
                         </TableCell>
                         <TableCell>
-                          <Tooltip title='查看详情'>
-                            <IconButton
-                              size='small'
-                              onClick={() => handleViewOrder(order)}
-                            >
-                              <ViewIcon />
-                            </IconButton>
-                          </Tooltip>
+                          <Box display="flex" gap={1}>
+                            <Tooltip title='查看详情'>
+                              <IconButton
+                                size='small'
+                                onClick={() => handleViewOrder(order)}
+                              >
+                                <ViewIcon />
+                              </IconButton>
+                            </Tooltip>
+                            {order.scm_order_id ? (
+                              <Tooltip title='解绑 SCM 订单'>
+                                <IconButton
+                                  size='small'
+                                  onClick={() => handleUnbindScmOrder(order.id)}
+                                  disabled={unbinding}
+                                  color='error'
+                                >
+                                  {unbinding ? <CircularProgress size={16} /> : <LinkOffIcon />}
+                                </IconButton>
+                              </Tooltip>
+                            ) : (
+                              <Tooltip title='绑定 SCM 订单'>
+                                <IconButton
+                                  size='small'
+                                  onClick={() => handleOpenBindDialog(order.id)}
+                                  color='primary'
+                                >
+                                  <LinkIcon />
+                                </IconButton>
+                              </Tooltip>
+                            )}
+                          </Box>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -709,6 +805,65 @@ function PrintifyOrdersPage() {
           <Button onClick={() => setOpenOrderDialog(false)}>关闭</Button>
         </DialogActions>
       </Dialog>
+
+      {/* 绑定 SCM 订单对话框 */}
+      <Dialog open={bindDialogOpen} onClose={() => setBindDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>绑定 SCM 订单</DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            <Autocomplete
+              options={scmOrders}
+              getOptionLabel={(option) => `${option.scm_order_number || 'N/A'} - ${option.customer_name || 'Unknown Customer'}`}
+              value={selectedScmOrder}
+              onChange={(event, newValue) => setSelectedScmOrder(newValue)}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="选择 SCM 订单"
+                  placeholder="搜索 SCM 订单..."
+                />
+              )}
+              renderOption={(props, option) => (
+                <Box component="li" {...props}>
+                  <Box>
+                    <Typography variant="body2" fontWeight="medium">
+                      {option.scm_order_number || 'N/A'}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      客户: {option.customer_name || 'Unknown'} | 状态: {option.status} | 履行状态: {option.fulfillment_status || 'N/A'}
+                    </Typography>
+                  </Box>
+                </Box>
+              )}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setBindDialogOpen(false)}>取消</Button>
+          <Button
+            onClick={() => handleBindScmOrder(selectedScmOrder?.printifyOrderId)}
+            disabled={!selectedScmOrder || binding}
+            variant="contained"
+            color="primary"
+          >
+            {binding ? '绑定中...' : '绑定'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 绑定错误提示 */}
+      {bindError && (
+        <Alert severity="error" onClose={() => setBindError(null)}>
+          {bindError}
+        </Alert>
+      )}
+
+      {/* 解绑错误提示 */}
+      {unbindError && (
+        <Alert severity="error" onClose={() => setUnbindError(null)}>
+          {unbindError}
+        </Alert>
+      )}
     </Box>
   );
 }
