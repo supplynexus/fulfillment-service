@@ -140,7 +140,6 @@ function PrintifyProductsPage() {
   const [openMappingDialog, setOpenMappingDialog] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [syncStatus, setSyncStatus] = useState<any>(null);
 
   // 获取 Printify 店铺列表
   const fetchStores = useCallback(async () => {
@@ -260,7 +259,6 @@ function PrintifyProductsPage() {
   useEffect(() => {
     if (selectedStore) {
       fetchProducts(selectedStore);
-      fetchSyncStatus();
     }
   }, [selectedStore, fetchProducts]);
 
@@ -328,9 +326,6 @@ function PrintifyProductsPage() {
 
       // 刷新商品列表
       await fetchProducts(selectedStore);
-
-      // 获取同步状态
-      await fetchSyncStatus();
     } catch (error) {
       frontendLogger.error('❌ Printify 商品同步失败', {
         error: String(error),
@@ -342,24 +337,6 @@ function PrintifyProductsPage() {
     }
   };
 
-  // 获取同步状态
-  const fetchSyncStatus = async () => {
-    if (!selectedStore) return;
-
-    try {
-      const response = await frontendApi.get('/api/printify-sync/sync-status', {
-        params: {
-          external_system_id_hashid: selectedStore.id_hashid,
-        },
-      });
-
-      setSyncStatus(response.data);
-    } catch (error) {
-      frontendLogger.error('❌ 获取同步状态失败', {
-        error: String(error),
-      });
-    }
-  };
 
   return (
     <ProtectedRoute>
@@ -418,41 +395,6 @@ function PrintifyProductsPage() {
                     />
                   ))}
                 </Box>
-                {syncStatus && (
-                  <Box
-                    sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}
-                  >
-                    <Typography variant='subtitle2' gutterBottom>
-                      同步状态
-                    </Typography>
-                    <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                      <Chip
-                        label={`总计: ${syncStatus.total_products}`}
-                        size='small'
-                      />
-                      <Chip
-                        label={`已同步: ${syncStatus.synced_products}`}
-                        size='small'
-                        color='success'
-                      />
-                      <Chip
-                        label={`待处理: ${syncStatus.pending_products}`}
-                        size='small'
-                        color='warning'
-                      />
-                      <Chip
-                        label={`错误: ${syncStatus.error_products}`}
-                        size='small'
-                        color='error'
-                      />
-                      <Chip
-                        label={`同步率: ${syncStatus.sync_rate}%`}
-                        size='small'
-                        color='info'
-                      />
-                    </Box>
-                  </Box>
-                )}
               </CardContent>
             </Card>
           )}
