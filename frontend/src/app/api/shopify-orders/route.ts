@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
     });
 
     // 构建后端 URL
-    const backendUrl = `${process.env.BACKEND_URL || 'http://localhost:8000'}${backendPath}`;
+    const backendUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${backendPath}`;
 
     // 调用后端 API
     const backendResponse = await fetch(backendUrl, {
@@ -145,7 +145,7 @@ export async function GET(request: NextRequest) {
     );
 
     // 构建后端 URL
-    const backendUrl = `${process.env.BACKEND_URL || 'http://localhost:8000'}/api/v1/shopify-orders/${queryString ? `?${queryString}` : ''}`;
+    const backendUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/shopify-orders/${queryString ? `?${queryString}` : ''}`;
 
     // 调用后端 API
     const backendResponse = await fetch(backendUrl, {

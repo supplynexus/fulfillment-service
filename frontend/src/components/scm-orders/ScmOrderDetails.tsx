@@ -27,6 +27,11 @@ import {
   FormControl,
   Select,
   MenuItem,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Autocomplete,
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -34,6 +39,8 @@ import {
   Edit as EditIcon,
   Print as PrintIcon,
   LocalShipping as LocalShippingIcon,
+  Link as LinkIcon,
+  LinkOff as LinkOffIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
 import { frontendApi } from '@/lib/api';
@@ -120,6 +127,24 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
     scm_order_number: '',
   });
 
+  // 绑定相关状态
+  const [bindDialogOpen, setBindDialogOpen] = useState(false);
+  const [printifyOrders, setPrintifyOrders] = useState<any[]>([]);
+  const [selectedPrintifyOrder, setSelectedPrintifyOrder] = useState<any>(null);
+  const [binding, setBinding] = useState(false);
+  const [bindError, setBindError] = useState<string | null>(null);
+  const [unbinding, setUnbinding] = useState(false);
+  const [unbindError, setUnbindError] = useState<string | null>(null);
+
+  // 核心订单绑定相关状态
+  const [coreBindDialogOpen, setCoreBindDialogOpen] = useState(false);
+  const [coreOrders, setCoreOrders] = useState<any[]>([]);
+  const [selectedCoreOrder, setSelectedCoreOrder] = useState<any>(null);
+  const [coreBinding, setCoreBinding] = useState(false);
+  const [coreBindError, setCoreBindError] = useState<string | null>(null);
+  const [coreUnbinding, setCoreUnbinding] = useState(false);
+  const [coreUnbindError, setCoreUnbindError] = useState<string | null>(null);
+
   useEffect(() => {
     fetchOrderDetails();
   }, [orderId]);
@@ -140,6 +165,121 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchPrintifyOrders = async () => {
+    try {
+      const response = await frontendApi.get('/api/printify-orders');
+      setPrintifyOrders(response.data.orders || []);
+    } catch (err: any) {
+      console.error('Failed to fetch Printify orders:', err);
+      setBindError('Failed to fetch Printify orders');
+    }
+  };
+
+  const handleBindPrintifyOrder = async () => {
+    if (!selectedPrintifyOrder) return;
+
+    try {
+      setBinding(true);
+      setBindError(null);
+      const response = await frontendApi.post(`/api/scm-orders/${orderId}/bind-printify`, {
+        printify_order_id: selectedPrintifyOrder.id
+      });
+      
+      if (response.data.success) {
+        setBindDialogOpen(false);
+        setSelectedPrintifyOrder(null);
+        fetchOrderDetails(); // 刷新订单详情
+      }
+    } catch (err: any) {
+      console.error('Failed to bind Printify order:', err);
+      setBindError(err.response?.data?.error || 'Failed to bind Printify order');
+    } finally {
+      setBinding(false);
+    }
+  };
+
+  const handleUnbindPrintifyOrder = async () => {
+    try {
+      setUnbinding(true);
+      setUnbindError(null);
+      const response = await frontendApi.post(`/api/scm-orders/${orderId}/unbind-printify`);
+      
+      if (response.data.success) {
+        fetchOrderDetails(); // 刷新订单详情
+      }
+    } catch (err: any) {
+      console.error('Failed to unbind Printify order:', err);
+      setUnbindError(err.response?.data?.error || 'Failed to unbind Printify order');
+    } finally {
+      setUnbinding(false);
+    }
+  };
+
+  const handleOpenBindDialog = () => {
+    setBindDialogOpen(true);
+    setSelectedPrintifyOrder(null);
+    setBindError(null);
+    fetchPrintifyOrders();
+  };
+
+  // 核心订单绑定相关函数
+  const fetchCoreOrders = async () => {
+    try {
+      const response = await frontendApi.get('/api/orders');
+      setCoreOrders(response.data.orders || []);
+    } catch (err: any) {
+      console.error('Failed to fetch core orders:', err);
+      setCoreBindError('Failed to fetch core orders');
+    }
+  };
+
+  const handleBindCoreOrder = async () => {
+    if (!selectedCoreOrder) return;
+
+    try {
+      setCoreBinding(true);
+      setCoreBindError(null);
+      const response = await frontendApi.post(`/api/scm-orders/${orderId}/bind-core`, {
+        core_order_hashid: selectedCoreOrder.id_hashid
+      });
+      
+      if (response.data.message) {
+        setCoreBindDialogOpen(false);
+        setSelectedCoreOrder(null);
+        fetchOrderDetails(); // 刷新订单详情
+      }
+    } catch (err: any) {
+      console.error('Failed to bind core order:', err);
+      setCoreBindError(err.response?.data?.error || 'Failed to bind core order');
+    } finally {
+      setCoreBinding(false);
+    }
+  };
+
+  const handleUnbindCoreOrder = async () => {
+    try {
+      setCoreUnbinding(true);
+      setCoreUnbindError(null);
+      const response = await frontendApi.post(`/api/scm-orders/${orderId}/unbind-core`);
+      
+      if (response.data.message) {
+        fetchOrderDetails(); // 刷新订单详情
+      }
+    } catch (err: any) {
+      console.error('Failed to unbind core order:', err);
+      setCoreUnbindError(err.response?.data?.error || 'Failed to unbind core order');
+    } finally {
+      setCoreUnbinding(false);
+    }
+  };
+
+  const handleOpenCoreBindDialog = () => {
+    setCoreBindDialogOpen(true);
+    setSelectedCoreOrder(null);
+    setCoreBindError(null);
+    fetchCoreOrders();
   };
 
   const handleBack = () => {
@@ -516,6 +656,48 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
               <LocalShippingIcon />
             </IconButton>
           </Tooltip>
+          {order.routing_metadata?.printify_order_id ? (
+            <Tooltip title='解绑 Printify 订单'>
+              <IconButton
+                onClick={handleUnbindPrintifyOrder}
+                disabled={unbinding}
+                color='error'
+              >
+                {unbinding ? <CircularProgress size={20} /> : <LinkOffIcon />}
+              </IconButton>
+            </Tooltip>
+          ) : (
+            <Tooltip title='绑定 Printify 订单'>
+              <IconButton
+                onClick={handleOpenBindDialog}
+                color='primary'
+              >
+                <LinkIcon />
+              </IconButton>
+            </Tooltip>
+          )}
+
+          {/* 核心订单绑定按钮 */}
+          {order?.source_order_id ? (
+            <Tooltip title='解绑核心订单'>
+              <IconButton
+                onClick={handleUnbindCoreOrder}
+                disabled={coreUnbinding}
+                color='error'
+              >
+                {coreUnbinding ? <CircularProgress size={20} /> : <LinkOffIcon />}
+              </IconButton>
+            </Tooltip>
+          ) : (
+            <Tooltip title='绑定核心订单'>
+              <IconButton
+                onClick={handleOpenCoreBindDialog}
+                color='primary'
+              >
+                <LinkIcon />
+              </IconButton>
+            </Tooltip>
+          )}
         </Box>
       </Box>
 
@@ -1371,7 +1553,125 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
             {editError}
           </Alert>
         )}
+
+        {/* 绑定错误提示 */}
+        {bindError && (
+          <Alert severity="error" onClose={() => setBindError(null)}>
+            {bindError}
+          </Alert>
+        )}
+
+        {/* 解绑错误提示 */}
+        {unbindError && (
+          <Alert severity="error" onClose={() => setUnbindError(null)}>
+            {unbindError}
+          </Alert>
+        )}
       </Stack>
+
+      {/* 绑定 Printify 订单对话框 */}
+      <Dialog open={bindDialogOpen} onClose={() => setBindDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>绑定 Printify 订单</DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            <Autocomplete
+              options={printifyOrders}
+              getOptionLabel={(option) => `${option.external_order_id} - ${option.customer_name || 'Unknown Customer'}`}
+              value={selectedPrintifyOrder}
+              onChange={(event, newValue) => setSelectedPrintifyOrder(newValue)}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="选择 Printify 订单"
+                  placeholder="搜索 Printify 订单..."
+                />
+              )}
+              renderOption={(props, option) => (
+                <Box component="li" {...props}>
+                  <Box>
+                    <Typography variant="body2" fontWeight="medium">
+                      {option.external_order_id}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      客户: {option.customer_name || 'Unknown'} | 状态: {option.status} | 金额: {option.total_price}
+                    </Typography>
+                  </Box>
+                </Box>
+              )}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setBindDialogOpen(false)}>取消</Button>
+          <Button
+            onClick={handleBindPrintifyOrder}
+            disabled={!selectedPrintifyOrder || binding}
+            variant="contained"
+            color="primary"
+          >
+            {binding ? '绑定中...' : '绑定'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 绑定核心订单对话框 */}
+      <Dialog open={coreBindDialogOpen} onClose={() => setCoreBindDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>绑定核心订单</DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            <Autocomplete
+              options={coreOrders}
+              getOptionLabel={(option) => `${option.order_number || option.id_hashid} - ${option.customer_name || 'Unknown Customer'} | 状态: ${option.status} | 金额: ${option.total_amount || 0}`}
+              value={selectedCoreOrder}
+              onChange={(event, newValue) => setSelectedCoreOrder(newValue)}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="选择核心订单"
+                  placeholder="搜索核心订单..."
+                />
+              )}
+              renderOption={(props, option) => (
+                <Box component="li" {...props}>
+                  <Box>
+                    <Typography variant="body1">
+                      {option.order_number || option.id_hashid}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      客户: {option.customer_name || 'Unknown Customer'} | 状态: {option.status} | 金额: {option.total_amount || 0}
+                    </Typography>
+                  </Box>
+                </Box>
+              )}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCoreBindDialogOpen(false)}>取消</Button>
+          <Button
+            onClick={handleBindCoreOrder}
+            disabled={!selectedCoreOrder || coreBinding}
+            variant="contained"
+            color="primary"
+          >
+            {coreBinding ? '绑定中...' : '绑定'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 核心订单绑定错误提示 */}
+      {coreBindError && (
+        <Alert severity="error" onClose={() => setCoreBindError(null)}>
+          {coreBindError}
+        </Alert>
+      )}
+
+      {/* 核心订单解绑错误提示 */}
+      {coreUnbindError && (
+        <Alert severity="error" onClose={() => setCoreUnbindError(null)}>
+          {coreUnbindError}
+        </Alert>
+      )}
     </Box>
   );
 }
