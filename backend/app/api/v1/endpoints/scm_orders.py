@@ -1890,6 +1890,7 @@ async def generate_printify_order(
         # 将 Printify 订单保存到数据库
         from app.models.printify_order import PrintifyOrder
         from app.models.external_system import ExternalSystem, ExternalSystemType
+        from sqlalchemy import and_
         
         # 获取 Printify 外部系统
         external_system_result = await db.execute(
@@ -1944,11 +1945,27 @@ async def generate_printify_order(
             "selected_items_count": len(selected_items)
         }
         
+    except HTTPException:
+        # 重新抛出 HTTPException，保持原始状态码和错误信息
+        await db.rollback()
+        raise
+    except ValueError as e:
+        # ValueError 通常是验证失败，返回 400
+        await db.rollback()
+        error_msg = str(e) if str(e) else repr(e)
+        logger.error(f"❌ 生成 Printify 订单验证失败: {error_msg}")
+        raise HTTPException(status_code=400, detail=f"Failed to generate Printify order: {error_msg}")
     except Exception as e:
-        logger.error(f"❌ 生成 Printify 订单失败: {str(e)}")
+        await db.rollback()
+        error_msg = str(e) if str(e) else repr(e)
+        error_type = type(e).__name__
+        logger.error(f"❌ 生成 Printify 订单失败: {error_type}: {error_msg}")
         import traceback
         logger.error(f"   异常堆栈: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"Failed to generate Printify order: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to generate Printify order: {error_type}: {error_msg}"
+        )
 
 
 @router.post("/batch-update-shopify-fulfillment", response_model=dict)
