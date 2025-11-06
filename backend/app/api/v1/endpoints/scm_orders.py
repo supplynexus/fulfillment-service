@@ -395,6 +395,30 @@ async def create_scm_order(
         raise HTTPException(status_code=404, detail=f"Source orders not found: {missing}")
 
     # 规范化行项目：基于 core_product_id/core_variant_id 生成展示元数据
+    # 如果有关联的核心订单，从 OrderItem 中获取 core_variant_id 和 sku
+    from app.models.order import OrderItem
+    order_items_map = {}  # key: external_variant_id or sku, value: OrderItem
+    if decoded_source_ids:
+        logger.info(f"🔍 从核心订单获取 OrderItem 信息: source_order_ids={decoded_source_ids}")
+        for source_order_id in decoded_source_ids:
+            order_items_result = await db.execute(
+                select(OrderItem).where(
+                    and_(
+                        OrderItem.order_id == source_order_id,
+                        OrderItem.tenant_id == tenant.id
+                    )
+                )
+            )
+            order_items = order_items_result.scalars().all()
+            for order_item in order_items:
+                # 使用 external_variant_id 作为 key（如果存在）
+                if order_item.external_variant_id:
+                    order_items_map[str(order_item.external_variant_id)] = order_item
+                # 也使用 sku 作为 key（如果存在）
+                if order_item.sku:
+                    order_items_map[order_item.sku] = order_item
+        logger.info(f"✅ 找到 {len(order_items_map)} 个 OrderItem 映射")
+
     normalized_items = []
     for raw in scm_order_data.line_items:
         try:
@@ -406,6 +430,28 @@ async def create_scm_order(
             display_sku = None
             variant_label = None
             image_url = None
+
+            # 如果 core_variant_id 为空，尝试从 OrderItem 中获取
+            if not core_variant_id and decoded_source_ids:
+                item_metadata = raw.get("item_metadata", {}) if isinstance(raw, dict) else {}
+                source_line_item_id = item_metadata.get("source_line_item_id")
+                sku = item_metadata.get("sku") or raw.get("sku", "")
+                
+                # 优先通过 external_variant_id (source_line_item_id) 匹配
+                if source_line_item_id and str(source_line_item_id) in order_items_map:
+                    order_item = order_items_map[str(source_line_item_id)]
+                    if order_item.core_variant_id:
+                        core_variant_id = order_item.core_variant_id
+                        core_product_id = order_item.core_product_id
+                        logger.info(f"✅ 从 OrderItem 获取 core_variant_id: {core_variant_id} (通过 external_variant_id={source_line_item_id})")
+                
+                # 如果还没找到，通过 SKU 匹配
+                if not core_variant_id and sku and sku in order_items_map:
+                    order_item = order_items_map[sku]
+                    if order_item.core_variant_id:
+                        core_variant_id = order_item.core_variant_id
+                        core_product_id = order_item.core_product_id
+                        logger.info(f"✅ 从 OrderItem 获取 core_variant_id: {core_variant_id} (通过 SKU={sku})")
 
             # 首先尝试从核心产品获取信息
             if core_variant_id:
@@ -452,10 +498,10 @@ async def create_scm_order(
             normalized_items.append(
                 {
                     "core_product_id": core_product_id,
-                    "core_variant_id": core_variant_id,
+                    "core_variant_id": core_variant_id,  # 确保包含 core_variant_id
                     "quantity": max(1, quantity),
                     "metadata": {
-                        "sku": display_sku,
+                        "sku": display_sku,  # 确保包含 sku
                         "title": display_title,
                         "variant_label": variant_label,
                         "image_url": image_url,
