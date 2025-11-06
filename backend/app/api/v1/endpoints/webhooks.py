@@ -46,6 +46,15 @@ async def shopify_order_created(
     
     try:
         order_data = json.loads(body)
+        
+        # Extract shop domain from webhook headers
+        shop_domain = request.headers.get('X-Shopify-Shop-Domain', '')
+        if shop_domain:
+            # Remove .myshopify.com if present
+            shop_domain = shop_domain.replace('.myshopify.com', '')
+            # Add shop domain to order data for processing
+            order_data['shop_domain'] = shop_domain
+        
         webhook_service = WebhookService(db)
         
         # Log webhook receipt

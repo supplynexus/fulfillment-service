@@ -5,9 +5,11 @@ import { jwtUtilsServer } from '@/lib/jwt-utils-server';
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
+    
     // 获取前端 JWT token
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -33,7 +35,7 @@ export async function DELETE(
     // 生成后端签名
     const timestamp = Math.floor(Date.now() / 1000);
     const nonce = Math.random().toString(36).substring(2, 15);
-    const backendPath = `/api/v1/shopify-orders/${params.id}`;
+    const backendPath = `/api/v1/shopify-orders/${id}`;
     const signatureString = `DELETE${backendPath}${timestamp}${nonce}${tenantName}`;
 
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
