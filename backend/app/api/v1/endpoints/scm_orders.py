@@ -456,11 +456,26 @@ async def create_scm_order(
                 core_product_id = raw.get("core_product_id") if isinstance(raw, dict) else None
                 core_variant_id = raw.get("core_variant_id") if isinstance(raw, dict) else None
                 quantity = int(raw.get("quantity", 1)) if isinstance(raw, dict) else 1
+                
+                # 规范化 core_variant_id：如果是字符串 "null" 或空字符串，转换为 None
+                if core_variant_id in (None, "", "null", "None"):
+                    core_variant_id = None
+                # 如果是数字 0，也视为 None（因为有效的 core_variant_id 不会是 0）
+                elif core_variant_id == 0:
+                    core_variant_id = None
+                
+                # 规范化 core_product_id
+                if core_product_id in (None, "", "null", "None"):
+                    core_product_id = None
+                elif core_product_id == 0:
+                    core_product_id = None
 
                 display_title = None
                 display_sku = None
                 variant_label = None
                 image_url = None
+
+                logger.info(f"🔍 处理行项目: core_product_id={core_product_id}, core_variant_id={core_variant_id}, quantity={quantity}")
 
                 # 如果 core_variant_id 为空，尝试从 OrderItem 中获取
                 if not core_variant_id and decoded_source_ids:
