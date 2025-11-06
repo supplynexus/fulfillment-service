@@ -406,12 +406,19 @@ class PrintifyFulfillmentService:
             for item in scm_order.line_items:
                 # 优先使用已提供的 external_product_id 和 external_variant_id（来自 generate_printify_order）
                 if item.get("external_product_id") and item.get("external_variant_id"):
+                    product_id = item["external_product_id"]
+                    variant_id = item["external_variant_id"]
+                    
+                    # 验证 product_id 格式（Printify 产品 ID 应该是 24 位十六进制字符串，类似 MongoDB ObjectId）
+                    if not isinstance(product_id, str) or len(product_id) != 24:
+                        logger.warning(f"⚠️ 产品 ID 格式可能不正确: product_id={product_id}, 长度={len(str(product_id))}, 类型={type(product_id)}")
+                    
                     fulfillment_data["line_items"].append({
-                        "product_id": item["external_product_id"],
-                        "variant_id": int(item["external_variant_id"]),  # 确保是整数
+                        "product_id": product_id,
+                        "variant_id": int(variant_id),  # 确保是整数
                         "quantity": item.get("quantity", 1)
                     })
-                    logger.info(f"✅ 添加商品到 line_items (使用外部ID): product_id={item['external_product_id']}, variant_id={item['external_variant_id']}, quantity={item.get('quantity', 1)}")
+                    logger.info(f"✅ 添加商品到 line_items (使用外部ID): product_id={product_id}, variant_id={variant_id}, quantity={item.get('quantity', 1)}")
                     continue
                 
                 # 如果没有外部ID，尝试通过 core_variant_id 查找
