@@ -217,10 +217,33 @@ class OrderRoutingService:
         return True
 
     async def _normalize_line_items_for_scm(
-        self, line_items: List[Dict[str, Any]], tenant_id: int
+        self, line_items: List[Dict[str, Any]], tenant_id: int, order_id: int = None
     ) -> List[Dict[str, Any]]:
         """规范化 line_items 用于 SCM 订单存储"""
         from app.models.product_new import Product, ProductVariant
+        from app.models.order import OrderItem
+        
+        # 如果有关联的核心订单，从 OrderItem 中获取 core_variant_id 和 sku
+        order_items_map = {}  # key: external_variant_id or sku, value: OrderItem
+        if order_id:
+            logger.info(f"🔍 从核心订单获取 OrderItem 信息: order_id={order_id}")
+            order_items_result = await self.db.execute(
+                select(OrderItem).where(
+                    and_(
+                        OrderItem.order_id == order_id,
+                        OrderItem.tenant_id == tenant_id
+                    )
+                )
+            )
+            order_items = order_items_result.scalars().all()
+            for order_item in order_items:
+                # 使用 external_variant_id 作为 key（如果存在）
+                if order_item.external_variant_id:
+                    order_items_map[str(order_item.external_variant_id)] = order_item
+                # 也使用 sku 作为 key（如果存在）
+                if order_item.sku:
+                    order_items_map[order_item.sku] = order_item
+            logger.info(f"✅ 找到 {len(order_items_map)} 个 OrderItem 映射")
         
         normalized_items = []
         
@@ -237,8 +260,27 @@ class OrderRoutingService:
                 core_product_id = None
                 core_variant_id = None
                 
-                if sku:
-                    # 通过 SKU 查找变体
+                # 如果有关联的核心订单，优先从 OrderItem 中获取
+                if order_id and order_items_map:
+                    external_variant_id = item.get("id")  # Shopify line item ID
+                    # 优先通过 external_variant_id 匹配
+                    if external_variant_id and str(external_variant_id) in order_items_map:
+                        order_item = order_items_map[str(external_variant_id)]
+                        if order_item.core_variant_id:
+                            core_variant_id = order_item.core_variant_id
+                            core_product_id = order_item.core_product_id
+                            sku = order_item.sku or sku  # 使用 OrderItem 的 SKU
+                            logger.info(f"✅ 从 OrderItem 获取 core_variant_id: {core_variant_id} (通过 external_variant_id={external_variant_id})")
+                    # 如果还没找到，通过 SKU 匹配
+                    elif sku and sku in order_items_map:
+                        order_item = order_items_map[sku]
+                        if order_item.core_variant_id:
+                            core_variant_id = order_item.core_variant_id
+                            core_product_id = order_item.core_product_id
+                            logger.info(f"✅ 从 OrderItem 获取 core_variant_id: {core_variant_id} (通过 SKU={sku})")
+                
+                # 如果还没找到，通过 SKU 查找变体
+                if not core_variant_id and sku:
                     variant_result = await self.db.execute(
                         select(ProductVariant).where(
                             ProductVariant.sku == sku,
@@ -253,10 +295,10 @@ class OrderRoutingService:
                 # 构建规范化项目
                 normalized_item = {
                     "core_product_id": core_product_id,
-                    "core_variant_id": core_variant_id,
+                    "core_variant_id": core_variant_id,  # 确保包含 core_variant_id
                     "quantity": max(1, quantity),
                     "metadata": {
-                        "sku": sku,
+                        "sku": sku,  # 确保包含 sku
                         "title": title,
                         "variant_label": variant_title,
                         "price": price,
@@ -293,9 +335,9 @@ class OrderRoutingService:
         # 生成SCM订单号
         scm_order_number = await self._generate_scm_order_number(tenant_id)
 
-        # 规范化 line_items
+        # 规范化 line_items（传入 order.id 以便从 OrderItem 获取 core_variant_id）
         normalized_line_items = await self._normalize_line_items_for_scm(
-            decision["line_items"], tenant_id
+            decision["line_items"], tenant_id, order.id
         )
 
         # 计算总金额

@@ -367,182 +367,260 @@ async def create_scm_order(
     """
     手动创建SCM订单
     """
-    tenant, user = auth
-
-    # 验证原始订单存在（支持多个来源）
-    source_ids = list(dict.fromkeys(scm_order_data.source_order_ids))
-    if not source_ids:
-        raise HTTPException(status_code=400, detail="source_order_ids is required")
-
-    # 解码 hashids 为原始 ID
-    from app.core.hashids_utils import decode_id
-    decoded_source_ids = []
-    for source_id in source_ids:
-        try:
-            decoded_id = decode_id(source_id)
-            decoded_source_ids.append(decoded_id)
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Invalid source order ID: {source_id}")
-
-    result = await db.execute(
-        select(Order.id).where(
-            Order.id.in_(decoded_source_ids), Order.tenant_id == tenant.id
-        )
-    )
-    found_ids = {row[0] for row in result.fetchall()}
-    missing = [oid for oid in decoded_source_ids if oid not in found_ids]
-    if missing:
-        raise HTTPException(status_code=404, detail=f"Source orders not found: {missing}")
-
-    # 规范化行项目：基于 core_product_id/core_variant_id 生成展示元数据
-    normalized_items = []
-    for raw in scm_order_data.line_items:
-        try:
-            core_product_id = raw.get("core_product_id") if isinstance(raw, dict) else None
-            core_variant_id = raw.get("core_variant_id") if isinstance(raw, dict) else None
-            quantity = int(raw.get("quantity", 1)) if isinstance(raw, dict) else 1
-
-            display_title = None
-            display_sku = None
-            variant_label = None
-            image_url = None
-
-            # 首先尝试从核心产品获取信息
-            if core_variant_id:
-                v_res = await db.execute(
-                    select(ProductVariant).where(
-                        ProductVariant.id == core_variant_id,
-                        ProductVariant.tenant_id == tenant.id,
-                    )
-                )
-                variant = v_res.scalar_one_or_none()
-                if variant:
-                    display_sku = variant.sku
-                    image_url = variant.image_url
-                    core_product_id = core_product_id or variant.product_id
-            if core_product_id:
-                p_res = await db.execute(
-                    select(Product).where(
-                        Product.id == core_product_id,
-                        Product.tenant_id == tenant.id,
-                    )
-                )
-                product = p_res.scalar_one_or_none()
-                if product:
-                    display_title = product.title
-
-            # 如果核心产品信息不可用，回退到 item_metadata 中的信息
-            item_metadata = raw.get("item_metadata", {}) if isinstance(raw, dict) else {}
-            if not display_title:
-                display_title = item_metadata.get("title")
-            if not display_sku:
-                display_sku = item_metadata.get("sku")
-            if not variant_label:
-                variant_label = item_metadata.get("variant_title")
-            
-            # 处理价格信息
-            price = item_metadata.get("price") or item_metadata.get("cost")
-            if price is not None:
-                # 确保价格是数字格式
-                try:
-                    price = float(price)
-                except (ValueError, TypeError):
-                    price = None
-
-            normalized_items.append(
-                {
-                    "core_product_id": core_product_id,
-                    "core_variant_id": core_variant_id,
-                    "quantity": max(1, quantity),
-                    "metadata": {
-                        "sku": display_sku,
-                        "title": display_title,
-                        "variant_label": variant_label,
-                        "image_url": image_url,
-                        "price": price,
-                        "source_line_item_id": item_metadata.get("source_line_item_id"),
-                    },
-                }
-            )
-        except Exception:
-            # 回退为最小结构，确保不会阻塞创建
-            normalized_items.append(
-                {
-                    "core_product_id": raw.get("core_product_id") if isinstance(raw, dict) else None,
-                    "core_variant_id": raw.get("core_variant_id") if isinstance(raw, dict) else None,
-                    "quantity": int(raw.get("quantity", 1)) if isinstance(raw, dict) else 1,
-                    "metadata": raw.get("item_metadata") if isinstance(raw, dict) else {},
-                }
-            )
-
-    # 生成 SCM 订单编号
-    from app.services.order_number_service import OrderNumberService
-    scm_order_number = await OrderNumberService.generate_scm_order_number(db, tenant.id)
+    from app.core.logging import RequestLogger
     
-    # 创建SCM订单
-    scm_order = SCMOrder(
-        tenant_id=tenant.id,
-        # 核心SCM订单不直接绑定外部系统
-        scm_order_number=scm_order_number,
-        routing_strategy=scm_order_data.routing_strategy,
-        line_items=normalized_items,
-        # 不记录金额
-        currency=scm_order_data.currency,
-        customer_email=scm_order_data.customer_email,
-        customer_name=scm_order_data.customer_name,
-        customer_phone=scm_order_data.customer_phone,
-        shipping_address=scm_order_data.shipping_address,
-        billing_address=scm_order_data.billing_address,
-        routing_metadata=scm_order_data.routing_metadata,
-        shopify_order_id=scm_order_data.shopify_order_id,
-    )
+    logger = RequestLogger("scm_orders.create_scm_order")
+    tenant, user = auth
+    
+    try:
+        logger.info(f"🔍 开始创建SCM订单: tenant_id={tenant.id}, user_id={user.id}")
+        logger.info(f"   请求数据: source_order_ids={scm_order_data.source_order_ids}, line_items_count={len(scm_order_data.line_items)}")
 
-    db.add(scm_order)
-    await db.flush()
+        # 验证原始订单存在（支持多个来源）
+        source_ids = list(dict.fromkeys(scm_order_data.source_order_ids))
+        if not source_ids:
+            logger.error("❌ source_order_ids 为空")
+            raise HTTPException(status_code=400, detail="source_order_ids is required")
 
-    # 写入多来源关联表
-    for oid in decoded_source_ids:
-        db.add(
-            ScmOrderSource(
-                tenant_id=tenant.id,
-                scm_order_id=scm_order.id,
-                source_order_id=oid,
+        # 解码 hashids 为原始 ID
+        from app.core.hashids_utils import decode_id
+        decoded_source_ids = []
+        for source_id in source_ids:
+            try:
+                decoded_id = decode_id(source_id)
+                decoded_source_ids.append(decoded_id)
+                logger.info(f"✅ Hashid 解码成功: {source_id} -> {decoded_id}")
+            except Exception as e:
+                logger.error(f"❌ Hashid 解码失败: {source_id}, 错误: {str(e)}")
+                raise HTTPException(status_code=400, detail=f"Invalid source order ID: {source_id}")
+
+        logger.info(f"✅ 所有 source_order_ids 解码成功: {decoded_source_ids}")
+
+        result = await db.execute(
+            select(Order.id).where(
+                Order.id.in_(decoded_source_ids), Order.tenant_id == tenant.id
             )
         )
+        found_ids = {row[0] for row in result.fetchall()}
+        missing = [oid for oid in decoded_source_ids if oid not in found_ids]
+        if missing:
+            logger.error(f"❌ 源订单不存在: missing={missing}, found={found_ids}")
+            raise HTTPException(status_code=404, detail=f"Source orders not found: {missing}")
+        
+        logger.info(f"✅ 源订单验证成功: found={len(found_ids)} 个订单")
 
-    await db.commit()
-    await db.refresh(scm_order)
+        # 规范化行项目：基于 core_product_id/core_variant_id 生成展示元数据
+        # 如果有关联的核心订单，从 OrderItem 中获取 core_variant_id 和 sku
+        from app.models.order import OrderItem
+        from sqlalchemy import and_
+        order_items_map = {}  # key: external_variant_id or sku, value: OrderItem
+        if decoded_source_ids:
+            logger.info(f"🔍 从核心订单获取 OrderItem 信息: source_order_ids={decoded_source_ids}")
+        for source_order_id in decoded_source_ids:
+            order_items_result = await db.execute(
+                select(OrderItem).where(
+                    and_(
+                        OrderItem.order_id == source_order_id,
+                        OrderItem.tenant_id == tenant.id
+                    )
+                )
+            )
+            order_items = order_items_result.scalars().all()
+            for order_item in order_items:
+                # 使用 external_variant_id 作为 key（如果存在）
+                if order_item.external_variant_id:
+                    order_items_map[str(order_item.external_variant_id)] = order_item
+                # 也使用 sku 作为 key（如果存在）
+                if order_item.sku:
+                    order_items_map[order_item.sku] = order_item
+        logger.info(f"✅ 找到 {len(order_items_map)} 个 OrderItem 映射")
 
-    # 构建响应对象，使用 hashids
-    from app.core.hashids_utils import encode_id
-    return SCMOrderResponse(
-        id_hashid=encode_id(scm_order.id),
-        source_order_id_hashid=encode_id(decoded_source_ids[0]) if decoded_source_ids else None,
-        scm_order_number=scm_order.scm_order_number,
-        status=scm_order.status,
-        fulfillment_status=scm_order.fulfillment_status,
-        routing_strategy=scm_order.routing_strategy,
-        line_items=scm_order.line_items,
-        currency=scm_order.currency,
-        customer_email=scm_order.customer_email,
-        customer_name=scm_order.customer_name,
-        customer_phone=scm_order.customer_phone,
-        shipping_address=scm_order.shipping_address,
-        billing_address=scm_order.billing_address,
-        routing_metadata=scm_order.routing_metadata,
-        tracking_number=scm_order.tracking_number,
-        tracking_url=scm_order.tracking_url,
-        carrier=scm_order.carrier,
-        shipped_at=scm_order.shipped_at,
-        delivered_at=scm_order.delivered_at,
-        error_message=scm_order.error_message,
-        retry_count=scm_order.retry_count,
-        shopify_fulfillment_order_id=scm_order.shopify_fulfillment_order_id,
-        shopify_fulfillment_id=scm_order.shopify_fulfillment_id,
-        created_at=scm_order.created_at,
-        updated_at=scm_order.updated_at,
-        fulfilled_at=scm_order.fulfilled_at,
-    )
+        normalized_items = []
+        logger.info(f"🔍 开始规范化行项目: line_items_count={len(scm_order_data.line_items)}")
+        for raw in scm_order_data.line_items:
+            try:
+                core_product_id = raw.get("core_product_id") if isinstance(raw, dict) else None
+                core_variant_id = raw.get("core_variant_id") if isinstance(raw, dict) else None
+                quantity = int(raw.get("quantity", 1)) if isinstance(raw, dict) else 1
+
+                display_title = None
+                display_sku = None
+                variant_label = None
+                image_url = None
+
+                # 如果 core_variant_id 为空，尝试从 OrderItem 中获取
+                if not core_variant_id and decoded_source_ids:
+                    item_metadata = raw.get("item_metadata", {}) if isinstance(raw, dict) else {}
+                    source_line_item_id = item_metadata.get("source_line_item_id")
+                    sku = item_metadata.get("sku") or raw.get("sku", "")
+                    
+                    # 优先通过 external_variant_id (source_line_item_id) 匹配
+                    if source_line_item_id and str(source_line_item_id) in order_items_map:
+                        order_item = order_items_map[str(source_line_item_id)]
+                        if order_item.core_variant_id:
+                            core_variant_id = order_item.core_variant_id
+                            core_product_id = order_item.core_product_id
+                            logger.info(f"✅ 从 OrderItem 获取 core_variant_id: {core_variant_id} (通过 external_variant_id={source_line_item_id})")
+                    
+                    # 如果还没找到，通过 SKU 匹配
+                    if not core_variant_id and sku and sku in order_items_map:
+                        order_item = order_items_map[sku]
+                        if order_item.core_variant_id:
+                            core_variant_id = order_item.core_variant_id
+                            core_product_id = order_item.core_product_id
+                            logger.info(f"✅ 从 OrderItem 获取 core_variant_id: {core_variant_id} (通过 SKU={sku})")
+
+                # 首先尝试从核心产品获取信息
+                if core_variant_id:
+                    v_res = await db.execute(
+                        select(ProductVariant).where(
+                            ProductVariant.id == core_variant_id,
+                            ProductVariant.tenant_id == tenant.id,
+                        )
+                    )
+                    variant = v_res.scalar_one_or_none()
+                    if variant:
+                        display_sku = variant.sku
+                        image_url = variant.image_url
+                        core_product_id = core_product_id or variant.product_id
+                if core_product_id:
+                    p_res = await db.execute(
+                        select(Product).where(
+                            Product.id == core_product_id,
+                            Product.tenant_id == tenant.id,
+                        )
+                    )
+                    product = p_res.scalar_one_or_none()
+                    if product:
+                        display_title = product.title
+
+                # 如果核心产品信息不可用，回退到 item_metadata 中的信息
+                item_metadata = raw.get("item_metadata", {}) if isinstance(raw, dict) else {}
+                if not display_title:
+                    display_title = item_metadata.get("title")
+                if not display_sku:
+                    display_sku = item_metadata.get("sku")
+                if not variant_label:
+                    variant_label = item_metadata.get("variant_title")
+                
+                # 处理价格信息
+                price = item_metadata.get("price") or item_metadata.get("cost")
+                if price is not None:
+                    # 确保价格是数字格式
+                    try:
+                        price = float(price)
+                    except (ValueError, TypeError):
+                        price = None
+
+                normalized_items.append(
+                    {
+                        "core_product_id": core_product_id,
+                        "core_variant_id": core_variant_id,  # 确保包含 core_variant_id
+                        "quantity": max(1, quantity),
+                        "metadata": {
+                            "sku": display_sku,  # 确保包含 sku
+                            "title": display_title,
+                            "variant_label": variant_label,
+                            "image_url": image_url,
+                            "price": price,
+                            "source_line_item_id": item_metadata.get("source_line_item_id"),
+                        },
+                    }
+                )
+            except Exception:
+                # 回退为最小结构，确保不会阻塞创建
+                normalized_items.append(
+                    {
+                        "core_product_id": raw.get("core_product_id") if isinstance(raw, dict) else None,
+                        "core_variant_id": raw.get("core_variant_id") if isinstance(raw, dict) else None,
+                        "quantity": int(raw.get("quantity", 1)) if isinstance(raw, dict) else 1,
+                        "metadata": raw.get("item_metadata") if isinstance(raw, dict) else {},
+                    }
+                )
+
+        # 生成 SCM 订单编号
+        from app.services.order_number_service import OrderNumberService
+        scm_order_number = await OrderNumberService.generate_scm_order_number(db, tenant.id)
+        logger.info(f"✅ SCM 订单编号生成成功: {scm_order_number}")
+        
+        # 创建SCM订单
+        logger.info(f"🔍 开始创建 SCM 订单对象: scm_order_number={scm_order_number}, normalized_items_count={len(normalized_items)}")
+        scm_order = SCMOrder(
+            tenant_id=tenant.id,
+            # 核心SCM订单不直接绑定外部系统
+            scm_order_number=scm_order_number,
+            routing_strategy=scm_order_data.routing_strategy,
+            line_items=normalized_items,
+            # 不记录金额
+            currency=scm_order_data.currency,
+            customer_email=scm_order_data.customer_email,
+            customer_name=scm_order_data.customer_name,
+            customer_phone=scm_order_data.customer_phone,
+            shipping_address=scm_order_data.shipping_address,
+            billing_address=scm_order_data.billing_address,
+            routing_metadata=scm_order_data.routing_metadata,
+            shopify_order_id=scm_order_data.shopify_order_id,
+        )
+
+        db.add(scm_order)
+        await db.flush()
+        logger.info(f"✅ SCM 订单对象创建成功: scm_order_id={scm_order.id}")
+
+        # 写入多来源关联表
+        logger.info(f"🔍 开始写入多来源关联表: source_order_ids={decoded_source_ids}")
+        for oid in decoded_source_ids:
+            db.add(
+                ScmOrderSource(
+                    tenant_id=tenant.id,
+                    scm_order_id=scm_order.id,
+                    source_order_id=oid,
+                )
+            )
+        logger.info(f"✅ 多来源关联表写入成功: {len(decoded_source_ids)} 个关联记录")
+
+        await db.commit()
+        await db.refresh(scm_order)
+        logger.info(f"✅ SCM 订单创建成功: scm_order_id={scm_order.id}, scm_order_number={scm_order.scm_order_number}")
+
+        # 构建响应对象，使用 hashids
+        from app.core.hashids_utils import encode_id
+        return SCMOrderResponse(
+            id_hashid=encode_id(scm_order.id),
+            source_order_id_hashid=encode_id(decoded_source_ids[0]) if decoded_source_ids else None,
+            scm_order_number=scm_order.scm_order_number,
+            status=scm_order.status,
+            fulfillment_status=scm_order.fulfillment_status,
+            routing_strategy=scm_order.routing_strategy,
+            line_items=scm_order.line_items,
+            currency=scm_order.currency,
+            customer_email=scm_order.customer_email,
+            customer_name=scm_order.customer_name,
+            customer_phone=scm_order.customer_phone,
+            shipping_address=scm_order.shipping_address,
+            billing_address=scm_order.billing_address,
+            routing_metadata=scm_order.routing_metadata,
+            tracking_number=scm_order.tracking_number,
+            tracking_url=scm_order.tracking_url,
+            carrier=scm_order.carrier,
+            shipped_at=scm_order.shipped_at,
+            delivered_at=scm_order.delivered_at,
+            error_message=scm_order.error_message,
+            retry_count=scm_order.retry_count,
+            shopify_fulfillment_order_id=scm_order.shopify_fulfillment_order_id,
+            shopify_fulfillment_id=scm_order.shopify_fulfillment_id,
+            created_at=scm_order.created_at,
+            updated_at=scm_order.updated_at,
+            fulfilled_at=scm_order.fulfilled_at,
+        )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"❌ 创建SCM订单失败: {str(e)}")
+        import traceback
+        logger.error(f"   异常堆栈: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 @router.put("/by-id/{scm_order_id}", response_model=SCMOrderResponse)
@@ -637,40 +715,6 @@ async def update_scm_order_by_hashid(
         raise HTTPException(status_code=404, detail="SCM order not found")
 
     return SCMOrderResponse.from_orm(scm_order)
-
-
-@router.delete("/{scm_order_id}")
-async def delete_scm_order(
-    scm_order_id: int,
-    db: AsyncSession = Depends(get_async_db),
-    auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
-):
-    """
-    删除SCM订单
-    """
-    tenant, user = auth
-
-    result = await db.execute(
-        select(SCMOrder).where(
-            SCMOrder.id == scm_order_id, SCMOrder.tenant_id == tenant.id
-        )
-    )
-    scm_order = result.scalar_one_or_none()
-
-    if not scm_order:
-        raise HTTPException(status_code=404, detail="SCM order not found")
-
-    # 检查是否可以删除（只有创建状态的订单可以删除）
-    if scm_order.status not in ["created", "failed"]:
-        raise HTTPException(
-            status_code=400,
-            detail="Cannot delete SCM order with status: " + scm_order.status,
-        )
-
-    await db.delete(scm_order)
-    await db.commit()
-
-    return {"message": "SCM order deleted successfully"}
 
 
 @router.post("/sync-printify-orders", response_model=dict)
@@ -1164,7 +1208,18 @@ async def delete_scm_order(
             logger.error(f"❌ SCM订单不存在: scm_order_id={scm_order_id}, tenant_id={tenant.id}")
             raise HTTPException(status_code=404, detail="SCM order not found")
         
-        # 删除SCM订单（级联删除相关数据）
+        # 先删除相关的 scm_order_sources 记录（外键约束）
+        from app.models.scm_order import ScmOrderSource
+        scm_sources_stmt = delete(ScmOrderSource).where(
+            and_(
+                ScmOrderSource.scm_order_id == scm_order_id,
+                ScmOrderSource.tenant_id == tenant.id
+            )
+        )
+        await db.execute(scm_sources_stmt)
+        logger.info(f"✅ 删除相关 SCM 订单源记录: scm_order_id={scm_order_id}")
+        
+        # 删除SCM订单
         await db.delete(scm_order)
         await db.commit()
         
@@ -1578,68 +1633,100 @@ async def generate_printify_order(
         # 为选中的商品添加商品映射信息
         enhanced_selected_items = []
         for item in selected_items:
-            # 如果商品已经有 core_variant_id，直接使用
-            if item.get('core_variant_id'):
-                enhanced_selected_items.append(item)
-                continue
+            from app.models.product import ProductVariant
+            from app.models.product import ProductMapping
+            from app.models.external_system import ExternalSystem, ExternalSystemType
+            from sqlalchemy import and_
             
-            # 尝试通过 SKU 查找商品映射
-            sku = item.get('metadata', {}).get('sku')
-            if sku:
-                from app.models.product import ProductVariant
-                from app.models.product import ProductMapping
-                from app.models.external_system import ExternalSystem, ExternalSystemType
-                from sqlalchemy import and_
-                
-                # 查找核心变体
+            core_variant = None
+            mapping = None
+            
+            # 如果商品已经有 core_variant_id，直接使用它查找映射
+            if item.get('core_variant_id'):
                 variant_result = await db.execute(
                     select(ProductVariant).where(
                         and_(
-                            ProductVariant.tenant_id == tenant.id,
-                            ProductVariant.sku == sku
+                            ProductVariant.id == item['core_variant_id'],
+                            ProductVariant.tenant_id == tenant.id
                         )
                     )
                 )
                 core_variant = variant_result.scalar_one_or_none()
-                
-                if core_variant:
-                    # 查找 Printify 商品映射
-                    external_system_result = await db.execute(
-                        select(ExternalSystem).where(
+                logger.info(f"🔍 使用已有的 core_variant_id: {item['core_variant_id']}, 找到变体: {core_variant is not None}")
+            else:
+                # 尝试通过 SKU 查找核心变体
+                sku = item.get('metadata', {}).get('sku')
+                if sku:
+                    logger.info(f"🔍 通过 SKU 查找核心变体: {sku}")
+                    variant_result = await db.execute(
+                        select(ProductVariant).where(
                             and_(
-                                ExternalSystem.tenant_id == tenant.id,
-                                ExternalSystem.system_type == ExternalSystemType.PRINTIFY
+                                ProductVariant.tenant_id == tenant.id,
+                                ProductVariant.sku == sku
                             )
                         )
                     )
-                    external_system = external_system_result.scalar_one_or_none()
-                    
-                    if external_system:
-                        mapping_result = await db.execute(
-                            select(ProductMapping).where(
-                                and_(
-                                    ProductMapping.core_variant_id == core_variant.id,
-                                    ProductMapping.tenant_id == tenant.id,
-                                    ProductMapping.external_system_id == external_system.id
-                                )
+                    core_variant = variant_result.scalar_one_or_none()
+                    logger.info(f"🔍 SKU 查找结果: {core_variant is not None}")
+            
+            # 如果找到了核心变体，查找 Printify 商品映射
+            if core_variant:
+                # 查找 Printify 外部系统
+                external_system_result = await db.execute(
+                    select(ExternalSystem).where(
+                        and_(
+                            ExternalSystem.tenant_id == tenant.id,
+                            ExternalSystem.system_type == ExternalSystemType.PRINTIFY
+                        )
+                    )
+                )
+                external_system = external_system_result.scalar_one_or_none()
+                
+                if external_system:
+                    logger.info(f"🔍 查找 Printify 商品映射: core_variant_id={core_variant.id}, external_system_id={external_system.id}")
+                    mapping_result = await db.execute(
+                        select(ProductMapping).where(
+                            and_(
+                                ProductMapping.core_variant_id == core_variant.id,
+                                ProductMapping.tenant_id == tenant.id,
+                                ProductMapping.external_system_id == external_system.id
                             )
                         )
-                        mapping = mapping_result.scalar_one_or_none()
-                        
-                        if mapping:
-                            # 创建增强的行项目数据
-                            enhanced_item = item.copy()
-                            enhanced_item['core_product_id'] = core_variant.product_id
-                            enhanced_item['core_variant_id'] = core_variant.id
-                            enhanced_item['external_product_id'] = mapping.external_product_id
-                            enhanced_item['external_variant_id'] = mapping.external_variant_id
-                            enhanced_selected_items.append(enhanced_item)
-                            logger.info(f"✅ 为商品 {sku} 添加了商品映射信息")
-                            continue
+                    )
+                    mapping = mapping_result.scalar_one_or_none()
+                    logger.info(f"🔍 映射查找结果: {mapping is not None}")
+                else:
+                    logger.warning(f"⚠️ 未找到 Printify 外部系统: tenant_id={tenant.id}")
+            else:
+                sku = item.get('metadata', {}).get('sku')
+                logger.warning(f"⚠️ 未找到核心变体: sku={sku}, core_variant_id={item.get('core_variant_id')}")
             
-            # 如果没有找到映射，使用原始数据
-            enhanced_selected_items.append(item)
-            logger.warning(f"⚠️ 商品 {sku} 没有找到商品映射信息")
+            # 如果找到了映射，创建增强的行项目数据
+            if mapping:
+                enhanced_item = item.copy()
+                enhanced_item['core_product_id'] = core_variant.product_id
+                enhanced_item['core_variant_id'] = core_variant.id
+                enhanced_item['external_product_id'] = mapping.external_product_id
+                enhanced_item['external_variant_id'] = mapping.external_variant_id
+                enhanced_selected_items.append(enhanced_item)
+                logger.info(f"✅ 为商品添加了商品映射信息: external_product_id={mapping.external_product_id}, external_variant_id={mapping.external_variant_id}")
+            else:
+                # 如果没有找到映射，记录详细信息
+                sku = item.get('metadata', {}).get('sku')
+                logger.warning(f"⚠️ 商品没有找到 Printify 映射: sku={sku}, core_variant_id={item.get('core_variant_id')}, item={item}")
+                # 仍然添加到列表中，但会在 _build_fulfillment_data 中被跳过
+                enhanced_selected_items.append(item)
+        
+        # 检查是否有任何商品找到了映射
+        items_with_mapping = [item for item in enhanced_selected_items if item.get('external_product_id') and item.get('external_variant_id')]
+        if not items_with_mapping:
+            logger.error(f"❌ 所有选中商品都没有找到 Printify 映射: selected_items_count={len(selected_items)}")
+            raise HTTPException(
+                status_code=400, 
+                detail="No items have valid Printify product mappings. Please ensure all selected items have been mapped to Printify products."
+            )
+        
+        logger.info(f"✅ 找到 {len(items_with_mapping)}/{len(enhanced_selected_items)} 个商品有 Printify 映射")
         
         # 创建包含选中商品的临时 SCM 订单对象
         temp_scm_order = SCMOrder(
