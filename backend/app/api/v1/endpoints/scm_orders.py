@@ -1176,7 +1176,18 @@ async def delete_scm_order(
             logger.error(f"❌ SCM订单不存在: scm_order_id={scm_order_id}, tenant_id={tenant.id}")
             raise HTTPException(status_code=404, detail="SCM order not found")
         
-        # 删除SCM订单（级联删除相关数据）
+        # 先删除相关的 scm_order_sources 记录（外键约束）
+        from app.models.scm_order import ScmOrderSource
+        scm_sources_stmt = delete(ScmOrderSource).where(
+            and_(
+                ScmOrderSource.scm_order_id == scm_order_id,
+                ScmOrderSource.tenant_id == tenant.id
+            )
+        )
+        await db.execute(scm_sources_stmt)
+        logger.info(f"✅ 删除相关 SCM 订单源记录: scm_order_id={scm_order_id}")
+        
+        # 删除SCM订单
         await db.delete(scm_order)
         await db.commit()
         
