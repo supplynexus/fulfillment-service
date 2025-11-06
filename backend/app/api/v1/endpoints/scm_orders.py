@@ -1773,13 +1773,38 @@ async def generate_printify_order(
             
             # 如果找到了映射，创建增强的行项目数据
             if mapping:
+                # mapping.external_product_id 应该就是 Printify 的产品 ID（字符串格式）
+                # 但我们需要验证它是否存在于 PrintifyProduct 表中，以确保它是正确的
+                from app.models.printify_product import PrintifyProduct
+                printify_product_result = await db.execute(
+                    select(PrintifyProduct).where(
+                        and_(
+                            PrintifyProduct.tenant_id == tenant.id,
+                            PrintifyProduct.external_system_id == external_system.id,
+                            PrintifyProduct.printify_product_id == mapping.external_product_id
+                        )
+                    )
+                )
+                printify_product = printify_product_result.scalar_one_or_none()
+                
+                if printify_product:
+                    # 验证通过，使用 mapping.external_product_id（它应该就是正确的 Printify 产品 ID）
+                    actual_product_id = mapping.external_product_id
+                    logger.info(f"✅ 验证 PrintifyProduct 存在: product_id={actual_product_id}, shop_id={printify_product.printify_shop_id}")
+                else:
+                    # 如果没有找到 PrintifyProduct，记录警告但仍然使用 mapping.external_product_id
+                    # 这可能意味着产品还没有同步到 PrintifyProduct 表，或者 ID 格式不正确
+                    actual_product_id = mapping.external_product_id
+                    logger.warning(f"⚠️ 未找到 PrintifyProduct 记录: external_product_id={mapping.external_product_id}, external_system_id={external_system.id}")
+                    logger.warning(f"⚠️ 将使用 mapping.external_product_id={actual_product_id}，如果创建订单失败，请检查产品 ID 是否正确")
+                
                 enhanced_item = item.copy()
                 enhanced_item['core_product_id'] = core_variant.product_id
                 enhanced_item['core_variant_id'] = core_variant.id
-                enhanced_item['external_product_id'] = mapping.external_product_id
-                enhanced_item['external_variant_id'] = mapping.external_variant_id
+                enhanced_item['external_product_id'] = actual_product_id  # Printify 产品 ID
+                enhanced_item['external_variant_id'] = mapping.external_variant_id  # Printify 变体 ID
                 enhanced_selected_items.append(enhanced_item)
-                logger.info(f"✅ 为商品添加了商品映射信息: external_product_id={mapping.external_product_id}, external_variant_id={mapping.external_variant_id}")
+                logger.info(f"✅ 为商品添加了商品映射信息: external_product_id={actual_product_id}, external_variant_id={mapping.external_variant_id}")
             else:
                 # 如果没有找到映射，记录详细信息
                 sku = item.get('metadata', {}).get('sku')
