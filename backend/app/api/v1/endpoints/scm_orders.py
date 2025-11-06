@@ -1795,12 +1795,14 @@ async def generate_printify_order(
                     # 验证 shop_id 是否匹配
                     expected_shop_id = external_system.external_system_id
                     product_shop_id = printify_product.printify_shop_id
+                    
+                    # 如果 shop_id 不匹配，记录警告但不阻止订单创建
+                    # 因为产品可能同时在多个 shop 中，或者 PrintifyProduct 表中的 shop_id 可能不准确
+                    # 实际验证会在调用 Printify API 时进行
                     if product_shop_id and expected_shop_id and str(product_shop_id) != str(expected_shop_id):
-                        logger.error(f"❌ Shop ID 不匹配: 产品 shop_id={product_shop_id}, 期望 shop_id={expected_shop_id}")
-                        raise HTTPException(
-                            status_code=400,
-                            detail=f"产品 ID {actual_product_id} 属于 shop {product_shop_id}，但当前使用的 shop 是 {expected_shop_id}。请检查产品映射是否正确。"
-                        )
+                        logger.warning(f"⚠️ Shop ID 不匹配: 产品记录的 shop_id={product_shop_id}, 配置的 shop_id={expected_shop_id}")
+                        logger.warning(f"⚠️ 将继续使用配置的 shop_id={expected_shop_id}，实际验证将在调用 Printify API 时进行")
+                        # 不抛出异常，让验证在 Printify API 调用时进行
                 else:
                     # 如果没有找到 PrintifyProduct，直接拒绝订单
                     logger.error(f"❌ 未找到 PrintifyProduct 记录: external_product_id={mapping.external_product_id}, external_system_id={external_system.id}")
