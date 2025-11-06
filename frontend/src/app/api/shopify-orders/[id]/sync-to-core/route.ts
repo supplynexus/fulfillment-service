@@ -48,7 +48,7 @@ export async function POST(
     );
 
     // 调用后端 API
-    const backendUrl = `${process.env.BACKEND_URL || 'http://localhost:8000'}${backendPath}`;
+    const backendUrl = `${process.env.BACKEND_API_URL || 'http://localhost:8000'}${backendPath}`;
     logger.info('Calling backend API', { backendUrl });
 
     const backendResponse = await fetch(backendUrl, {

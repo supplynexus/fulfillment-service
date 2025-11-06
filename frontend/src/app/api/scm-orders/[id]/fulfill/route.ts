@@ -68,7 +68,7 @@ export async function POST(
     );
 
     // 构建后端 URL
-    const backendUrl = `${process.env.BACKEND_URL || 'http://localhost:8000'}${backendPath}`;
+    const backendUrl = `${process.env.BACKEND_API_URL || 'http://localhost:8000'}${backendPath}`;
     frontendLogger.info('➡️ 转发发货指示请求到后端', {
       backendUrl,
       scmOrderHashid,
