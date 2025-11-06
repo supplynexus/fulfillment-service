@@ -662,10 +662,32 @@ class PrintifyFulfillmentService:
             
             # 创建产品ID到产品信息的映射
             product_map = {}
+            product_ids_list = []
             for product in actual_products:
                 product_id = product.get('id')
                 if product_id:
                     product_map[product_id] = product
+                    product_ids_list.append(product_id)
+            
+            # 记录产品列表的前几个 ID 用于调试
+            logger.info(f"🔍 Printify 店铺 {shop_id} 中的产品 ID 列表（前10个）: {product_ids_list[:10]}")
+            logger.info(f"🔍 要验证的产品 ID: {[item.get('product_id') for item in line_items]}")
+            
+            # 如果数据库中有 PrintifyProduct 记录，也检查一下 shop_id 匹配情况
+            from app.models.printify_product import PrintifyProduct
+            from app.models.external_system import ExternalSystem, ExternalSystemType
+            from sqlalchemy import select, and_
+            
+            # 获取 Printify 外部系统
+            external_system_result = await db.execute(
+                select(ExternalSystem).where(
+                    and_(
+                        ExternalSystem.tenant_id == tenant.id,
+                        ExternalSystem.system_type == ExternalSystemType.PRINTIFY
+                    )
+                )
+            )
+            external_system = external_system_result.scalar_one_or_none()
             
             errors = []
             missing_products = []
@@ -680,9 +702,53 @@ class PrintifyFulfillmentService:
                         errors.append(f"line_item 缺少 product_id: {item}")
                         continue
                     
+                    # 检查数据库中 PrintifyProduct 记录的 shop_id
+                    if external_system:
+                        printify_product_result = await db.execute(
+                            select(PrintifyProduct).where(
+                                and_(
+                                    PrintifyProduct.tenant_id == tenant.id,
+                                    PrintifyProduct.external_system_id == external_system.id,
+                                    PrintifyProduct.printify_product_id == product_id
+                                )
+                            )
+                        )
+                        printify_product = printify_product_result.scalar_one_or_none()
+                        
+                        if printify_product:
+                            product_shop_id = printify_product.printify_shop_id
+                            logger.info(f"🔍 产品 {product_id} 在数据库中的 shop_id: {product_shop_id}, 当前使用的 shop_id: {shop_id}")
+                            
+                            # 如果 shop_id 不匹配，记录详细信息
+                            if product_shop_id and str(product_shop_id) != str(shop_id):
+                                logger.warning(f"⚠️ Shop ID 不匹配: 数据库中的 shop_id={product_shop_id}, 当前使用的 shop_id={shop_id}")
+                                logger.warning(f"⚠️ 产品 {product_id} 可能属于不同的 shop，尝试使用数据库中的 shop_id 验证...")
+                                
+                                # 尝试使用数据库中的 shop_id 获取产品列表
+                                try:
+                                    alternative_products = await self.get_printify_products(credentials, str(product_shop_id))
+                                    alternative_product_map = {}
+                                    for alt_product in alternative_products:
+                                        alt_product_id = alt_product.get('id')
+                                        if alt_product_id:
+                                            alternative_product_map[alt_product_id] = alt_product
+                                    
+                                    if product_id in alternative_product_map:
+                                        logger.info(f"✅ 产品 {product_id} 存在于 shop {product_shop_id} 中，但不在 shop {shop_id} 中")
+                                        logger.warning(f"⚠️ 建议检查外部系统配置的 shop_id 是否正确，或者产品是否需要在正确的 shop 中")
+                                        # 仍然标记为错误，因为当前使用的 shop_id 不正确
+                                        error_msg = f"产品 ID {product_id} 不存在于 Printify 店铺 {shop_id}（产品属于 shop {product_shop_id}）"
+                                        logger.error(f"❌ {error_msg}")
+                                        errors.append(error_msg)
+                                        missing_products.append(product_id)
+                                        continue
+                                except Exception as alt_error:
+                                    logger.error(f"❌ 使用替代 shop_id {product_shop_id} 验证失败: {str(alt_error)}")
+                    
                     if product_id not in product_map:
                         error_msg = f"产品 ID {product_id} 不存在于 Printify 店铺 {shop_id}"
                         logger.error(f"❌ {error_msg}")
+                        logger.error(f"   可用的产品 ID 列表（前20个）: {product_ids_list[:20]}")
                         errors.append(error_msg)
                         missing_products.append(product_id)
                     else:
@@ -691,16 +757,24 @@ class PrintifyFulfillmentService:
                         variants = product.get('variants', [])
                         if not isinstance(variants, list):
                             variants = []
+                        
+                        # 记录变体信息用于调试
+                        variant_ids = [str(v.get('id')) for v in variants if v and isinstance(v, dict)]
+                        logger.info(f"🔍 产品 {product_id} 的变体列表: {variant_ids[:10]}")
+                        logger.info(f"🔍 要验证的变体 ID: {variant_id}")
+                        
                         variant_exists = any(str(v.get('id')) == str(variant_id) for v in variants if v and isinstance(v, dict))
                         
                         if not variant_exists:
-                            error_msg = f"产品 {product_id} 的变体 {variant_id} 不存在"
+                            error_msg = f"产品 {product_id} 的变体 {variant_id} 不存在（可用变体: {variant_ids[:5]}）"
                             logger.error(f"❌ {error_msg}")
                             errors.append(error_msg)
                         else:
                             logger.info(f"✅ 产品验证通过: product_id={product_id}, variant_id={variant_id}")
                 except Exception as item_error:
                     logger.error(f"❌ 验证单个产品时出错: {str(item_error)}, item={item}")
+                    import traceback
+                    logger.error(f"   异常堆栈: {traceback.format_exc()}")
                     errors.append(f"验证产品时出错: {str(item_error)}")
             
             if errors:
