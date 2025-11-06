@@ -65,7 +65,7 @@ export async function GET(
     );
 
     // 构建后端 URL
-    const backendUrl = `${process.env.BACKEND_URL || 'http://localhost:8000'}${backendPath}?external_system=${externalSystem}`;
+    const backendUrl = `${process.env.BACKEND_API_URL || 'http://localhost:8000'}${backendPath}?external_system=${externalSystem}`;
     frontendLogger.info('➡️ 转发映射检查请求到后端', {
       backendUrl,
       scmOrderHashid,

@@ -55,7 +55,7 @@ export async function GET(
     );
 
     // 构建后端 URL
-    const backendUrl = `${process.env.BACKEND_URL || 'http://localhost:8000'}${backendPath}`;
+    const backendUrl = `${process.env.BACKEND_API_URL || 'http://localhost:8000'}${backendPath}`;
     frontendLogger.info('➡️ 转发获取请求到后端', {
       backendUrl,
       scmOrderHashid,
@@ -159,7 +159,7 @@ export async function PUT(
     );
 
     // 构建后端 URL
-    const backendUrl = `${process.env.BACKEND_URL || 'http://localhost:8000'}${backendPath}`;
+    const backendUrl = `${process.env.BACKEND_API_URL || 'http://localhost:8000'}${backendPath}`;
     frontendLogger.info('➡️ 转发更新请求到后端', {
       backendUrl,
       scmOrderHashid,
@@ -257,7 +257,7 @@ export async function DELETE(
     );
 
     // 构建后端 URL
-    const backendUrl = `${process.env.BACKEND_URL || 'http://localhost:8000'}${backendPath}`;
+    const backendUrl = `${process.env.BACKEND_API_URL || 'http://localhost:8000'}${backendPath}`;
     frontendLogger.info('➡️ 转发删除请求到后端', {
       backendUrl,
       scmOrderHashid,
