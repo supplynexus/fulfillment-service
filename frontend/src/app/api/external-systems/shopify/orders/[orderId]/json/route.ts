@@ -65,7 +65,7 @@ export async function GET(
     });
 
     // 调用后端 API
-    const backendUrl = `${process.env.BACKEND_URL || 'http://localhost:8000'}${backendPath}`;
+    const backendUrl = `${process.env.BACKEND_API_URL || 'http://localhost:8000'}${backendPath}`;
     logger.info('Forwarding request to backend', { backendUrl });
 
     const backendResponse = await fetch(backendUrl, {

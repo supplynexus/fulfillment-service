@@ -48,7 +48,7 @@ export async function DELETE(
     );
 
     // 构建后端 URL
-    const backendUrl = `${process.env.BACKEND_URL || 'http://localhost:8000'}${backendPath}`;
+    const backendUrl = `${process.env.BACKEND_API_URL || 'http://localhost:8000'}${backendPath}`;
 
     // 调用后端 API
     const backendResponse = await fetch(backendUrl, {
