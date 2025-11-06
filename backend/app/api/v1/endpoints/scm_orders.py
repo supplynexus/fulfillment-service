@@ -1791,12 +1791,24 @@ async def generate_printify_order(
                     # 验证通过，使用 mapping.external_product_id（它应该就是正确的 Printify 产品 ID）
                     actual_product_id = mapping.external_product_id
                     logger.info(f"✅ 验证 PrintifyProduct 存在: product_id={actual_product_id}, shop_id={printify_product.printify_shop_id}")
+                    
+                    # 验证 shop_id 是否匹配
+                    expected_shop_id = external_system.external_system_id
+                    product_shop_id = printify_product.printify_shop_id
+                    if product_shop_id and expected_shop_id and str(product_shop_id) != str(expected_shop_id):
+                        logger.error(f"❌ Shop ID 不匹配: 产品 shop_id={product_shop_id}, 期望 shop_id={expected_shop_id}")
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"产品 ID {actual_product_id} 属于 shop {product_shop_id}，但当前使用的 shop 是 {expected_shop_id}。请检查产品映射是否正确。"
+                        )
                 else:
-                    # 如果没有找到 PrintifyProduct，记录警告但仍然使用 mapping.external_product_id
-                    # 这可能意味着产品还没有同步到 PrintifyProduct 表，或者 ID 格式不正确
-                    actual_product_id = mapping.external_product_id
-                    logger.warning(f"⚠️ 未找到 PrintifyProduct 记录: external_product_id={mapping.external_product_id}, external_system_id={external_system.id}")
-                    logger.warning(f"⚠️ 将使用 mapping.external_product_id={actual_product_id}，如果创建订单失败，请检查产品 ID 是否正确")
+                    # 如果没有找到 PrintifyProduct，直接拒绝订单
+                    logger.error(f"❌ 未找到 PrintifyProduct 记录: external_product_id={mapping.external_product_id}, external_system_id={external_system.id}")
+                    logger.error(f"❌ 产品 ID {mapping.external_product_id} 在 PrintifyProduct 表中不存在，无法创建订单")
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"产品映射无效：产品 ID {mapping.external_product_id} 在系统中不存在。请检查产品映射或重新同步 Printify 产品。"
+                    )
                 
                 enhanced_item = item.copy()
                 enhanced_item['core_product_id'] = core_variant.product_id

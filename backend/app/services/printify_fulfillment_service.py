@@ -256,9 +256,15 @@ class PrintifyFulfillmentService:
             # 构建发货订单数据
             fulfillment_data = await self._build_fulfillment_data(scm_order, db, tenant)
             
-            # 验证产品是否存在于 Printify 店铺中
+            # 验证产品是否存在于 Printify 店铺中（在创建订单前验证）
             shop_id = printify_credentials.get('store_url')  # store_url 实际上是 shop_id
-            await self._validate_printify_products(printify_credentials, shop_id, fulfillment_data.get('line_items', []), db, tenant)
+            validation_result = await self._validate_printify_products_strict(printify_credentials, shop_id, fulfillment_data.get('line_items', []), db, tenant)
+            if not validation_result["valid"]:
+                error_msg = "产品验证失败"
+                if validation_result.get("errors"):
+                    error_msg += f": {', '.join(validation_result['errors'])}"
+                logger.error(f"❌ {error_msg}")
+                raise ValueError(error_msg)
             
             # 调用 Printify API - 使用正确的端点格式
             endpoint = f"/v1/shops/{shop_id}/orders.json"
@@ -621,6 +627,94 @@ class PrintifyFulfillmentService:
             logger.error(f"❌ 验证 Printify 产品失败: {str(e)}")
             import traceback
             logger.error(f"   异常堆栈: {traceback.format_exc()}")
+    
+    async def _validate_printify_products_strict(self, credentials: Dict[str, str], shop_id: str, line_items: List[Dict], db, tenant) -> Dict[str, Any]:
+        """
+        严格验证产品是否存在于 Printify 店铺中（创建订单前必须验证）
+        如果产品不存在，直接返回错误，不创建订单
+        
+        Returns:
+            Dict: {
+                "valid": bool,
+                "errors": List[str],
+                "missing_products": List[str]
+            }
+        """
+        try:
+            logger.info(f"🔍 开始严格验证 Printify 产品: shop_id={shop_id}, line_items_count={len(line_items)}")
+            
+            # 获取店铺中的实际产品列表
+            actual_products = await self.get_printify_products(credentials, shop_id)
+            if not actual_products:
+                logger.error(f"❌ 无法获取 Printify 店铺产品列表: shop_id={shop_id}")
+                return {
+                    "valid": False,
+                    "errors": [f"无法获取 Printify 店铺 {shop_id} 的产品列表"],
+                    "missing_products": []
+                }
+            
+            logger.info(f"✅ 获取到 {len(actual_products)} 个 Printify 产品")
+            
+            # 创建产品ID到产品信息的映射
+            product_map = {}
+            for product in actual_products:
+                product_id = product.get('id')
+                if product_id:
+                    product_map[product_id] = product
+            
+            errors = []
+            missing_products = []
+            
+            # 检查每个line_item中的产品
+            for item in line_items:
+                product_id = item.get('product_id')
+                variant_id = item.get('variant_id')
+                
+                if not product_id:
+                    errors.append(f"line_item 缺少 product_id: {item}")
+                    continue
+                
+                if product_id not in product_map:
+                    error_msg = f"产品 ID {product_id} 不存在于 Printify 店铺 {shop_id}"
+                    logger.error(f"❌ {error_msg}")
+                    errors.append(error_msg)
+                    missing_products.append(product_id)
+                else:
+                    # 验证变体是否存在
+                    product = product_map[product_id]
+                    variants = product.get('variants', [])
+                    variant_exists = any(str(v.get('id')) == str(variant_id) for v in variants)
+                    
+                    if not variant_exists:
+                        error_msg = f"产品 {product_id} 的变体 {variant_id} 不存在"
+                        logger.error(f"❌ {error_msg}")
+                        errors.append(error_msg)
+                    else:
+                        logger.info(f"✅ 产品验证通过: product_id={product_id}, variant_id={variant_id}")
+            
+            if errors:
+                return {
+                    "valid": False,
+                    "errors": errors,
+                    "missing_products": missing_products
+                }
+            else:
+                logger.info(f"✅ 所有产品验证通过: {len(line_items)} 个产品")
+                return {
+                    "valid": True,
+                    "errors": [],
+                    "missing_products": []
+                }
+                        
+        except Exception as e:
+            logger.error(f"❌ 验证 Printify 产品失败: {str(e)}")
+            import traceback
+            logger.error(f"   异常堆栈: {traceback.format_exc()}")
+            return {
+                "valid": False,
+                "errors": [f"验证过程出错: {str(e)}"],
+                "missing_products": []
+            }
 
     async def _update_product_mapping_for_missing_product(self, missing_product_id: str, variant_id: int, actual_products: List[Dict], db, tenant) -> None:
         """当产品不存在时，尝试更新产品映射"""
