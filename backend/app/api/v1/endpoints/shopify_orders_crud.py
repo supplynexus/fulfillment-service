@@ -796,18 +796,52 @@ async def sync_shopify_order_to_core(
                         shopify_systems = shopify_systems_result.scalars().all()
                         
                         if shopify_systems:
-                            external_variant_id = line_item.get("id")  # Shopify line item ID (GID format)
+                            # 获取 ProductVariant ID（不是 LineItem ID）
+                            # line_item.variant.id 是 ProductVariant ID，用于匹配 ProductMapping
+                            # line_item.id 是 LineItem ID，用于存储到 OrderItem.external_variant_id
+                            line_item_id = line_item.get("id")  # LineItem ID (用于存储)
+                            variant_data = line_item.get("variant", {})
+                            product_variant_id = variant_data.get("id") if variant_data else None  # ProductVariant ID (用于匹配)
+                            
+                            # 如果 line_item 中没有 variant，尝试从 raw_data 中获取
+                            if not product_variant_id and shopify_order.raw_data:
+                                raw_line_items = shopify_order.raw_data.get("line_items", [])
+                                # 通过 line_item.id 在 raw_data 中查找对应的 line_item
+                                for raw_item in raw_line_items:
+                                    raw_item_id = raw_item.get("id")
+                                    if raw_item_id == line_item_id or str(raw_item_id) == str(line_item_id):
+                                        raw_variant = raw_item.get("variant", {})
+                                        if raw_variant:
+                                            product_variant_id = raw_variant.get("id")
+                                            logger.info(f"🔍 从 raw_data 获取 ProductVariant ID: {product_variant_id}")
+                                        break
+                            
                             external_product_id = line_item.get("product", {}).get("id") if line_item.get("product") else None
+                            
+                            # 如果还是没有，尝试从 raw_data 中获取 product_id
+                            if not external_product_id and shopify_order.raw_data:
+                                raw_line_items = shopify_order.raw_data.get("line_items", [])
+                                for raw_item in raw_line_items:
+                                    raw_item_id = raw_item.get("id")
+                                    if raw_item_id == line_item_id or str(raw_item_id) == str(line_item_id):
+                                        raw_product = raw_item.get("product", {})
+                                        if raw_product:
+                                            external_product_id = raw_product.get("id")
+                                            logger.info(f"🔍 从 raw_data 获取 Product ID: {external_product_id}")
+                                        break
+                            
+                            logger.info(f"🔍 尝试通过 ProductMapping 匹配: product_variant_id={product_variant_id}, external_product_id={external_product_id}")
                             
                             # 遍历所有 Shopify 系统，尝试查找映射
                             for shopify_system in shopify_systems:
-                                # 优先通过 external_variant_id 查找
-                                if external_variant_id:
-                                    # 处理 GID 格式: gid://shopify/LineItem/xxx -> xxx
-                                    variant_id_str = str(external_variant_id)
-                                    if "LineItem/" in variant_id_str:
-                                        variant_id_str = variant_id_str.split("LineItem/")[-1].split("?")[0]
+                                # 方法1: 优先通过 ProductVariant ID 查找（最准确）
+                                if product_variant_id:
+                                    # 处理 GID 格式: gid://shopify/ProductVariant/xxx -> xxx
+                                    variant_id_str = str(product_variant_id)
+                                    if "ProductVariant/" in variant_id_str:
+                                        variant_id_str = variant_id_str.split("ProductVariant/")[-1].split("?")[0]
                                     
+                                    # 尝试精确匹配
                                     mapping_query = select(ProductMapping).where(
                                         and_(
                                             ProductMapping.tenant_id == tenant.id,
@@ -821,16 +855,35 @@ async def sync_shopify_order_to_core(
                                     if mapping and mapping.core_variant_id:
                                         core_variant_id = mapping.core_variant_id
                                         core_product_id = mapping.core_product_id
-                                        logger.info(f"✅ 通过 ProductMapping (external_variant_id={variant_id_str}) 匹配成功: core_variant_id={core_variant_id}")
+                                        logger.info(f"✅ 通过 ProductMapping (ProductVariant ID={variant_id_str}) 匹配成功: core_variant_id={core_variant_id}, core_product_id={core_product_id}")
                                         break
+                                    
+                                    # 如果精确匹配失败，尝试模糊匹配（包含 variant_id_str）
+                                    if not mapping:
+                                        mapping_query = select(ProductMapping).where(
+                                            and_(
+                                                ProductMapping.tenant_id == tenant.id,
+                                                ProductMapping.external_system_id == shopify_system.id,
+                                                ProductMapping.external_variant_id.like(f"%{variant_id_str}%")
+                                            )
+                                        )
+                                        mapping_result = await db.execute(mapping_query)
+                                        mapping = mapping_result.scalar_one_or_none()
+                                        
+                                        if mapping and mapping.core_variant_id:
+                                            core_variant_id = mapping.core_variant_id
+                                            core_product_id = mapping.core_product_id
+                                            logger.info(f"✅ 通过 ProductMapping (ProductVariant ID模糊匹配={variant_id_str}) 匹配成功: core_variant_id={core_variant_id}, core_product_id={core_product_id}")
+                                            break
                                 
-                                # 如果还没找到，通过 external_product_id 查找（产品级别映射）
+                                # 方法2: 如果还没找到，通过 external_product_id 查找（产品级别映射）
                                 if not core_variant_id and external_product_id:
                                     # 处理 GID 格式: gid://shopify/Product/xxx -> xxx
                                     product_id_str = str(external_product_id)
                                     if "Product/" in product_id_str:
                                         product_id_str = product_id_str.split("Product/")[-1].split("?")[0]
                                     
+                                    # 查找该产品下的所有变体映射，选择第一个有 core_variant_id 的
                                     mapping_query = select(ProductMapping).where(
                                         and_(
                                             ProductMapping.tenant_id == tenant.id,
@@ -838,14 +891,14 @@ async def sync_shopify_order_to_core(
                                             ProductMapping.external_product_id == product_id_str,
                                             ProductMapping.core_variant_id.isnot(None)  # 确保有变体映射
                                         )
-                                    )
+                                    ).limit(1)  # 如果有多个变体，选择第一个
                                     mapping_result = await db.execute(mapping_query)
                                     mapping = mapping_result.scalar_one_or_none()
                                     
                                     if mapping and mapping.core_variant_id:
                                         core_variant_id = mapping.core_variant_id
                                         core_product_id = mapping.core_product_id
-                                        logger.info(f"✅ 通过 ProductMapping (external_product_id={product_id_str}) 匹配成功: core_variant_id={core_variant_id}")
+                                        logger.info(f"✅ 通过 ProductMapping (external_product_id={product_id_str}) 匹配成功: core_variant_id={core_variant_id}, core_product_id={core_product_id}")
                                         break
                                 
                                 # 如果找到了，跳出循环
