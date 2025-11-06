@@ -486,71 +486,54 @@ async def create_scm_order(
                     logger.info(f"🔍 尝试匹配 OrderItem: source_line_item_id={source_line_item_id}, sku={sku}")
                     
                     # 优先通过 OrderItem.id 匹配（前端传递的是 OrderItem.id）
+                    matched_order_item = None
                     if source_line_item_id:
                         # 首先尝试通过 OrderItem.id 匹配（最直接的方式）
                         if source_line_item_id in order_items_map:
-                            order_item = order_items_map[source_line_item_id]
-                            if order_item.core_variant_id:
-                                core_variant_id = order_item.core_variant_id
-                                core_product_id = order_item.core_product_id
-                                display_sku = order_item.sku or display_sku
-                                logger.info(f"✅ 从 OrderItem 获取 core_variant_id: {core_variant_id} (通过 OrderItem.id={source_line_item_id})")
+                            matched_order_item = order_items_map[source_line_item_id]
+                            logger.info(f"✅ 匹配到 OrderItem: id={matched_order_item.id} (通过 OrderItem.id={source_line_item_id})")
                         # 尝试字符串格式的 id
                         elif str(source_line_item_id) in order_items_map:
-                            order_item = order_items_map[str(source_line_item_id)]
-                            if order_item.core_variant_id:
-                                core_variant_id = order_item.core_variant_id
-                                core_product_id = order_item.core_product_id
-                                display_sku = order_item.sku or display_sku
-                                logger.info(f"✅ 从 OrderItem 获取 core_variant_id: {core_variant_id} (通过 OrderItem.id={source_line_item_id}, 字符串匹配)")
-                        # 尝试通过 external_variant_id 匹配（备用方案）
-                        elif str(source_line_item_id) in order_items_map:
-                            order_item = order_items_map[str(source_line_item_id)]
-                            if order_item.core_variant_id:
-                                core_variant_id = order_item.core_variant_id
-                                core_product_id = order_item.core_product_id
-                                display_sku = order_item.sku or display_sku
-                                logger.info(f"✅ 从 OrderItem 获取 core_variant_id: {core_variant_id} (通过 external_variant_id={source_line_item_id}, 字符串匹配)")
-                        # 尝试数字格式的 external_variant_id
-                        elif isinstance(source_line_item_id, (int, str)) and int(source_line_item_id) in order_items_map:
-                            order_item = order_items_map[int(source_line_item_id)]
-                            if order_item.core_variant_id:
-                                core_variant_id = order_item.core_variant_id
-                                core_product_id = order_item.core_product_id
-                                display_sku = order_item.sku or display_sku
-                                logger.info(f"✅ 从 OrderItem 获取 core_variant_id: {core_variant_id} (通过 external_variant_id={source_line_item_id}, 数字匹配)")
+                            matched_order_item = order_items_map[str(source_line_item_id)]
+                            logger.info(f"✅ 匹配到 OrderItem: id={matched_order_item.id} (通过 OrderItem.id={source_line_item_id}, 字符串匹配)")
                         # 如果还没找到，遍历所有 OrderItem 进行匹配（最后备用方案）
                         elif order_items_list:
                             for order_item in order_items_list:
                                 # 尝试匹配 OrderItem.id
                                 if order_item.id == source_line_item_id or str(order_item.id) == str(source_line_item_id):
-                                    if order_item.core_variant_id:
-                                        core_variant_id = order_item.core_variant_id
-                                        core_product_id = order_item.core_product_id
-                                        display_sku = order_item.sku or display_sku
-                                        logger.info(f"✅ 从 OrderItem 获取 core_variant_id: {core_variant_id} (通过遍历匹配 OrderItem.id={source_line_item_id})")
-                                        break
-                                # 尝试匹配 external_variant_id
-                                elif order_item.external_variant_id and str(order_item.external_variant_id) == str(source_line_item_id):
-                                    if order_item.core_variant_id:
-                                        core_variant_id = order_item.core_variant_id
-                                        core_product_id = order_item.core_product_id
-                                        display_sku = order_item.sku or display_sku
-                                        logger.info(f"✅ 从 OrderItem 获取 core_variant_id: {core_variant_id} (通过遍历匹配 external_variant_id={source_line_item_id})")
-                                        break
+                                    matched_order_item = order_item
+                                    logger.info(f"✅ 匹配到 OrderItem: id={matched_order_item.id} (通过遍历匹配 OrderItem.id={source_line_item_id})")
+                                    break
+                    
+                    # 如果匹配到了 OrderItem，从中获取信息（即使 core_variant_id 为 None 也要获取其他信息）
+                    if matched_order_item:
+                        if matched_order_item.core_variant_id:
+                            core_variant_id = matched_order_item.core_variant_id
+                            core_product_id = matched_order_item.core_product_id
+                            logger.info(f"✅ 从 OrderItem 获取 core_variant_id: {core_variant_id}, core_product_id={core_product_id}")
+                        else:
+                            logger.warning(f"⚠️ OrderItem (id={matched_order_item.id}) 的 core_variant_id 为 None，无法获取核心产品映射")
+                        
+                        # 即使 core_variant_id 为 None，也要获取其他信息（如 sku）
+                        if matched_order_item.sku:
+                            display_sku = matched_order_item.sku
+                            logger.info(f"✅ 从 OrderItem 获取 sku: {display_sku}")
                     
                     # 如果还没找到，通过 SKU 匹配
-                    if not core_variant_id and sku and sku in order_items_map:
-                        order_item = order_items_map[sku]
-                        if order_item.core_variant_id:
-                            core_variant_id = order_item.core_variant_id
-                            core_product_id = order_item.core_product_id
-                            display_sku = order_item.sku or display_sku
+                    if not matched_order_item and sku and sku in order_items_map:
+                        matched_order_item = order_items_map[sku]
+                        logger.info(f"✅ 匹配到 OrderItem: id={matched_order_item.id} (通过 SKU={sku})")
+                        if matched_order_item.core_variant_id:
+                            core_variant_id = matched_order_item.core_variant_id
+                            core_product_id = matched_order_item.core_product_id
+                            display_sku = matched_order_item.sku or display_sku
                             logger.info(f"✅ 从 OrderItem 获取 core_variant_id: {core_variant_id} (通过 SKU={sku})")
                     
                     # 如果仍然没找到，记录警告
-                    if not core_variant_id:
+                    if not matched_order_item:
                         logger.warning(f"⚠️ 无法从 OrderItem 中找到匹配: source_line_item_id={source_line_item_id}, sku={sku}, order_items_map_keys={list(order_items_map.keys())[:10]}")
+                    elif not core_variant_id:
+                        logger.warning(f"⚠️ 匹配到 OrderItem (id={matched_order_item.id}) 但 core_variant_id 为 None，无法获取核心产品映射")
 
                 # 首先尝试从核心产品获取信息
                 if core_variant_id:
