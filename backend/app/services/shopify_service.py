@@ -2095,7 +2095,15 @@ class ShopifyService:
             }
             """
 
-            variables = {"id": f"gid://shopify/Order/{order_id}"}
+            # Handle both numeric ID and GID format
+            if isinstance(order_id, str) and "gid://shopify/Order/" in order_id:
+                order_gid = order_id
+            else:
+                # Extract numeric ID if it's in GID format, or use as-is
+                numeric_id = str(order_id).replace("gid://shopify/Order/", "")
+                order_gid = f"gid://shopify/Order/{numeric_id}"
+            
+            variables = {"id": order_gid}
 
             response = await self.client.post(
                 f"https://{shop_id}.myshopify.com/admin/api/{api_version}/graphql.json",

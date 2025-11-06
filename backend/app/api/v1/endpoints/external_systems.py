@@ -1853,11 +1853,29 @@ async def get_shopify_order_json_by_hashid(
         logger.info(
             f"🔍 开始获取 Shopify 订单 JSON: shop_id={shop_id}, order_id={order_id}"
         )
-        order_json = await shopify_service.get_order_json(
+        order_json_response = await shopify_service.get_order_json(
             shop_id=shop_id,
             order_id=order_id,
             access_token=access_token,
         )
+
+        # Check if get_order_json returned an error
+        if not order_json_response.get("success", False):
+            error_msg = order_json_response.get("error", "Unknown error")
+            logger.error(f"❌ Shopify 订单 JSON 获取失败: {error_msg}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to get order JSON: {error_msg}",
+            )
+
+        # Extract the actual order data from the response
+        order_json = order_json_response.get("order")
+        if not order_json:
+            logger.error(f"❌ Shopify 订单 JSON 数据为空: order_id={order_id}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Order data is empty",
+            )
 
         logger.info(f"✅ Shopify 订单 JSON 获取成功: order_id={order_id}")
 
