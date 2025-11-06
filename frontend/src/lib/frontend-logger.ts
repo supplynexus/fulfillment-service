@@ -46,6 +46,11 @@ class FrontendLogger {
   private async sendLog(logData: LogData): Promise<void> {
     if (!this.isEnabled) return;
 
+    // 在服务器端（Next.js API route）不发送日志，避免 URL 解析错误
+    if (typeof window === 'undefined') {
+      return;
+    }
+
     try {
       await fetch('/api/log', {
         method: 'POST',
@@ -56,7 +61,10 @@ class FrontendLogger {
       });
     } catch (error) {
       // 静默失败，避免日志API错误影响主流程
-      console.warn('Failed to send log to backend:', error);
+      // 只在客户端显示警告，服务器端不显示
+      if (typeof window !== 'undefined') {
+        console.warn('Failed to send log to backend:', error);
+      }
     }
   }
 

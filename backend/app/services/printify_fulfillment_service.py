@@ -579,10 +579,15 @@ class PrintifyFulfillmentService:
         """获取 Printify 店铺中的产品列表"""
         try:
             endpoint = f"/v1/shops/{shop_id}/products.json"
+            logger.info(f"🔍 调用 Printify API 获取产品列表: endpoint={endpoint}, shop_id={shop_id}")
             products_data = await self._call_printify_api(credentials, endpoint, "GET")
-            return products_data.get("data", [])
+            products_list = products_data.get("data", [])
+            logger.info(f"✅ 获取到 {len(products_list)} 个 Printify 产品")
+            return products_list
         except Exception as e:
             logger.error(f"❌ 获取 Printify 产品列表失败: {str(e)}")
+            import traceback
+            logger.error(f"   异常堆栈: {traceback.format_exc()}")
             return []
 
     async def _validate_printify_products(self, credentials: Dict[str, str], shop_id: str, line_items: List[Dict], db, tenant) -> None:
@@ -667,30 +672,36 @@ class PrintifyFulfillmentService:
             
             # 检查每个line_item中的产品
             for item in line_items:
-                product_id = item.get('product_id')
-                variant_id = item.get('variant_id')
-                
-                if not product_id:
-                    errors.append(f"line_item 缺少 product_id: {item}")
-                    continue
-                
-                if product_id not in product_map:
-                    error_msg = f"产品 ID {product_id} 不存在于 Printify 店铺 {shop_id}"
-                    logger.error(f"❌ {error_msg}")
-                    errors.append(error_msg)
-                    missing_products.append(product_id)
-                else:
-                    # 验证变体是否存在
-                    product = product_map[product_id]
-                    variants = product.get('variants', [])
-                    variant_exists = any(str(v.get('id')) == str(variant_id) for v in variants)
+                try:
+                    product_id = item.get('product_id')
+                    variant_id = item.get('variant_id')
                     
-                    if not variant_exists:
-                        error_msg = f"产品 {product_id} 的变体 {variant_id} 不存在"
+                    if not product_id:
+                        errors.append(f"line_item 缺少 product_id: {item}")
+                        continue
+                    
+                    if product_id not in product_map:
+                        error_msg = f"产品 ID {product_id} 不存在于 Printify 店铺 {shop_id}"
                         logger.error(f"❌ {error_msg}")
                         errors.append(error_msg)
+                        missing_products.append(product_id)
                     else:
-                        logger.info(f"✅ 产品验证通过: product_id={product_id}, variant_id={variant_id}")
+                        # 验证变体是否存在
+                        product = product_map[product_id]
+                        variants = product.get('variants', [])
+                        if not isinstance(variants, list):
+                            variants = []
+                        variant_exists = any(str(v.get('id')) == str(variant_id) for v in variants if v and isinstance(v, dict))
+                        
+                        if not variant_exists:
+                            error_msg = f"产品 {product_id} 的变体 {variant_id} 不存在"
+                            logger.error(f"❌ {error_msg}")
+                            errors.append(error_msg)
+                        else:
+                            logger.info(f"✅ 产品验证通过: product_id={product_id}, variant_id={variant_id}")
+                except Exception as item_error:
+                    logger.error(f"❌ 验证单个产品时出错: {str(item_error)}, item={item}")
+                    errors.append(f"验证产品时出错: {str(item_error)}")
             
             if errors:
                 return {
