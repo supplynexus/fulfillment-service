@@ -413,7 +413,7 @@ async def create_scm_order(
         # 如果有关联的核心订单，从 OrderItem 中获取 core_variant_id 和 sku
         from app.models.order import OrderItem
         from sqlalchemy import and_
-        order_items_map = {}  # key: external_variant_id or sku, value: OrderItem
+        order_items_map = {}  # key: id, external_variant_id or sku, value: OrderItem
         order_items_list = []  # 保存所有 OrderItem，用于备用匹配
         if decoded_source_ids:
             logger.info(f"🔍 从核心订单获取 OrderItem 信息: source_order_ids={decoded_source_ids}")
@@ -430,6 +430,9 @@ async def create_scm_order(
                 logger.info(f"🔍 从订单 {source_order_id} 找到 {len(order_items)} 个 OrderItem")
                 for order_item in order_items:
                     order_items_list.append(order_item)
+                    # 使用 OrderItem 的 id 作为 key（前端传递的是 OrderItem.id）
+                    order_items_map[order_item.id] = order_item
+                    order_items_map[str(order_item.id)] = order_item
                     # 使用 external_variant_id 作为 key（如果存在）- 支持多种格式
                     if order_item.external_variant_id:
                         # 同时支持字符串和数字格式的 key
@@ -467,17 +470,33 @@ async def create_scm_order(
                     
                     logger.info(f"🔍 尝试匹配 OrderItem: source_line_item_id={source_line_item_id}, sku={sku}")
                     
-                    # 优先通过 external_variant_id (source_line_item_id) 匹配 - 支持多种格式
+                    # 优先通过 OrderItem.id 匹配（前端传递的是 OrderItem.id）
                     if source_line_item_id:
-                        # 尝试字符串格式
-                        if str(source_line_item_id) in order_items_map:
+                        # 首先尝试通过 OrderItem.id 匹配（最直接的方式）
+                        if source_line_item_id in order_items_map:
+                            order_item = order_items_map[source_line_item_id]
+                            if order_item.core_variant_id:
+                                core_variant_id = order_item.core_variant_id
+                                core_product_id = order_item.core_product_id
+                                display_sku = order_item.sku or display_sku
+                                logger.info(f"✅ 从 OrderItem 获取 core_variant_id: {core_variant_id} (通过 OrderItem.id={source_line_item_id})")
+                        # 尝试字符串格式的 id
+                        elif str(source_line_item_id) in order_items_map:
+                            order_item = order_items_map[str(source_line_item_id)]
+                            if order_item.core_variant_id:
+                                core_variant_id = order_item.core_variant_id
+                                core_product_id = order_item.core_product_id
+                                display_sku = order_item.sku or display_sku
+                                logger.info(f"✅ 从 OrderItem 获取 core_variant_id: {core_variant_id} (通过 OrderItem.id={source_line_item_id}, 字符串匹配)")
+                        # 尝试通过 external_variant_id 匹配（备用方案）
+                        elif str(source_line_item_id) in order_items_map:
                             order_item = order_items_map[str(source_line_item_id)]
                             if order_item.core_variant_id:
                                 core_variant_id = order_item.core_variant_id
                                 core_product_id = order_item.core_product_id
                                 display_sku = order_item.sku or display_sku
                                 logger.info(f"✅ 从 OrderItem 获取 core_variant_id: {core_variant_id} (通过 external_variant_id={source_line_item_id}, 字符串匹配)")
-                        # 尝试数字格式
+                        # 尝试数字格式的 external_variant_id
                         elif isinstance(source_line_item_id, (int, str)) and int(source_line_item_id) in order_items_map:
                             order_item = order_items_map[int(source_line_item_id)]
                             if order_item.core_variant_id:
@@ -485,10 +504,19 @@ async def create_scm_order(
                                 core_product_id = order_item.core_product_id
                                 display_sku = order_item.sku or display_sku
                                 logger.info(f"✅ 从 OrderItem 获取 core_variant_id: {core_variant_id} (通过 external_variant_id={source_line_item_id}, 数字匹配)")
-                        # 如果还没找到，遍历所有 OrderItem 进行匹配（备用方案）
+                        # 如果还没找到，遍历所有 OrderItem 进行匹配（最后备用方案）
                         elif order_items_list:
                             for order_item in order_items_list:
-                                if order_item.external_variant_id and str(order_item.external_variant_id) == str(source_line_item_id):
+                                # 尝试匹配 OrderItem.id
+                                if order_item.id == source_line_item_id or str(order_item.id) == str(source_line_item_id):
+                                    if order_item.core_variant_id:
+                                        core_variant_id = order_item.core_variant_id
+                                        core_product_id = order_item.core_product_id
+                                        display_sku = order_item.sku or display_sku
+                                        logger.info(f"✅ 从 OrderItem 获取 core_variant_id: {core_variant_id} (通过遍历匹配 OrderItem.id={source_line_item_id})")
+                                        break
+                                # 尝试匹配 external_variant_id
+                                elif order_item.external_variant_id and str(order_item.external_variant_id) == str(source_line_item_id):
                                     if order_item.core_variant_id:
                                         core_variant_id = order_item.core_variant_id
                                         core_product_id = order_item.core_product_id
