@@ -685,40 +685,6 @@ async def update_scm_order_by_hashid(
     return SCMOrderResponse.from_orm(scm_order)
 
 
-@router.delete("/{scm_order_id}")
-async def delete_scm_order(
-    scm_order_id: int,
-    db: AsyncSession = Depends(get_async_db),
-    auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
-):
-    """
-    删除SCM订单
-    """
-    tenant, user = auth
-
-    result = await db.execute(
-        select(SCMOrder).where(
-            SCMOrder.id == scm_order_id, SCMOrder.tenant_id == tenant.id
-        )
-    )
-    scm_order = result.scalar_one_or_none()
-
-    if not scm_order:
-        raise HTTPException(status_code=404, detail="SCM order not found")
-
-    # 检查是否可以删除（只有创建状态的订单可以删除）
-    if scm_order.status not in ["created", "failed"]:
-        raise HTTPException(
-            status_code=400,
-            detail="Cannot delete SCM order with status: " + scm_order.status,
-        )
-
-    await db.delete(scm_order)
-    await db.commit()
-
-    return {"message": "SCM order deleted successfully"}
-
-
 @router.post("/sync-printify-orders", response_model=dict)
 async def sync_printify_orders(
     db: AsyncSession = Depends(get_async_db),
