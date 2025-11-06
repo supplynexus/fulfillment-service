@@ -1771,6 +1771,114 @@ async def get_shopify_product_json(
         )
 
 
+@router.get("/shopify/{external_system_hashid}/orders/{order_id}/json", response_model=dict)
+async def get_shopify_order_json_by_hashid(
+    external_system_hashid: str,
+    order_id: str,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
+) -> Any:
+    """获取 Shopify 订单的完整 JSON 数据（使用 hashid）"""
+    logger = get_logger(__name__)
+    tenant, user = auth
+    logger.info(
+        f"🔍 开始处理 Shopify 订单 JSON 请求: external_system_hashid={external_system_hashid}, order_id={order_id}"
+    )
+
+    try:
+        logger.info(
+            f"✅ 认证成功: tenant_id={tenant.id}, tenant_name={tenant.name}, user_id={user.id}"
+        )
+
+        # Decode hashids to get external system ID
+        from app.core.hashids_utils import decode_id
+
+        try:
+            external_system_id = decode_id(external_system_hashid)
+            logger.info(
+                f"✅ Hashids 解码成功: {external_system_hashid} -> {external_system_id}"
+            )
+        except Exception as e:
+            logger.error(
+                f"❌ Hashids 解码失败: {external_system_hashid}, 错误: {str(e)}"
+            )
+            raise HTTPException(status_code=400, detail="Invalid external system ID")
+
+        # Get external system by primary key
+        service = ExternalSystemService(db)
+        external_system = await service.get_external_system(
+            external_system_id, tenant.id
+        )
+        if not external_system:
+            logger.error(
+                f"❌ 未找到 Shopify 店铺: external_system_id={external_system_id}, tenant_id={tenant.id}"
+            )
+            raise HTTPException(status_code=404, detail="Shopify store not found")
+
+        logger.info(
+            f"✅ 找到 Shopify 店铺: id={external_system.id}, name={external_system.name}, external_id={external_system.external_id}"
+        )
+
+        # Get decrypted credentials
+        decrypted_credentials = await service.get_decrypted_credentials(
+            external_system.id, tenant.id
+        )
+        if not decrypted_credentials:
+            logger.error(
+                f"❌ 无法获取解密后的凭据: external_system_id={external_system.id}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Failed to get decrypted credentials",
+            )
+        logger.info(f"✅ 凭据解密成功: external_system_id={external_system.id}")
+
+        access_token = decrypted_credentials.get("access_token")
+        if not access_token:
+            logger.error(
+                f"❌ 缺少 access_token: external_system_id={external_system.id}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Access Token not configured for this store",
+            )
+
+        # Initialize Shopify service and get order JSON
+        from app.services.shopify_service import ShopifyService
+
+        shopify_service = ShopifyService(db)
+
+        # Use external_id (shop_id) for Shopify API call
+        shop_id = external_system.external_id
+        logger.info(
+            f"🔍 开始获取 Shopify 订单 JSON: shop_id={shop_id}, order_id={order_id}"
+        )
+        order_json = await shopify_service.get_order_json(
+            shop_id=shop_id,
+            order_id=order_id,
+            access_token=access_token,
+        )
+
+        logger.info(f"✅ Shopify 订单 JSON 获取成功: order_id={order_id}")
+
+        return {
+            "success": True,
+            "order": order_json,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Shopify 订单 JSON 请求处理失败: {str(e)}")
+        import traceback
+
+        logger.error(f"   异常堆栈: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get order JSON: {str(e)}",
+        )
+
+
 @router.get("/shopify/{shop_id}/orders/{order_id}/json", response_model=dict)
 async def get_shopify_order_json(
     shop_id: str,
@@ -1778,7 +1886,7 @@ async def get_shopify_order_json(
     db: AsyncSession = Depends(get_async_db),
     auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
 ) -> Any:
-    """获取 Shopify 订单的完整 JSON 数据"""
+    """获取 Shopify 订单的完整 JSON 数据（使用 shop_id/external_id）"""
     logger = get_logger(__name__)
     tenant, user = auth
     logger.info(

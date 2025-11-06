@@ -40,7 +40,7 @@ export async function GET(
     // 生成后端签名
     const timestamp = Math.floor(Date.now() / 1000);
     const nonce = Math.random().toString(36).substring(2, 15);
-    const backendPath = `/api/v1/shopify-orders/${numericOrderId}/json`;
+    const backendPath = `/api/v1/external-systems/shopify/${external_system_hashid}/orders/${numericOrderId}/json`;
     const signatureString = `GET${backendPath}${timestamp}${nonce}${tenantName}`;
 
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
