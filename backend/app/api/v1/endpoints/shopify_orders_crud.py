@@ -762,8 +762,8 @@ async def sync_shopify_order_to_core(
                     core_variant_id = None
                     core_product_id = None
                     
+                    # 方法1: 通过 SKU 查找核心变体
                     if line_item.get("sku"):
-                        # 通过 SKU 查找核心变体
                         variant_query = select(ProductVariant).where(
                             and_(
                                 ProductVariant.tenant_id == tenant.id,
@@ -777,8 +777,84 @@ async def sync_shopify_order_to_core(
                             core_variant_id = core_variant.id
                             core_product_id = core_variant.product_id
                             logger.info(f"✅ SKU 匹配成功: {line_item['sku']} -> core_variant_id={core_variant_id}")
-                        else:
-                            logger.warning(f"⚠️ SKU 未匹配: {line_item['sku']}")
+                    
+                    # 方法2: 如果 SKU 匹配失败，尝试通过 ProductMapping 查找
+                    if not core_variant_id:
+                        from app.models.product import ProductMapping
+                        from app.models.external_system import ExternalSystem, ExternalSystemType
+                        
+                        # 获取该租户下的所有 Shopify 外部系统
+                        shopify_systems_result = await db.execute(
+                            select(ExternalSystem).where(
+                                and_(
+                                    ExternalSystem.tenant_id == tenant.id,
+                                    ExternalSystem.system_type == ExternalSystemType.SHOPIFY,
+                                    ExternalSystem.is_active == True
+                                )
+                            )
+                        )
+                        shopify_systems = shopify_systems_result.scalars().all()
+                        
+                        if shopify_systems:
+                            external_variant_id = line_item.get("id")  # Shopify line item ID (GID format)
+                            external_product_id = line_item.get("product", {}).get("id") if line_item.get("product") else None
+                            
+                            # 遍历所有 Shopify 系统，尝试查找映射
+                            for shopify_system in shopify_systems:
+                                # 优先通过 external_variant_id 查找
+                                if external_variant_id:
+                                    # 处理 GID 格式: gid://shopify/LineItem/xxx -> xxx
+                                    variant_id_str = str(external_variant_id)
+                                    if "LineItem/" in variant_id_str:
+                                        variant_id_str = variant_id_str.split("LineItem/")[-1].split("?")[0]
+                                    
+                                    mapping_query = select(ProductMapping).where(
+                                        and_(
+                                            ProductMapping.tenant_id == tenant.id,
+                                            ProductMapping.external_system_id == shopify_system.id,
+                                            ProductMapping.external_variant_id == variant_id_str
+                                        )
+                                    )
+                                    mapping_result = await db.execute(mapping_query)
+                                    mapping = mapping_result.scalar_one_or_none()
+                                    
+                                    if mapping and mapping.core_variant_id:
+                                        core_variant_id = mapping.core_variant_id
+                                        core_product_id = mapping.core_product_id
+                                        logger.info(f"✅ 通过 ProductMapping (external_variant_id={variant_id_str}) 匹配成功: core_variant_id={core_variant_id}")
+                                        break
+                                
+                                # 如果还没找到，通过 external_product_id 查找（产品级别映射）
+                                if not core_variant_id and external_product_id:
+                                    # 处理 GID 格式: gid://shopify/Product/xxx -> xxx
+                                    product_id_str = str(external_product_id)
+                                    if "Product/" in product_id_str:
+                                        product_id_str = product_id_str.split("Product/")[-1].split("?")[0]
+                                    
+                                    mapping_query = select(ProductMapping).where(
+                                        and_(
+                                            ProductMapping.tenant_id == tenant.id,
+                                            ProductMapping.external_system_id == shopify_system.id,
+                                            ProductMapping.external_product_id == product_id_str,
+                                            ProductMapping.core_variant_id.isnot(None)  # 确保有变体映射
+                                        )
+                                    )
+                                    mapping_result = await db.execute(mapping_query)
+                                    mapping = mapping_result.scalar_one_or_none()
+                                    
+                                    if mapping and mapping.core_variant_id:
+                                        core_variant_id = mapping.core_variant_id
+                                        core_product_id = mapping.core_product_id
+                                        logger.info(f"✅ 通过 ProductMapping (external_product_id={product_id_str}) 匹配成功: core_variant_id={core_variant_id}")
+                                        break
+                                
+                                # 如果找到了，跳出循环
+                                if core_variant_id:
+                                    break
+                    
+                    # 如果仍然没找到，记录警告
+                    if not core_variant_id:
+                        logger.warning(f"⚠️ 无法匹配核心产品: SKU={line_item.get('sku')}, external_variant_id={line_item.get('id')}, external_product_id={line_item.get('product', {}).get('id') if line_item.get('product') else None}")
                     
                     # 创建订单行项目
                     order_item = OrderItem(
