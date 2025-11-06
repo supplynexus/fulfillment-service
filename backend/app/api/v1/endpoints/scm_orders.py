@@ -1578,68 +1578,100 @@ async def generate_printify_order(
         # 为选中的商品添加商品映射信息
         enhanced_selected_items = []
         for item in selected_items:
-            # 如果商品已经有 core_variant_id，直接使用
-            if item.get('core_variant_id'):
-                enhanced_selected_items.append(item)
-                continue
+            from app.models.product import ProductVariant
+            from app.models.product import ProductMapping
+            from app.models.external_system import ExternalSystem, ExternalSystemType
+            from sqlalchemy import and_
             
-            # 尝试通过 SKU 查找商品映射
-            sku = item.get('metadata', {}).get('sku')
-            if sku:
-                from app.models.product import ProductVariant
-                from app.models.product import ProductMapping
-                from app.models.external_system import ExternalSystem, ExternalSystemType
-                from sqlalchemy import and_
-                
-                # 查找核心变体
+            core_variant = None
+            mapping = None
+            
+            # 如果商品已经有 core_variant_id，直接使用它查找映射
+            if item.get('core_variant_id'):
                 variant_result = await db.execute(
                     select(ProductVariant).where(
                         and_(
-                            ProductVariant.tenant_id == tenant.id,
-                            ProductVariant.sku == sku
+                            ProductVariant.id == item['core_variant_id'],
+                            ProductVariant.tenant_id == tenant.id
                         )
                     )
                 )
                 core_variant = variant_result.scalar_one_or_none()
-                
-                if core_variant:
-                    # 查找 Printify 商品映射
-                    external_system_result = await db.execute(
-                        select(ExternalSystem).where(
+                logger.info(f"🔍 使用已有的 core_variant_id: {item['core_variant_id']}, 找到变体: {core_variant is not None}")
+            else:
+                # 尝试通过 SKU 查找核心变体
+                sku = item.get('metadata', {}).get('sku')
+                if sku:
+                    logger.info(f"🔍 通过 SKU 查找核心变体: {sku}")
+                    variant_result = await db.execute(
+                        select(ProductVariant).where(
                             and_(
-                                ExternalSystem.tenant_id == tenant.id,
-                                ExternalSystem.system_type == ExternalSystemType.PRINTIFY
+                                ProductVariant.tenant_id == tenant.id,
+                                ProductVariant.sku == sku
                             )
                         )
                     )
-                    external_system = external_system_result.scalar_one_or_none()
-                    
-                    if external_system:
-                        mapping_result = await db.execute(
-                            select(ProductMapping).where(
-                                and_(
-                                    ProductMapping.core_variant_id == core_variant.id,
-                                    ProductMapping.tenant_id == tenant.id,
-                                    ProductMapping.external_system_id == external_system.id
-                                )
+                    core_variant = variant_result.scalar_one_or_none()
+                    logger.info(f"🔍 SKU 查找结果: {core_variant is not None}")
+            
+            # 如果找到了核心变体，查找 Printify 商品映射
+            if core_variant:
+                # 查找 Printify 外部系统
+                external_system_result = await db.execute(
+                    select(ExternalSystem).where(
+                        and_(
+                            ExternalSystem.tenant_id == tenant.id,
+                            ExternalSystem.system_type == ExternalSystemType.PRINTIFY
+                        )
+                    )
+                )
+                external_system = external_system_result.scalar_one_or_none()
+                
+                if external_system:
+                    logger.info(f"🔍 查找 Printify 商品映射: core_variant_id={core_variant.id}, external_system_id={external_system.id}")
+                    mapping_result = await db.execute(
+                        select(ProductMapping).where(
+                            and_(
+                                ProductMapping.core_variant_id == core_variant.id,
+                                ProductMapping.tenant_id == tenant.id,
+                                ProductMapping.external_system_id == external_system.id
                             )
                         )
-                        mapping = mapping_result.scalar_one_or_none()
-                        
-                        if mapping:
-                            # 创建增强的行项目数据
-                            enhanced_item = item.copy()
-                            enhanced_item['core_product_id'] = core_variant.product_id
-                            enhanced_item['core_variant_id'] = core_variant.id
-                            enhanced_item['external_product_id'] = mapping.external_product_id
-                            enhanced_item['external_variant_id'] = mapping.external_variant_id
-                            enhanced_selected_items.append(enhanced_item)
-                            logger.info(f"✅ 为商品 {sku} 添加了商品映射信息")
-                            continue
+                    )
+                    mapping = mapping_result.scalar_one_or_none()
+                    logger.info(f"🔍 映射查找结果: {mapping is not None}")
+                else:
+                    logger.warning(f"⚠️ 未找到 Printify 外部系统: tenant_id={tenant.id}")
+            else:
+                sku = item.get('metadata', {}).get('sku')
+                logger.warning(f"⚠️ 未找到核心变体: sku={sku}, core_variant_id={item.get('core_variant_id')}")
             
-            # 如果没有找到映射，使用原始数据
-            enhanced_selected_items.append(item)
-            logger.warning(f"⚠️ 商品 {sku} 没有找到商品映射信息")
+            # 如果找到了映射，创建增强的行项目数据
+            if mapping:
+                enhanced_item = item.copy()
+                enhanced_item['core_product_id'] = core_variant.product_id
+                enhanced_item['core_variant_id'] = core_variant.id
+                enhanced_item['external_product_id'] = mapping.external_product_id
+                enhanced_item['external_variant_id'] = mapping.external_variant_id
+                enhanced_selected_items.append(enhanced_item)
+                logger.info(f"✅ 为商品添加了商品映射信息: external_product_id={mapping.external_product_id}, external_variant_id={mapping.external_variant_id}")
+            else:
+                # 如果没有找到映射，记录详细信息
+                sku = item.get('metadata', {}).get('sku')
+                logger.warning(f"⚠️ 商品没有找到 Printify 映射: sku={sku}, core_variant_id={item.get('core_variant_id')}, item={item}")
+                # 仍然添加到列表中，但会在 _build_fulfillment_data 中被跳过
+                enhanced_selected_items.append(item)
+        
+        # 检查是否有任何商品找到了映射
+        items_with_mapping = [item for item in enhanced_selected_items if item.get('external_product_id') and item.get('external_variant_id')]
+        if not items_with_mapping:
+            logger.error(f"❌ 所有选中商品都没有找到 Printify 映射: selected_items_count={len(selected_items)}")
+            raise HTTPException(
+                status_code=400, 
+                detail="No items have valid Printify product mappings. Please ensure all selected items have been mapped to Printify products."
+            )
+        
+        logger.info(f"✅ 找到 {len(items_with_mapping)}/{len(enhanced_selected_items)} 个商品有 Printify 映射")
         
         # 创建包含选中商品的临时 SCM 订单对象
         temp_scm_order = SCMOrder(
