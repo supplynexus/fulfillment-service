@@ -413,27 +413,41 @@ async def create_scm_order(
         # 如果有关联的核心订单，从 OrderItem 中获取 core_variant_id 和 sku
         from app.models.order import OrderItem
         from sqlalchemy import and_
-        order_items_map = {}  # key: external_variant_id or sku, value: OrderItem
+        order_items_map = {}  # key: id, external_variant_id or sku, value: OrderItem
+        order_items_list = []  # 保存所有 OrderItem，用于备用匹配
         if decoded_source_ids:
             logger.info(f"🔍 从核心订单获取 OrderItem 信息: source_order_ids={decoded_source_ids}")
-        for source_order_id in decoded_source_ids:
-            order_items_result = await db.execute(
-                select(OrderItem).where(
-                    and_(
-                        OrderItem.order_id == source_order_id,
-                        OrderItem.tenant_id == tenant.id
+            for source_order_id in decoded_source_ids:
+                order_items_result = await db.execute(
+                    select(OrderItem).where(
+                        and_(
+                            OrderItem.order_id == source_order_id,
+                            OrderItem.tenant_id == tenant.id
+                        )
                     )
                 )
-            )
-            order_items = order_items_result.scalars().all()
-            for order_item in order_items:
-                # 使用 external_variant_id 作为 key（如果存在）
-                if order_item.external_variant_id:
-                    order_items_map[str(order_item.external_variant_id)] = order_item
-                # 也使用 sku 作为 key（如果存在）
-                if order_item.sku:
-                    order_items_map[order_item.sku] = order_item
-        logger.info(f"✅ 找到 {len(order_items_map)} 个 OrderItem 映射")
+                order_items = order_items_result.scalars().all()
+                logger.info(f"🔍 从订单 {source_order_id} 找到 {len(order_items)} 个 OrderItem")
+                for order_item in order_items:
+                    order_items_list.append(order_item)
+                    # 使用 OrderItem 的 id 作为 key（前端传递的是 OrderItem.id）
+                    order_items_map[order_item.id] = order_item
+                    order_items_map[str(order_item.id)] = order_item
+                    # 使用 external_variant_id 作为 key（如果存在）- 支持多种格式
+                    if order_item.external_variant_id:
+                        # 同时支持字符串和数字格式的 key
+                        order_items_map[str(order_item.external_variant_id)] = order_item
+                        try:
+                            # 如果是数字字符串，也添加数字格式的 key
+                            if str(order_item.external_variant_id).isdigit():
+                                order_items_map[int(order_item.external_variant_id)] = order_item
+                        except (ValueError, TypeError):
+                            pass
+                    # 也使用 sku 作为 key（如果存在）
+                    if order_item.sku:
+                        order_items_map[order_item.sku] = order_item
+                    logger.info(f"🔍 OrderItem: id={order_item.id}, external_variant_id={order_item.external_variant_id}, sku={order_item.sku}, core_variant_id={order_item.core_variant_id}")
+            logger.info(f"✅ 找到 {len(order_items_map)} 个 OrderItem 映射，共 {len(order_items_list)} 个 OrderItem")
 
         normalized_items = []
         logger.info(f"🔍 开始规范化行项目: line_items_count={len(scm_order_data.line_items)}")
@@ -442,11 +456,26 @@ async def create_scm_order(
                 core_product_id = raw.get("core_product_id") if isinstance(raw, dict) else None
                 core_variant_id = raw.get("core_variant_id") if isinstance(raw, dict) else None
                 quantity = int(raw.get("quantity", 1)) if isinstance(raw, dict) else 1
+                
+                # 规范化 core_variant_id：如果是字符串 "null" 或空字符串，转换为 None
+                if core_variant_id in (None, "", "null", "None"):
+                    core_variant_id = None
+                # 如果是数字 0，也视为 None（因为有效的 core_variant_id 不会是 0）
+                elif core_variant_id == 0:
+                    core_variant_id = None
+                
+                # 规范化 core_product_id
+                if core_product_id in (None, "", "null", "None"):
+                    core_product_id = None
+                elif core_product_id == 0:
+                    core_product_id = None
 
                 display_title = None
                 display_sku = None
                 variant_label = None
                 image_url = None
+
+                logger.info(f"🔍 处理行项目: core_product_id={core_product_id}, core_variant_id={core_variant_id}, quantity={quantity}")
 
                 # 如果 core_variant_id 为空，尝试从 OrderItem 中获取
                 if not core_variant_id and decoded_source_ids:
@@ -454,21 +483,57 @@ async def create_scm_order(
                     source_line_item_id = item_metadata.get("source_line_item_id")
                     sku = item_metadata.get("sku") or raw.get("sku", "")
                     
-                    # 优先通过 external_variant_id (source_line_item_id) 匹配
-                    if source_line_item_id and str(source_line_item_id) in order_items_map:
-                        order_item = order_items_map[str(source_line_item_id)]
-                        if order_item.core_variant_id:
-                            core_variant_id = order_item.core_variant_id
-                            core_product_id = order_item.core_product_id
-                            logger.info(f"✅ 从 OrderItem 获取 core_variant_id: {core_variant_id} (通过 external_variant_id={source_line_item_id})")
+                    logger.info(f"🔍 尝试匹配 OrderItem: source_line_item_id={source_line_item_id}, sku={sku}")
+                    
+                    # 优先通过 OrderItem.id 匹配（前端传递的是 OrderItem.id）
+                    matched_order_item = None
+                    if source_line_item_id:
+                        # 首先尝试通过 OrderItem.id 匹配（最直接的方式）
+                        if source_line_item_id in order_items_map:
+                            matched_order_item = order_items_map[source_line_item_id]
+                            logger.info(f"✅ 匹配到 OrderItem: id={matched_order_item.id} (通过 OrderItem.id={source_line_item_id})")
+                        # 尝试字符串格式的 id
+                        elif str(source_line_item_id) in order_items_map:
+                            matched_order_item = order_items_map[str(source_line_item_id)]
+                            logger.info(f"✅ 匹配到 OrderItem: id={matched_order_item.id} (通过 OrderItem.id={source_line_item_id}, 字符串匹配)")
+                        # 如果还没找到，遍历所有 OrderItem 进行匹配（最后备用方案）
+                        elif order_items_list:
+                            for order_item in order_items_list:
+                                # 尝试匹配 OrderItem.id
+                                if order_item.id == source_line_item_id or str(order_item.id) == str(source_line_item_id):
+                                    matched_order_item = order_item
+                                    logger.info(f"✅ 匹配到 OrderItem: id={matched_order_item.id} (通过遍历匹配 OrderItem.id={source_line_item_id})")
+                                    break
+                    
+                    # 如果匹配到了 OrderItem，从中获取信息（即使 core_variant_id 为 None 也要获取其他信息）
+                    if matched_order_item:
+                        if matched_order_item.core_variant_id:
+                            core_variant_id = matched_order_item.core_variant_id
+                            core_product_id = matched_order_item.core_product_id
+                            logger.info(f"✅ 从 OrderItem 获取 core_variant_id: {core_variant_id}, core_product_id={core_product_id}")
+                        else:
+                            logger.warning(f"⚠️ OrderItem (id={matched_order_item.id}) 的 core_variant_id 为 None，无法获取核心产品映射")
+                        
+                        # 即使 core_variant_id 为 None，也要获取其他信息（如 sku）
+                        if matched_order_item.sku:
+                            display_sku = matched_order_item.sku
+                            logger.info(f"✅ 从 OrderItem 获取 sku: {display_sku}")
                     
                     # 如果还没找到，通过 SKU 匹配
-                    if not core_variant_id and sku and sku in order_items_map:
-                        order_item = order_items_map[sku]
-                        if order_item.core_variant_id:
-                            core_variant_id = order_item.core_variant_id
-                            core_product_id = order_item.core_product_id
+                    if not matched_order_item and sku and sku in order_items_map:
+                        matched_order_item = order_items_map[sku]
+                        logger.info(f"✅ 匹配到 OrderItem: id={matched_order_item.id} (通过 SKU={sku})")
+                        if matched_order_item.core_variant_id:
+                            core_variant_id = matched_order_item.core_variant_id
+                            core_product_id = matched_order_item.core_product_id
+                            display_sku = matched_order_item.sku or display_sku
                             logger.info(f"✅ 从 OrderItem 获取 core_variant_id: {core_variant_id} (通过 SKU={sku})")
+                    
+                    # 如果仍然没找到，记录警告
+                    if not matched_order_item:
+                        logger.warning(f"⚠️ 无法从 OrderItem 中找到匹配: source_line_item_id={source_line_item_id}, sku={sku}, order_items_map_keys={list(order_items_map.keys())[:10]}")
+                    elif not core_variant_id:
+                        logger.warning(f"⚠️ 匹配到 OrderItem (id={matched_order_item.id}) 但 core_variant_id 为 None，无法获取核心产品映射")
 
                 # 首先尝试从核心产品获取信息
                 if core_variant_id:
@@ -480,9 +545,11 @@ async def create_scm_order(
                     )
                     variant = v_res.scalar_one_or_none()
                     if variant:
-                        display_sku = variant.sku
+                        # 优先使用 OrderItem 的 sku，如果没有则使用 variant 的 sku
+                        display_sku = display_sku or variant.sku
                         image_url = variant.image_url
                         core_product_id = core_product_id or variant.product_id
+                        logger.info(f"✅ 从 ProductVariant 获取信息: sku={display_sku}, product_id={core_product_id}")
                 if core_product_id:
                     p_res = await db.execute(
                         select(Product).where(
@@ -493,6 +560,7 @@ async def create_scm_order(
                     product = p_res.scalar_one_or_none()
                     if product:
                         display_title = product.title
+                        logger.info(f"✅ 从 Product 获取信息: title={display_title}")
 
                 # 如果核心产品信息不可用，回退到 item_metadata 中的信息
                 item_metadata = raw.get("item_metadata", {}) if isinstance(raw, dict) else {}
@@ -502,6 +570,8 @@ async def create_scm_order(
                     display_sku = item_metadata.get("sku")
                 if not variant_label:
                     variant_label = item_metadata.get("variant_title")
+                
+                logger.info(f"🔍 规范化后的商品信息: core_product_id={core_product_id}, core_variant_id={core_variant_id}, sku={display_sku}, title={display_title}")
                 
                 # 处理价格信息
                 price = item_metadata.get("price") or item_metadata.get("cost")
