@@ -404,9 +404,18 @@ class PrintifyFulfillmentService:
             
             # 处理商品行项目
             for item in scm_order.line_items:
-                printify_product = None
+                # 优先使用已提供的 external_product_id 和 external_variant_id（来自 generate_printify_order）
+                if item.get("external_product_id") and item.get("external_variant_id"):
+                    fulfillment_data["line_items"].append({
+                        "product_id": item["external_product_id"],
+                        "variant_id": int(item["external_variant_id"]),  # 确保是整数
+                        "quantity": item.get("quantity", 1)
+                    })
+                    logger.info(f"✅ 添加商品到 line_items (使用外部ID): product_id={item['external_product_id']}, variant_id={item['external_variant_id']}, quantity={item.get('quantity', 1)}")
+                    continue
                 
-                # 如果有 core_variant_id，直接查找
+                # 如果没有外部ID，尝试通过 core_variant_id 查找
+                printify_product = None
                 if item.get("core_variant_id"):
                     printify_product = await self._get_printify_product(item["core_variant_id"], db, tenant.id)
                 else:
@@ -419,13 +428,19 @@ class PrintifyFulfillmentService:
                     fulfillment_data["line_items"].append({
                         "product_id": printify_product["printify_product_id"],
                         "variant_id": int(printify_product["printify_variant_id"]),  # 确保是整数
-                        "quantity": item["quantity"]
+                        "quantity": item.get("quantity", 1)
                     })
-                    logger.info(f"✅ 添加商品到 line_items: product_id={printify_product['printify_product_id']}, variant_id={printify_product['printify_variant_id']}, quantity={item['quantity']}")
+                    logger.info(f"✅ 添加商品到 line_items: product_id={printify_product['printify_product_id']}, variant_id={printify_product['printify_variant_id']}, quantity={item.get('quantity', 1)}")
                 else:
                     logger.warning(f"⚠️ 跳过商品，未找到 Printify 映射: {item}")
             
             logger.info(f"✅ 发货订单数据构建完成: line_items_count={len(fulfillment_data['line_items'])}")
+            
+            # 验证 line_items 不为空
+            if not fulfillment_data["line_items"]:
+                logger.error(f"❌ line_items 为空，无法创建 Printify 订单")
+                raise ValueError("line_items is required but empty. Please ensure all selected items have valid Printify product mappings.")
+            
             return fulfillment_data
             
         except Exception as e:
