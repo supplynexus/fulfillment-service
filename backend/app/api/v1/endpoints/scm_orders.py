@@ -527,16 +527,16 @@ async def create_scm_order(
                         },
                     }
                 )
-        except Exception:
-            # 回退为最小结构，确保不会阻塞创建
-            normalized_items.append(
-                {
-                    "core_product_id": raw.get("core_product_id") if isinstance(raw, dict) else None,
-                    "core_variant_id": raw.get("core_variant_id") if isinstance(raw, dict) else None,
-                    "quantity": int(raw.get("quantity", 1)) if isinstance(raw, dict) else 1,
-                    "metadata": raw.get("item_metadata") if isinstance(raw, dict) else {},
-                }
-            )
+            except Exception:
+                # 回退为最小结构，确保不会阻塞创建
+                normalized_items.append(
+                    {
+                        "core_product_id": raw.get("core_product_id") if isinstance(raw, dict) else None,
+                        "core_variant_id": raw.get("core_variant_id") if isinstance(raw, dict) else None,
+                        "quantity": int(raw.get("quantity", 1)) if isinstance(raw, dict) else 1,
+                        "metadata": raw.get("item_metadata") if isinstance(raw, dict) else {},
+                    }
+                )
 
         # 生成 SCM 订单编号
         from app.services.order_number_service import OrderNumberService
