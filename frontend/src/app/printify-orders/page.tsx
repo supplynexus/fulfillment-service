@@ -32,6 +32,7 @@ import {
   Pagination,
   Stack,
   Autocomplete,
+  Checkbox,
 } from '@mui/material';
 import {
   Refresh as RefreshIcon,
@@ -49,6 +50,7 @@ import {
   Info as InfoIcon,
   Link as LinkIcon,
   LinkOff as LinkOffIcon,
+  Delete as DeleteIcon,
 } from '@mui/icons-material';
 import { frontendApi } from '@/lib/api';
 import { frontendLogger } from '@/lib/frontend-logger';
@@ -124,6 +126,11 @@ function PrintifyOrdersPage() {
   const [unbinding, setUnbinding] = useState(false);
   const [unbindError, setUnbindError] = useState<string | null>(null);
 
+  // 批量删除相关状态
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<number>>(new Set());
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   // 获取订单列表
   const fetchOrders = useCallback(
     async (page: number = 1) => {
@@ -184,6 +191,8 @@ function PrintifyOrdersPage() {
     setRefreshing(true);
     try {
       await fetchOrders(currentPage);
+      // 清空选择
+      setSelectedOrderIds(new Set());
       frontendLogger.info('✅ 订单列表刷新成功');
     } catch (error) {
       frontendLogger.error('❌ 订单列表刷新失败', { error: String(error) });
@@ -321,6 +330,80 @@ function PrintifyOrdersPage() {
     fetchScmOrders();
   };
 
+  // 批量选择处理
+  const handleSelectOrder = (orderId: number, checked: boolean) => {
+    setSelectedOrderIds(prev => {
+      const newSet = new Set(prev);
+      if (checked) {
+        newSet.add(orderId);
+      } else {
+        newSet.delete(orderId);
+      }
+      return newSet;
+    });
+  };
+
+  // 全选/取消全选
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      const allIds = new Set(orders.map(order => order.id));
+      setSelectedOrderIds(allIds);
+    } else {
+      setSelectedOrderIds(new Set());
+    }
+  };
+
+  // 批量删除
+  const handleBatchDelete = async () => {
+    if (selectedOrderIds.size === 0) {
+      setDeleteError('请至少选择一个订单');
+      return;
+    }
+
+    if (!confirm(`确定要删除选中的 ${selectedOrderIds.size} 个订单吗？此操作不可恢复。`)) {
+      return;
+    }
+
+    try {
+      setDeleting(true);
+      setDeleteError(null);
+
+      frontendLogger.info('🗑️ 开始批量删除 Printify 订单', {
+        orderIds: Array.from(selectedOrderIds),
+        count: selectedOrderIds.size,
+      });
+
+      const response = await frontendApi.post('/api/printify-orders/batch-delete', {
+        order_ids: Array.from(selectedOrderIds),
+      });
+
+      if (response.data.success) {
+        frontendLogger.info('✅ 批量删除 Printify 订单成功', {
+          deletedCount: response.data.deleted_count,
+        });
+
+        // 清空选择
+        setSelectedOrderIds(new Set());
+        
+        // 刷新订单列表
+        await fetchOrders(currentPage);
+        
+        // 显示成功消息
+        alert(`成功删除 ${response.data.deleted_count} 个订单`);
+      } else {
+        throw new Error(response.data.message || '删除失败');
+      }
+    } catch (error: any) {
+      frontendLogger.error('❌ 批量删除 Printify 订单失败', {
+        error: error.message,
+        response: error.response?.data,
+      });
+      setDeleteError(error.response?.data?.detail || error.message || '删除失败，请稍后重试');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   // 初始加载
   useEffect(() => {
     const loadData = async () => {
@@ -422,6 +505,17 @@ function PrintifyOrdersPage() {
           Printify 订单管理
         </Typography>
         <Box display='flex' gap={2}>
+          {selectedOrderIds.size > 0 && (
+            <Button
+              variant='contained'
+              startIcon={<DeleteIcon />}
+              onClick={handleBatchDelete}
+              disabled={deleting}
+              color='error'
+            >
+              {deleting ? '删除中...' : `删除选中 (${selectedOrderIds.size})`}
+            </Button>
+          )}
           <Button
             variant='outlined'
             startIcon={<ShippingIcon />}
@@ -442,6 +536,12 @@ function PrintifyOrdersPage() {
       {error && (
         <Alert severity='error' sx={{ mb: 2 }}>
           {error}
+        </Alert>
+      )}
+
+      {deleteError && (
+        <Alert severity='error' sx={{ mb: 2 }} onClose={() => setDeleteError(null)}>
+          {deleteError}
         </Alert>
       )}
 
@@ -519,6 +619,13 @@ function PrintifyOrdersPage() {
                 <Table>
                   <TableHead>
                     <TableRow>
+                      <TableCell padding="checkbox">
+                        <Checkbox
+                          indeterminate={selectedOrderIds.size > 0 && selectedOrderIds.size < orders.length}
+                          checked={orders.length > 0 && selectedOrderIds.size === orders.length}
+                          onChange={(e) => handleSelectAll(e.target.checked)}
+                        />
+                      </TableCell>
                       <TableCell>订单ID</TableCell>
                       <TableCell>SCM订单</TableCell>
                       <TableCell>客户信息</TableCell>
@@ -531,6 +638,12 @@ function PrintifyOrdersPage() {
                   <TableBody>
                     {orders.map(order => (
                       <TableRow key={order.id}>
+                        <TableCell padding="checkbox">
+                          <Checkbox
+                            checked={selectedOrderIds.has(order.id)}
+                            onChange={(e) => handleSelectOrder(order.id, e.target.checked)}
+                          />
+                        </TableCell>
                         <TableCell>
                           <Typography variant='body2' fontFamily='monospace'>
                             {order.external_order_id}
