@@ -217,9 +217,9 @@ export function ScmOrdersList() {
       console.log('✅ 批量更新 Shopify fulfillment 成功:', response.data);
       
       // 显示成功消息
-      const results = response.data.results;
-      const successCount = results.success.length;
-      const failedCount = results.failed.length;
+      const results = response.data.results || { success: [], failed: [] };
+      const successCount = results.success?.length || 0;
+      const failedCount = results.failed?.length || 0;
       const skippedCount = response.data.skipped_orders?.length || 0;
       
       let message = `更新完成: ${successCount} 个成功`;

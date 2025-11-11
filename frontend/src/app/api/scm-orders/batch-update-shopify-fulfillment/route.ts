@@ -7,6 +7,7 @@ import { generateBackendSignature } from '@/lib/signature';
 const logger = createLogger('api.scm-orders.batch-update-shopify-fulfillment');
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
   try {
     logger.requestStart(request.method, request.url);
     
@@ -66,11 +67,13 @@ export async function POST(request: NextRequest) {
     });
 
     const responseData = await backendResponse.json();
+    const duration = Date.now() - startTime;
     
     if (!backendResponse.ok) {
       logger.error('❌ 后端 API 调用失败', { 
         status: backendResponse.status, 
-        response: responseData 
+        response: responseData,
+        duration: `${duration}ms`
       });
       return NextResponse.json(
         { error: responseData.detail || 'Backend API error' }, 
@@ -78,7 +81,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    logger.requestComplete(request.method, request.url, backendResponse.status);
+    logger.requestComplete(request.method, request.url, backendResponse.status, duration);
     logger.info('✅ 批量更新 Shopify fulfillment 成功', { 
       successCount: responseData.results?.success?.length || 0,
       failedCount: responseData.results?.failed?.length || 0
@@ -87,7 +90,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(responseData);
 
   } catch (error: any) {
-    logger.error('❌ 批量更新 Shopify fulfillment 失败', { error: error.message });
+    const duration = Date.now() - startTime;
+    logger.error('❌ 批量更新 Shopify fulfillment 失败', { 
+      error: error.message,
+      duration: `${duration}ms`
+    });
     logger.error('   异常堆栈', { stack: error.stack });
     return NextResponse.json(
       { error: 'Internal server error' }, 
