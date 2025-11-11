@@ -764,14 +764,33 @@ async def save_printify_order_to_database(
                 message="外部系统不存在或无权限"
             )
 
-        # 检查订单是否已存在
-        existing_order = await db.execute(
+        # 检查订单是否已存在 - 优先使用 external_system_id，如果找不到则尝试不使用 external_system_id
+        from sqlalchemy import select, and_
+        
+        # 首先尝试使用三个条件查找（包括 external_system_id）
+        existing_order_result = await db.execute(
             select(PrintifyOrder).where(
-                PrintifyOrder.external_order_id == request.external_order_id,
-                PrintifyOrder.tenant_id == tenant.id
+                and_(
+                    PrintifyOrder.external_order_id == request.external_order_id,
+                    PrintifyOrder.tenant_id == tenant.id,
+                    PrintifyOrder.external_system_id == external_system_id
+                )
             )
         )
-        existing_order = existing_order.scalar_one_or_none()
+        existing_order = existing_order_result.scalar_one_or_none()
+        
+        # 如果找不到，尝试不使用 external_system_id 查找（用于从 SCM 订单创建的订单）
+        if not existing_order:
+            logger.info(f"🔍 使用 external_system_id 未找到订单，尝试不使用 external_system_id 查找: external_order_id={request.external_order_id}")
+            existing_order_result = await db.execute(
+                select(PrintifyOrder).where(
+                    and_(
+                        PrintifyOrder.external_order_id == request.external_order_id,
+                        PrintifyOrder.tenant_id == tenant.id
+                    )
+                )
+            )
+            existing_order = existing_order_result.scalar_one_or_none()
         
         if existing_order:
             # 更新现有订单（保留已有的 scm_order_id 和物流信息）
@@ -1047,7 +1066,19 @@ async def update_printify_order_tracking(
             printify_order = printify_order_result.scalar_one_or_none()
         
         if not printify_order:
-            logger.warning(f"⚠️ 未找到Printify订单: external_order_id={external_order_id}, external_system_id={external_system_id}")
+            logger.warning(f"⚠️ 未找到Printify订单: external_order_id={external_order_id}, external_system_id={external_system_id}, tenant_id={tenant.id}")
+            # 记录所有匹配的订单以便调试
+            all_orders_result = await db.execute(
+                select(PrintifyOrder).where(
+                    PrintifyOrder.tenant_id == tenant.id
+                )
+            )
+            all_orders = all_orders_result.scalars().all()
+            matching_orders = [o for o in all_orders if o.external_order_id == external_order_id]
+            logger.warning(f"🔍 调试信息: 租户下共有 {len(all_orders)} 个订单，其中 external_order_id={external_order_id} 的订单有 {len(matching_orders)} 个")
+            if matching_orders:
+                for o in matching_orders:
+                    logger.warning(f"   找到订单: id={o.id}, external_order_id={o.external_order_id}, external_system_id={o.external_system_id}")
             return {
                 "success": False,
                 "message": "未找到对应的Printify订单，请先保存订单到本地数据库"
