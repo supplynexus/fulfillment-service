@@ -231,13 +231,15 @@ export async function POST(request: NextRequest) {
     });
     
     // 根据请求内容判断请求类型
-    // 批量删除请求：有 order_ids 数组，且都是数字（本地订单 ID）
+    // 更新 SCM 状态请求：有 order_ids 数组，且有 action 为 'update-scm-status'
+    const isUpdateScmStatus = requestBody.order_ids && Array.isArray(requestBody.order_ids) && 
+                              requestBody.action === 'update-scm-status';
+    
+    // 批量删除请求：有 order_ids 数组，且都是数字（本地订单 ID），但不是更新 SCM 状态请求
     const isBatchDelete = requestBody.order_ids && Array.isArray(requestBody.order_ids) && 
                           requestBody.order_ids.length > 0 && 
-                          typeof requestBody.order_ids[0] === 'number';
-    
-    // 更新 SCM 状态请求：有 order_ids 数组，但可能是字符串（Printify 外部订单 ID）
-    const isUpdateScmStatus = requestBody.order_ids && Array.isArray(requestBody.order_ids) && !isBatchDelete;
+                          typeof requestBody.order_ids[0] === 'number' &&
+                          !isUpdateScmStatus;
     
     // 更新物流信息请求：有external_order_id和external_system_id，并且有物流相关字段
     // 修改判断条件：只有包含物流相关字段（不包括status）才认为是更新物流信息请求

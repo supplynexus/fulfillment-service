@@ -247,7 +247,8 @@ function PrintifySyncedOrdersPage() {
       });
 
       const response = await frontendApi.post('/api/printify-orders/', {
-        order_ids: Array.from(selectedOrders)
+        order_ids: Array.from(selectedOrders),
+        action: 'update-scm-status' // 明确标识这是更新 SCM 状态请求，不是批量删除
       });
 
       if (response.data.success) {
