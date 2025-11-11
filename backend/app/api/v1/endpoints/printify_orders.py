@@ -2,7 +2,7 @@
 Printify订单管理API端点
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
@@ -1329,3 +1329,101 @@ async def unbind_scm_order_from_printify(
         import traceback
         logger.error(f"   异常堆栈: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Failed to unbind SCM order: {str(e)}")
+
+
+@router.post("/orders/batch-delete", response_model=dict)
+async def batch_delete_printify_orders(
+    request: dict = Body(...),
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
+) -> dict:
+    """
+    批量删除 Printify 本地订单
+    """
+    tenant, user = auth
+    
+    try:
+        order_ids = request.get('order_ids', [])
+        if not order_ids or not isinstance(order_ids, list):
+            raise HTTPException(status_code=400, detail="请提供要删除的订单ID列表")
+        
+        logger.info(f"🗑️ 开始批量删除 Printify 订单: order_ids={order_ids}, tenant_id={tenant.id}, user_id={user.id}")
+        
+        # 查询要删除的订单
+        from sqlalchemy import select, and_
+        
+        orders_result = await db.execute(
+            select(PrintifyOrder).where(
+                and_(
+                    PrintifyOrder.id.in_(order_ids),
+                    PrintifyOrder.tenant_id == tenant.id
+                )
+            )
+        )
+        orders = orders_result.scalars().all()
+        
+        if not orders:
+            logger.warning(f"⚠️ 未找到要删除的订单: order_ids={order_ids}")
+            return {
+                "success": False,
+                "message": "未找到要删除的订单",
+                "deleted_count": 0
+            }
+        
+        # 记录要删除的订单信息
+        deleted_order_ids = [order.id for order in orders]
+        deleted_external_order_ids = [order.external_order_id for order in orders]
+        
+        logger.info(f"🔍 找到 {len(orders)} 个订单待删除: {deleted_order_ids}")
+        
+        # 检查是否有订单关联了 SCM 订单
+        orders_with_scm = [order for order in orders if order.scm_order_id]
+        if orders_with_scm:
+            logger.warning(f"⚠️ 有 {len(orders_with_scm)} 个订单关联了 SCM 订单，将同时解绑")
+            scm_order_ids = [order.scm_order_id for order in orders_with_scm]
+            
+            # 查询关联的 SCM 订单并解绑
+            from app.models.scm_order import SCMOrder
+            scm_result = await db.execute(
+                select(SCMOrder).where(
+                    and_(
+                        SCMOrder.id.in_(scm_order_ids),
+                        SCMOrder.tenant_id == tenant.id
+                    )
+                )
+            )
+            scm_orders = scm_result.scalars().all()
+            
+            for scm_order in scm_orders:
+                scm_order.printify_order_id = None
+                scm_order.printify_shop_id = None
+                if scm_order.routing_metadata:
+                    scm_order.routing_metadata.pop('printify_order_id', None)
+                    scm_order.routing_metadata['printify_unbind_at'] = datetime.utcnow().isoformat()
+                    scm_order.routing_metadata['printify_unbind_by'] = user.email
+                logger.info(f"✅ 已解绑 SCM 订单: scm_order_id={scm_order.id}")
+        
+        # 删除 Printify 订单
+        for order in orders:
+            await db.delete(order)
+        
+        await db.commit()
+        
+        logger.info(f"✅ 批量删除 Printify 订单成功: 删除了 {len(orders)} 个订单")
+        
+        return {
+            "success": True,
+            "message": f"成功删除 {len(orders)} 个订单",
+            "deleted_count": len(orders),
+            "deleted_order_ids": deleted_order_ids,
+            "deleted_external_order_ids": deleted_external_order_ids
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"❌ 批量删除 Printify 订单失败: {str(e)}")
+        import traceback
+        logger.error(f"   异常堆栈: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"批量删除订单失败: {str(e)}")

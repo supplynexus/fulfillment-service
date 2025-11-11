@@ -231,7 +231,12 @@ export async function POST(request: NextRequest) {
     });
     
     // 根据请求内容判断请求类型
-    const isUpdateScmStatus = requestBody.order_ids && Array.isArray(requestBody.order_ids);
+    // 批量删除请求：有 order_ids 数组，且 action 为 'delete'
+    const isBatchDelete = requestBody.order_ids && Array.isArray(requestBody.order_ids) && 
+                          requestBody.action === 'delete';
+    
+    // 更新 SCM 状态请求：有 order_ids 数组，但没有 action 字段或 action 不是 'delete'
+    const isUpdateScmStatus = requestBody.order_ids && Array.isArray(requestBody.order_ids) && !isBatchDelete;
     
     // 更新物流信息请求：有external_order_id和external_system_id，并且有物流相关字段
     // 修改判断条件：只有包含物流相关字段（不包括status）才认为是更新物流信息请求
@@ -243,11 +248,13 @@ export async function POST(request: NextRequest) {
     
     // 调试日志：打印路由判断结果
     logger.info('🔍 路由判断调试信息', {
+      isBatchDelete,
       isUpdateScmStatus,
       isUpdateTracking,
       hasExternalOrderId: !!requestBody.external_order_id,
       hasExternalSystemId: !!requestBody.external_system_id,
       hasTrackingFields,
+      action: requestBody.action,
       trackingNumberIn: 'tracking_number' in requestBody,
       trackingUrlIn: 'tracking_url' in requestBody,
       carrierIn: 'carrier' in requestBody,
@@ -256,7 +263,13 @@ export async function POST(request: NextRequest) {
       statusIn: 'status' in requestBody,
     });
     
-    if (isUpdateScmStatus) {
+    if (isBatchDelete) {
+      logger.info('🔍 开始批量删除 Printify 订单', {
+        orderIds: requestBody.order_ids,
+        tenantName,
+        userId,
+      });
+    } else if (isUpdateScmStatus) {
       logger.info('🔍 开始更新SCM订单状态', {
         orderIds: requestBody.order_ids,
         tenantName,
@@ -283,7 +296,9 @@ export async function POST(request: NextRequest) {
     
     // 根据请求类型选择不同的后端路径
     let backendPath;
-    if (isUpdateScmStatus) {
+    if (isBatchDelete) {
+      backendPath = '/api/v1/printify/orders/batch-delete';
+    } else if (isUpdateScmStatus) {
       backendPath = '/api/v1/printify/update-scm-status';
     } else if (isUpdateTracking) {
       backendPath = '/api/v1/printify/update-tracking';
@@ -326,7 +341,9 @@ export async function POST(request: NextRequest) {
 
     logger.info('📡 调用后端 Printify API', {
       backendEndpoint: backendUrl,
-      requestType: isUpdateScmStatus ? 'update-scm-status' : 'save-order',
+      requestType: isBatchDelete ? 'batch-delete' :
+                   isUpdateScmStatus ? 'update-scm-status' :
+                   isUpdateTracking ? 'update-tracking' : 'save-order',
     });
 
     // 发送请求到后端

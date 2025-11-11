@@ -52,6 +52,7 @@ import {
   Error as ErrorIcon,
   Info as InfoIcon,
   LocalShipping as ShippingIcon,
+  Delete as DeleteIcon,
 } from '@mui/icons-material';
 import { frontendApi } from '@/lib/api';
 import { frontendLogger } from '@/lib/frontend-logger';
@@ -115,6 +116,8 @@ function PrintifySyncedOrdersPage() {
   // 多选相关状态
   const [selectedOrders, setSelectedOrders] = useState<Set<number>>(new Set());
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // 获取同步订单列表
   const fetchOrders = useCallback(async (page: number = 1) => {
@@ -190,6 +193,8 @@ function PrintifySyncedOrdersPage() {
     setRefreshing(true);
     fetchOrders(currentPage).finally(() => {
       setRefreshing(false);
+      // 清空选择
+      setSelectedOrders(new Set());
     });
   }, [fetchOrders, currentPage]);
 
@@ -259,6 +264,58 @@ function PrintifySyncedOrdersPage() {
       setError(error.response?.data?.detail || '更新失败，请稍后重试');
     } finally {
       setUpdatingStatus(false);
+    }
+  };
+
+  // 批量删除订单
+  const handleBatchDelete = async () => {
+    if (selectedOrders.size === 0) {
+      setDeleteError('请至少选择一个订单');
+      return;
+    }
+
+    if (!confirm(`确定要删除选中的 ${selectedOrders.size} 个订单吗？此操作不可恢复。`)) {
+      return;
+    }
+
+    try {
+      setDeleting(true);
+      setDeleteError(null);
+      setError(null);
+
+      frontendLogger.info('🗑️ 开始批量删除 Printify 同步订单', {
+        orderIds: Array.from(selectedOrders),
+        count: selectedOrders.size,
+      });
+
+      const response = await frontendApi.post('/api/printify-orders/batch-delete', {
+        order_ids: Array.from(selectedOrders),
+      });
+
+      if (response.data.success) {
+        frontendLogger.info('✅ 批量删除 Printify 同步订单成功', {
+          deletedCount: response.data.deleted_count,
+        });
+
+        // 清空选择
+        setSelectedOrders(new Set());
+        
+        // 刷新订单列表
+        await fetchOrders(currentPage);
+        
+        // 显示成功消息
+        alert(`成功删除 ${response.data.deleted_count} 个订单`);
+      } else {
+        throw new Error(response.data.message || '删除失败');
+      }
+    } catch (error: any) {
+      frontendLogger.error('❌ 批量删除 Printify 同步订单失败', {
+        error: error.message,
+        response: error.response?.data,
+      });
+      setDeleteError(error.response?.data?.detail || error.message || '删除失败，请稍后重试');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -359,15 +416,26 @@ function PrintifySyncedOrdersPage() {
             </Box>
             <Box display="flex" gap={2}>
               {selectedOrders.size > 0 && (
-                <Button
-                  variant="contained"
-                  color="secondary"
-                  startIcon={updatingStatus ? <CircularProgress size={16} /> : <SyncIcon />}
-                  onClick={handleUpdateScmStatus}
-                  disabled={updatingStatus || refreshing}
-                >
-                  {updatingStatus ? '更新中...' : `更新SCM订单状态 (${selectedOrders.size})`}
-                </Button>
+                <>
+                  <Button
+                    variant="contained"
+                    color="secondary"
+                    startIcon={updatingStatus ? <CircularProgress size={16} /> : <SyncIcon />}
+                    onClick={handleUpdateScmStatus}
+                    disabled={updatingStatus || refreshing || deleting}
+                  >
+                    {updatingStatus ? '更新中...' : `更新SCM订单状态 (${selectedOrders.size})`}
+                  </Button>
+                  <Button
+                    variant="contained"
+                    color="error"
+                    startIcon={deleting ? <CircularProgress size={16} /> : <DeleteIcon />}
+                    onClick={handleBatchDelete}
+                    disabled={deleting || refreshing || updatingStatus}
+                  >
+                    {deleting ? '删除中...' : `删除订单 (${selectedOrders.size})`}
+                  </Button>
+                </>
               )}
               <Button
                 variant="contained"
@@ -440,8 +508,14 @@ function PrintifySyncedOrdersPage() {
               </Box>
 
               {error && (
-                <Alert severity="error" sx={{ mb: 2 }}>
+                <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
                   {error}
+                </Alert>
+              )}
+
+              {deleteError && (
+                <Alert severity="error" sx={{ mb: 2 }} onClose={() => setDeleteError(null)}>
+                  {deleteError}
                 </Alert>
               )}
 
