@@ -231,11 +231,12 @@ export async function POST(request: NextRequest) {
     });
     
     // 根据请求内容判断请求类型
-    // 批量删除请求：有 order_ids 数组，且 action 为 'delete'
+    // 批量删除请求：有 order_ids 数组，且都是数字（本地订单 ID）
     const isBatchDelete = requestBody.order_ids && Array.isArray(requestBody.order_ids) && 
-                          requestBody.action === 'delete';
+                          requestBody.order_ids.length > 0 && 
+                          typeof requestBody.order_ids[0] === 'number';
     
-    // 更新 SCM 状态请求：有 order_ids 数组，但没有 action 字段或 action 不是 'delete'
+    // 更新 SCM 状态请求：有 order_ids 数组，但可能是字符串（Printify 外部订单 ID）
     const isUpdateScmStatus = requestBody.order_ids && Array.isArray(requestBody.order_ids) && !isBatchDelete;
     
     // 更新物流信息请求：有external_order_id和external_system_id，并且有物流相关字段
@@ -250,6 +251,7 @@ export async function POST(request: NextRequest) {
     logger.info('🔍 路由判断调试信息', {
       isBatchDelete,
       isUpdateScmStatus,
+      isBatchDelete,
       isUpdateTracking,
       hasExternalOrderId: !!requestBody.external_order_id,
       hasExternalSystemId: !!requestBody.external_system_id,

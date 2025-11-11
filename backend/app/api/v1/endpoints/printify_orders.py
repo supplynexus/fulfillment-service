@@ -774,10 +774,12 @@ async def save_printify_order_to_database(
         existing_order = existing_order.scalar_one_or_none()
         
         if existing_order:
-            # 更新现有订单（除了物流信息）
+            # 更新现有订单（保留已有的 scm_order_id 和物流信息）
             logger.info(f"🔄 更新现有 Printify 订单: {request.external_order_id}")
             existing_order.external_system_id = external_system_id
-            existing_order.scm_order_id = request.scm_order_id
+            # 保留已有的 scm_order_id，如果请求中没有提供则保持原值
+            if request.scm_order_id is not None:
+                existing_order.scm_order_id = request.scm_order_id
             existing_order.status = request.status
             existing_order.total_price = request.total_price
             existing_order.currency = request.currency
@@ -788,6 +790,7 @@ async def save_printify_order_to_database(
             existing_order.printify_data = request.printify_data
             existing_order.external_data = request.external_data
             # 注意：不更新物流信息字段（tracking_number, tracking_url, carrier, shipped_at, delivered_at）
+            # 这些字段应该通过 update-tracking 端点更新
             
             printify_order = existing_order
         else:
@@ -1015,9 +1018,10 @@ async def update_printify_order_tracking(
             logger.error(f"❌ 外部系统ID解码失败: {external_system_id_hashid}, 错误: {str(e)}")
             raise HTTPException(status_code=400, detail=f"无效的外部系统ID: {str(e)}")
         
-        # 查找Printify订单
+        # 查找Printify订单 - 优先使用 external_system_id，如果找不到则尝试不使用 external_system_id
         from sqlalchemy import select, and_
         
+        # 首先尝试使用三个条件查找（包括 external_system_id）
         printify_order_result = await db.execute(
             select(PrintifyOrder).where(
                 and_(
@@ -1029,11 +1033,24 @@ async def update_printify_order_tracking(
         )
         printify_order = printify_order_result.scalar_one_or_none()
         
+        # 如果找不到，尝试不使用 external_system_id 查找（用于从 SCM 订单创建的订单）
         if not printify_order:
-            logger.warning(f"⚠️ 未找到Printify订单: external_order_id={external_order_id}")
+            logger.info(f"🔍 使用 external_system_id 未找到订单，尝试不使用 external_system_id 查找: external_order_id={external_order_id}")
+            printify_order_result = await db.execute(
+                select(PrintifyOrder).where(
+                    and_(
+                        PrintifyOrder.external_order_id == external_order_id,
+                        PrintifyOrder.tenant_id == tenant.id
+                    )
+                )
+            )
+            printify_order = printify_order_result.scalar_one_or_none()
+        
+        if not printify_order:
+            logger.warning(f"⚠️ 未找到Printify订单: external_order_id={external_order_id}, external_system_id={external_system_id}")
             return {
                 "success": False,
-                "message": "未找到对应的Printify订单"
+                "message": "未找到对应的Printify订单，请先保存订单到本地数据库"
             }
         
         # 更新物流信息
