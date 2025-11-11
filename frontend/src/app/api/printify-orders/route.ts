@@ -249,12 +249,14 @@ export async function POST(request: NextRequest) {
     
     // 调试日志：打印路由判断结果
     logger.info('🔍 路由判断调试信息', {
+      isBatchDelete,
       isUpdateScmStatus,
       isBatchDelete,
       isUpdateTracking,
       hasExternalOrderId: !!requestBody.external_order_id,
       hasExternalSystemId: !!requestBody.external_system_id,
       hasTrackingFields,
+      action: requestBody.action,
       trackingNumberIn: 'tracking_number' in requestBody,
       trackingUrlIn: 'tracking_url' in requestBody,
       carrierIn: 'carrier' in requestBody,
@@ -263,14 +265,14 @@ export async function POST(request: NextRequest) {
       statusIn: 'status' in requestBody,
     });
     
-    if (isUpdateScmStatus) {
-      logger.info('🔍 开始更新SCM订单状态', {
+    if (isBatchDelete) {
+      logger.info('🔍 开始批量删除 Printify 订单', {
         orderIds: requestBody.order_ids,
         tenantName,
         userId,
       });
-    } else if (isBatchDelete) {
-      logger.info('🔍 开始批量删除 Printify 订单', {
+    } else if (isUpdateScmStatus) {
+      logger.info('🔍 开始更新SCM订单状态', {
         orderIds: requestBody.order_ids,
         tenantName,
         userId,
@@ -296,10 +298,10 @@ export async function POST(request: NextRequest) {
     
     // 根据请求类型选择不同的后端路径
     let backendPath;
-    if (isUpdateScmStatus) {
-      backendPath = '/api/v1/printify/update-scm-status';
-    } else if (isBatchDelete) {
+    if (isBatchDelete) {
       backendPath = '/api/v1/printify/orders/batch-delete';
+    } else if (isUpdateScmStatus) {
+      backendPath = '/api/v1/printify/update-scm-status';
     } else if (isUpdateTracking) {
       backendPath = '/api/v1/printify/update-tracking';
     } else {
@@ -341,8 +343,8 @@ export async function POST(request: NextRequest) {
 
     logger.info('📡 调用后端 Printify API', {
       backendEndpoint: backendUrl,
-      requestType: isUpdateScmStatus ? 'update-scm-status' : 
-                   isBatchDelete ? 'batch-delete' :
+      requestType: isBatchDelete ? 'batch-delete' :
+                   isUpdateScmStatus ? 'update-scm-status' :
                    isUpdateTracking ? 'update-tracking' : 'save-order',
     });
 

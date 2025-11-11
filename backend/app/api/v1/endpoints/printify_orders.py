@@ -2,7 +2,7 @@
 Printify订单管理API端点
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
@@ -1350,7 +1350,7 @@ async def unbind_scm_order_from_printify(
 
 @router.post("/orders/batch-delete", response_model=dict)
 async def batch_delete_printify_orders(
-    request: dict,
+    request: dict = Body(...),
     db: AsyncSession = Depends(get_async_db),
     auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
 ) -> dict:
@@ -1367,7 +1367,7 @@ async def batch_delete_printify_orders(
         logger.info(f"🗑️ 开始批量删除 Printify 订单: order_ids={order_ids}, tenant_id={tenant.id}, user_id={user.id}")
         
         # 查询要删除的订单
-        from sqlalchemy import select, and_, in_
+        from sqlalchemy import select, and_
         
         orders_result = await db.execute(
             select(PrintifyOrder).where(
