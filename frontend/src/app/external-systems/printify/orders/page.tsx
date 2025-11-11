@@ -446,7 +446,7 @@ function PrintifyOrdersPage() {
         try {
           // 调用后端API更新单个订单的物流信息
           const updateData = {
-            external_order_id: order.app_order_id, // 使用 order.app_order_id 匹配数据库中的 external_order_id
+            external_order_id: order.id, // 使用 order.id 匹配数据库中的 external_order_id（Printify 订单的唯一 ID）
             external_system_id: selectedStore.id_hashid,
             tracking_number: order.tracking_number || null, // 确保不是 undefined
             tracking_url: order.tracking_url || null,
@@ -558,7 +558,7 @@ function PrintifyOrdersPage() {
           // 构建订单数据
           const orderData = {
             external_system_id: selectedStore.id_hashid,
-            external_order_id: order.app_order_id,
+            external_order_id: order.id, // 使用 order.id 作为 external_order_id（Printify 订单的唯一 ID）
             status: order.status,
             total_price: order.total_price,
             currency: order.currency,
@@ -592,7 +592,7 @@ function PrintifyOrdersPage() {
             external_data: order, // 直接使用完整的订单对象
             // 尝试关联 SCM 订单（如果存在）
             scm_order_id: await findScmOrderByPrintifyOrderId(
-              order.app_order_id,
+              order.id, // 使用 order.id 而不是 app_order_id
               order.address_to?.email,
               `${order.address_to?.first_name || ''} ${order.address_to?.last_name || ''}`.trim()
             ),
@@ -602,7 +602,8 @@ function PrintifyOrdersPage() {
           const response = await frontendApi.post('/api/printify-orders/', orderData);
 
           frontendLogger.info('✅ Printify 订单保存到数据库成功', {
-            orderId: order.app_order_id,
+            orderId: order.id,
+            appOrderId: order.app_order_id,
             savedOrderId: response.data.id,
           });
 
@@ -610,7 +611,7 @@ function PrintifyOrdersPage() {
 
         } catch (error: any) {
           failCount++;
-          frontendLogger.error(`❌ 保存订单 ${order.app_order_id} 失败`, {
+          frontendLogger.error(`❌ 保存订单 ${order.id} (app_order_id: ${order.app_order_id}) 失败`, {
             error: String(error),
             errorMessage: error.message,
             errorResponse: error.response?.data,
@@ -693,13 +694,14 @@ function PrintifyOrdersPage() {
       setSaveSuccess(false);
 
       frontendLogger.info('🔍 开始保存 Printify 订单到数据库', {
-        orderId: selectedOrder.app_order_id,
+        orderId: selectedOrder.id,
+        appOrderId: selectedOrder.app_order_id,
         storeId: selectedStore.id_hashid,
       });
 
       // 构建保存到数据库的订单数据
       const orderData = {
-        external_order_id: selectedOrder.app_order_id,
+        external_order_id: selectedOrder.id, // 使用 order.id 作为 external_order_id（Printify 订单的唯一 ID）
         external_system_id: selectedStore.id_hashid, // 使用店铺的 hashid
         status: selectedOrder.status,
         total_price: (selectedOrder.total_price / 100).toString(), // 转换为美元
@@ -712,7 +714,7 @@ function PrintifyOrdersPage() {
         external_data: selectedOrder, // 直接使用完整的订单对象
         // 尝试关联 SCM 订单（如果存在）
         scm_order_id: await findScmOrderByPrintifyOrderId(
-          selectedOrder.app_order_id,
+          selectedOrder.id, // 使用 order.id 而不是 app_order_id
           selectedOrder.address_to?.email,
           `${selectedOrder.address_to?.first_name || ''} ${selectedOrder.address_to?.last_name || ''}`.trim()
         ),
@@ -722,7 +724,8 @@ function PrintifyOrdersPage() {
       const response = await frontendApi.post('/api/printify-orders/', orderData);
 
       frontendLogger.info('✅ Printify 订单保存到数据库成功', {
-        orderId: selectedOrder.app_order_id,
+        orderId: selectedOrder.id,
+        appOrderId: selectedOrder.app_order_id,
         savedOrderId: response.data.id,
       });
 
