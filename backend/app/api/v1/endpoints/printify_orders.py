@@ -774,10 +774,12 @@ async def save_printify_order_to_database(
         existing_order = existing_order.scalar_one_or_none()
         
         if existing_order:
-            # 更新现有订单（除了物流信息）
+            # 更新现有订单（保留已有的 scm_order_id 和物流信息）
             logger.info(f"🔄 更新现有 Printify 订单: {request.external_order_id}")
             existing_order.external_system_id = external_system_id
-            existing_order.scm_order_id = request.scm_order_id
+            # 保留已有的 scm_order_id，如果请求中没有提供则保持原值
+            if request.scm_order_id is not None:
+                existing_order.scm_order_id = request.scm_order_id
             existing_order.status = request.status
             existing_order.total_price = request.total_price
             existing_order.currency = request.currency
@@ -788,6 +790,7 @@ async def save_printify_order_to_database(
             existing_order.printify_data = request.printify_data
             existing_order.external_data = request.external_data
             # 注意：不更新物流信息字段（tracking_number, tracking_url, carrier, shipped_at, delivered_at）
+            # 这些字段应该通过 update-tracking 端点更新
             
             printify_order = existing_order
         else:
@@ -1015,9 +1018,10 @@ async def update_printify_order_tracking(
             logger.error(f"❌ 外部系统ID解码失败: {external_system_id_hashid}, 错误: {str(e)}")
             raise HTTPException(status_code=400, detail=f"无效的外部系统ID: {str(e)}")
         
-        # 查找Printify订单
+        # 查找Printify订单 - 优先使用 external_system_id，如果找不到则尝试不使用 external_system_id
         from sqlalchemy import select, and_
         
+        # 首先尝试使用三个条件查找（包括 external_system_id）
         printify_order_result = await db.execute(
             select(PrintifyOrder).where(
                 and_(
@@ -1029,11 +1033,24 @@ async def update_printify_order_tracking(
         )
         printify_order = printify_order_result.scalar_one_or_none()
         
+        # 如果找不到，尝试不使用 external_system_id 查找（用于从 SCM 订单创建的订单）
         if not printify_order:
-            logger.warning(f"⚠️ 未找到Printify订单: external_order_id={external_order_id}")
+            logger.info(f"🔍 使用 external_system_id 未找到订单，尝试不使用 external_system_id 查找: external_order_id={external_order_id}")
+            printify_order_result = await db.execute(
+                select(PrintifyOrder).where(
+                    and_(
+                        PrintifyOrder.external_order_id == external_order_id,
+                        PrintifyOrder.tenant_id == tenant.id
+                    )
+                )
+            )
+            printify_order = printify_order_result.scalar_one_or_none()
+        
+        if not printify_order:
+            logger.warning(f"⚠️ 未找到Printify订单: external_order_id={external_order_id}, external_system_id={external_system_id}")
             return {
                 "success": False,
-                "message": "未找到对应的Printify订单"
+                "message": "未找到对应的Printify订单，请先保存订单到本地数据库"
             }
         
         # 更新物流信息
@@ -1329,3 +1346,101 @@ async def unbind_scm_order_from_printify(
         import traceback
         logger.error(f"   异常堆栈: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Failed to unbind SCM order: {str(e)}")
+
+
+@router.post("/orders/batch-delete", response_model=dict)
+async def batch_delete_printify_orders(
+    request: dict,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
+) -> dict:
+    """
+    批量删除 Printify 本地订单
+    """
+    tenant, user = auth
+    
+    try:
+        order_ids = request.get('order_ids', [])
+        if not order_ids or not isinstance(order_ids, list):
+            raise HTTPException(status_code=400, detail="请提供要删除的订单ID列表")
+        
+        logger.info(f"🗑️ 开始批量删除 Printify 订单: order_ids={order_ids}, tenant_id={tenant.id}, user_id={user.id}")
+        
+        # 查询要删除的订单
+        from sqlalchemy import select, and_, in_
+        
+        orders_result = await db.execute(
+            select(PrintifyOrder).where(
+                and_(
+                    PrintifyOrder.id.in_(order_ids),
+                    PrintifyOrder.tenant_id == tenant.id
+                )
+            )
+        )
+        orders = orders_result.scalars().all()
+        
+        if not orders:
+            logger.warning(f"⚠️ 未找到要删除的订单: order_ids={order_ids}")
+            return {
+                "success": False,
+                "message": "未找到要删除的订单",
+                "deleted_count": 0
+            }
+        
+        # 记录要删除的订单信息
+        deleted_order_ids = [order.id for order in orders]
+        deleted_external_order_ids = [order.external_order_id for order in orders]
+        
+        logger.info(f"🔍 找到 {len(orders)} 个订单待删除: {deleted_order_ids}")
+        
+        # 检查是否有订单关联了 SCM 订单
+        orders_with_scm = [order for order in orders if order.scm_order_id]
+        if orders_with_scm:
+            logger.warning(f"⚠️ 有 {len(orders_with_scm)} 个订单关联了 SCM 订单，将同时解绑")
+            scm_order_ids = [order.scm_order_id for order in orders_with_scm]
+            
+            # 查询关联的 SCM 订单并解绑
+            from app.models.scm_order import SCMOrder
+            scm_result = await db.execute(
+                select(SCMOrder).where(
+                    and_(
+                        SCMOrder.id.in_(scm_order_ids),
+                        SCMOrder.tenant_id == tenant.id
+                    )
+                )
+            )
+            scm_orders = scm_result.scalars().all()
+            
+            for scm_order in scm_orders:
+                scm_order.printify_order_id = None
+                scm_order.printify_shop_id = None
+                if scm_order.routing_metadata:
+                    scm_order.routing_metadata.pop('printify_order_id', None)
+                    scm_order.routing_metadata['printify_unbind_at'] = datetime.utcnow().isoformat()
+                    scm_order.routing_metadata['printify_unbind_by'] = user.email
+                logger.info(f"✅ 已解绑 SCM 订单: scm_order_id={scm_order.id}")
+        
+        # 删除 Printify 订单
+        for order in orders:
+            await db.delete(order)
+        
+        await db.commit()
+        
+        logger.info(f"✅ 批量删除 Printify 订单成功: 删除了 {len(orders)} 个订单")
+        
+        return {
+            "success": True,
+            "message": f"成功删除 {len(orders)} 个订单",
+            "deleted_count": len(orders),
+            "deleted_order_ids": deleted_order_ids,
+            "deleted_external_order_ids": deleted_external_order_ids
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"❌ 批量删除 Printify 订单失败: {str(e)}")
+        import traceback
+        logger.error(f"   异常堆栈: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"批量删除订单失败: {str(e)}")

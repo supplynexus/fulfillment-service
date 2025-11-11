@@ -231,7 +231,13 @@ export async function POST(request: NextRequest) {
     });
     
     // 根据请求内容判断请求类型
-    const isUpdateScmStatus = requestBody.order_ids && Array.isArray(requestBody.order_ids);
+    // 批量删除请求：有 order_ids 数组，且都是数字（本地订单 ID）
+    const isBatchDelete = requestBody.order_ids && Array.isArray(requestBody.order_ids) && 
+                          requestBody.order_ids.length > 0 && 
+                          typeof requestBody.order_ids[0] === 'number';
+    
+    // 更新 SCM 状态请求：有 order_ids 数组，但可能是字符串（Printify 外部订单 ID）
+    const isUpdateScmStatus = requestBody.order_ids && Array.isArray(requestBody.order_ids) && !isBatchDelete;
     
     // 更新物流信息请求：有external_order_id和external_system_id，并且有物流相关字段
     // 修改判断条件：只有包含物流相关字段（不包括status）才认为是更新物流信息请求
@@ -244,6 +250,7 @@ export async function POST(request: NextRequest) {
     // 调试日志：打印路由判断结果
     logger.info('🔍 路由判断调试信息', {
       isUpdateScmStatus,
+      isBatchDelete,
       isUpdateTracking,
       hasExternalOrderId: !!requestBody.external_order_id,
       hasExternalSystemId: !!requestBody.external_system_id,
@@ -258,6 +265,12 @@ export async function POST(request: NextRequest) {
     
     if (isUpdateScmStatus) {
       logger.info('🔍 开始更新SCM订单状态', {
+        orderIds: requestBody.order_ids,
+        tenantName,
+        userId,
+      });
+    } else if (isBatchDelete) {
+      logger.info('🔍 开始批量删除 Printify 订单', {
         orderIds: requestBody.order_ids,
         tenantName,
         userId,
@@ -285,6 +298,8 @@ export async function POST(request: NextRequest) {
     let backendPath;
     if (isUpdateScmStatus) {
       backendPath = '/api/v1/printify/update-scm-status';
+    } else if (isBatchDelete) {
+      backendPath = '/api/v1/printify/orders/batch-delete';
     } else if (isUpdateTracking) {
       backendPath = '/api/v1/printify/update-tracking';
     } else {
@@ -326,7 +341,9 @@ export async function POST(request: NextRequest) {
 
     logger.info('📡 调用后端 Printify API', {
       backendEndpoint: backendUrl,
-      requestType: isUpdateScmStatus ? 'update-scm-status' : 'save-order',
+      requestType: isUpdateScmStatus ? 'update-scm-status' : 
+                   isBatchDelete ? 'batch-delete' :
+                   isUpdateTracking ? 'update-tracking' : 'save-order',
     });
 
     // 发送请求到后端
