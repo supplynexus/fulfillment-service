@@ -167,6 +167,7 @@ function PrintifySyncedOrdersPage() {
       setError('获取同步订单列表失败');
     } finally {
       setLoadingOrders(false);
+      setLoading(false); // 确保初始加载状态也被清除
     }
   }, [searchTerm, statusFilter]);
 
