@@ -6,13 +6,12 @@ import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
+from sqlalchemy import select, update, and_
 from sqlalchemy.orm import selectinload
 
 from app.models.order import Order
 from app.models.scm_order import SCMOrder, SCMOrderStatus, RoutingRule, RoutingStatus, ScmOrderSource
 from app.schemas.scm_order import SCMOrderCreate, OrderRoutingConfig
-from app.core.hashids_utils import encode_id
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +29,29 @@ class OrderRoutingService:
         try:
             logger.info(f"开始路由订单 {order.id} 到SCM系统")
 
-            # 1. 分析订单商品
-            line_items = self._analyze_line_items(order.line_items)
+            # 1. 从 OrderItem 关系获取订单商品并转换为字典格式
+            line_items_dict = []
+            if order.items:
+                for item in order.items:
+                    line_items_dict.append({
+                        "id": item.id,
+                        "title": item.title or "",
+                        "variant_title": item.variant_title or "",
+                        "quantity": item.quantity or 1,
+                        "price": float(item.unit_price) if item.unit_price else 0.0,
+                        "sku": item.sku or "",
+                        "vendor": item.item_metadata.get("vendor") if item.item_metadata else None,
+                        "product_type": item.item_metadata.get("product_type") if item.item_metadata else "unknown",
+                        "properties": item.item_metadata.get("properties", {}) if item.item_metadata else {},
+                        "requires_shipping": True,
+                        "core_variant_id": item.core_variant_id,
+                        "core_product_id": item.core_product_id,
+                        "external_product_id": item.external_product_id,
+                        "external_variant_id": item.external_variant_id,
+                    })
+            
+            # 2. 分析订单商品
+            line_items = self._analyze_line_items(line_items_dict)
             logger.info(f"订单 {order.id} 包含 {len(line_items)} 个商品")
 
             # 2. 应用路由规则
@@ -220,7 +240,7 @@ class OrderRoutingService:
         self, line_items: List[Dict[str, Any]], tenant_id: int, order_id: int = None
     ) -> List[Dict[str, Any]]:
         """规范化 line_items 用于 SCM 订单存储"""
-        from app.models.product_new import Product, ProductVariant
+        from app.models.product import Product, ProductVariant
         from app.models.order import OrderItem
         
         # 如果有关联的核心订单，从 OrderItem 中获取 core_variant_id 和 sku
@@ -332,8 +352,9 @@ class OrderRoutingService:
         self, order: Order, decision: Dict[str, Any], tenant_id: int
     ) -> SCMOrder:
         """创建SCM订单"""
-        # 生成SCM订单号
-        scm_order_number = await self._generate_scm_order_number(tenant_id)
+        # 生成SCM订单号（使用统一的编号生成服务）
+        from app.services.order_number_service import OrderNumberService
+        scm_order_number = await OrderNumberService.generate_scm_order_number(self.db, tenant_id)
 
         # 规范化 line_items（传入 order.id 以便从 OrderItem 获取 core_variant_id）
         normalized_line_items = await self._normalize_line_items_for_scm(
@@ -347,22 +368,24 @@ class OrderRoutingService:
         )
 
         # 创建SCM订单
+        # 将 target_system_type 和 target_system_id 添加到 routing_metadata 中
+        routing_metadata = decision["routing_metadata"].copy() if decision.get("routing_metadata") else {}
+        routing_metadata["target_system_type"] = decision["target_system_type"]
+        routing_metadata["target_system_id"] = decision["target_system_id"]
+        
         scm_order = SCMOrder(
             tenant_id=tenant_id,
-            target_system_type=decision["target_system_type"],
-            target_system_id=decision["target_system_id"],
             scm_order_number=scm_order_number,
             status=SCMOrderStatus.CREATED.value,
-            routing_strategy=decision["routing_metadata"].get("strategy"),
+            routing_strategy=decision["routing_metadata"].get("strategy") if decision.get("routing_metadata") else None,
             line_items=normalized_line_items,
-            total_amount=total_amount,
             currency=order.currency,
             customer_email=order.customer_email,
             customer_name=order.customer_name,
             customer_phone=order.customer_phone,
             shipping_address=order.shipping_address,
             billing_address=order.billing_address,
-            routing_metadata=decision["routing_metadata"],
+            routing_metadata=routing_metadata,
             # 添加订单追踪链字段
             shopify_order_id=order.shopify_order_id,
             shopify_fulfillment_order_id=order.shopify_fulfillment_order_id,
@@ -429,14 +452,6 @@ class OrderRoutingService:
             )
             await self.db.rollback()
             return None
-
-    async def _generate_scm_order_number(self, tenant_id: int) -> str:
-        """生成SCM订单号"""
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-        # 使用时间戳的秒数作为ID生成hashid
-        timestamp_int = int(datetime.now().timestamp())
-        hashid = encode_id(timestamp_int)
-        return f"SCM-{timestamp}-{hashid[:8].upper()}"
 
     async def _log_routing_status(
         self,

@@ -25,6 +25,10 @@ class OrderCreate(BaseModel):
     order_date: datetime
     fulfillment_status: Optional[str] = None
     external_data: Optional[Dict[str, Any]] = None
+    address_validation_status: Optional[str] = None
+    address_validation_reason_code: Optional[str] = None
+    address_validation_message: Optional[str] = None
+    address_last_validated_at: Optional[datetime] = None
 
 
 class OrderResponse(BaseModel):
@@ -52,6 +56,10 @@ class OrderResponse(BaseModel):
     external_data: Optional[Dict[str, Any]] = None
     error_message: Optional[str] = None
     retry_count: int = 0
+    address_validation_status: Optional[str] = None
+    address_validation_reason_code: Optional[str] = None
+    address_validation_message: Optional[str] = None
+    address_last_validated_at: Optional[datetime] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
 

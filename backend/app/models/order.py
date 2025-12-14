@@ -64,6 +64,14 @@ class Order(Base):
     shipping_address = Column(JSON, nullable=False)
     billing_address = Column(JSON, nullable=True)
 
+    # Address validation information
+    address_validation_status = Column(
+        String(50), nullable=True
+    )  # 'not_checked', 'valid', 'invalid', 'suspicious', 'failed'
+    address_validation_reason_code = Column(String(100), nullable=True)
+    address_validation_message = Column(Text, nullable=True)
+    address_last_validated_at = Column(DateTime(timezone=True), nullable=True)
+
     # Order items relationship (moved to order_items table)
     items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
 

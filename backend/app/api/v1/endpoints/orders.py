@@ -90,7 +90,7 @@ async def get_orders(
                 # 使用 hashids 替代原始 ID
                 order_data = {
                     "id_hashid": encode_id(order.id),
-                    "order_number": order.order_number,
+                    "order_number": order.order_number or f"ORD-{order.id}",  # 如果 order_number 为 None，使用默认值
                     "external_order_id": order.external_order_id,
                     "external_order_number": order.external_order_number,
                     "external_order_name": order.external_order_name,
@@ -107,6 +107,10 @@ async def get_orders(
                     "fulfillment_status": order.fulfillment_status,
                     "tracking_number": order.tracking_number,
                     "tracking_url": order.tracking_url,
+                    "address_validation_status": getattr(order, "address_validation_status", None),
+                    "address_validation_reason_code": getattr(order, "address_validation_reason_code", None),
+                    "address_validation_message": getattr(order, "address_validation_message", None),
+                    "address_last_validated_at": getattr(order, "address_last_validated_at", None),
                     "created_at": order.created_at,
                     "updated_at": order.updated_at,
                 }
@@ -249,6 +253,10 @@ async def get_order(
             "tracking_number": order.tracking_number,
             "tracking_url": order.tracking_url,
             "external_data": order.external_data,
+            "address_validation_status": getattr(order, "address_validation_status", None),
+            "address_validation_reason_code": getattr(order, "address_validation_reason_code", None),
+            "address_validation_message": getattr(order, "address_validation_message", None),
+            "address_last_validated_at": getattr(order, "address_last_validated_at", None),
             "created_at": order.created_at,
             "updated_at": order.updated_at,
         }

@@ -10,7 +10,7 @@ CELERY_BEAT_SCHEDULE = {
     # 每分钟同步 Shopify 订单
     "sync-shopify-orders-1min": {
         "task": "app.tasks.shopify_tasks.sync_shopify_orders_1min_task",
-        "schedule": 60.0,  # 每60秒执行一次
+        "schedule": 1800.0,  # 每60秒执行一次
         "options": {
             "queue": "shopify",
             "expires": 30,  # 任务过期时间（秒）
@@ -19,7 +19,7 @@ CELERY_BEAT_SCHEDULE = {
     # 每分钟同步 Shopify 商品
     "sync-shopify-products-1min": {
         "task": "app.tasks.shopify_tasks.sync_shopify_products_1min_task",
-        "schedule": 60.0,  # 每60秒执行一次
+        "schedule": 1800.0,  # 每60秒执行一次
         "options": {
             "queue": "shopify",
             "expires": 30,  # 任务过期时间（秒）
@@ -76,10 +76,10 @@ CELERY_BEAT_SCHEDULE = {
         },
     },
     # 订单自动化任务
-    # 每2分钟处理新的Shopify订单
-    "process-new-shopify-orders": {
-        "task": "app.tasks.order_automation_tasks.scheduled_process_shopify_orders",
-        "schedule": 120.0,  # 每120秒执行一次
+    # 每30分钟处理新的核心订单，路由到SCM系统（通用任务，不限制订单来源）
+    "process-new-orders-to-scm": {
+        "task": "app.tasks.order_automation_tasks.scheduled_process_orders_to_scm",
+        "schedule": 1800.0,  # 每1800秒（30分钟）执行一次
         "options": {
             "queue": "order_automation",
             "expires": 60,  # 任务过期时间（秒）
@@ -88,7 +88,7 @@ CELERY_BEAT_SCHEDULE = {
     # 每5分钟同步Printify订单状态
     "sync-printify-orders-status": {
         "task": "app.tasks.order_automation_tasks.scheduled_sync_printify_status",
-        "schedule": 300.0,  # 每300秒执行一次
+        "schedule": 1800.0,  # 每1800秒执行一次
         "options": {
             "queue": "order_automation",
             "expires": 120,  # 任务过期时间（秒）
@@ -97,7 +97,7 @@ CELERY_BEAT_SCHEDULE = {
     # 每10分钟同步SCM订单到Shopify履约
     "sync-scm-to-shopify-fulfillment": {
         "task": "app.tasks.order_automation_tasks.scheduled_sync_shopify_fulfillment",
-        "schedule": 600.0,  # 每600秒执行一次
+        "schedule": 1800.0,  # 每1800秒执行一次
         "options": {
             "queue": "order_automation",
             "expires": 300,  # 任务过期时间（秒）
