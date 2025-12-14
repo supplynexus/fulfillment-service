@@ -645,13 +645,21 @@ async def delete_order(
             raise HTTPException(status_code=404, detail="Order not found")
         
         # 先删除相关的 scm_order_sources 记录
-        from app.models.scm_order import ScmOrderSource, SCMOrder
+        from app.models.scm_order import ScmOrderSource, SCMOrder, RoutingStatus
         scm_sources_stmt = delete(ScmOrderSource).where(
             ScmOrderSource.source_order_id == order_id,
             ScmOrderSource.tenant_id == tenant.id
         )
         await db.execute(scm_sources_stmt)
         logger.info(f"✅ 删除相关 SCM 订单源记录: order_id={order_id}")
+        
+        # 删除相关的 routing_status 记录
+        routing_status_stmt = delete(RoutingStatus).where(
+            RoutingStatus.order_id == order_id,
+            RoutingStatus.tenant_id == tenant.id
+        )
+        await db.execute(routing_status_stmt)
+        logger.info(f"✅ 删除相关路由状态记录: order_id={order_id}")
         
         # 删除相关的 scm_orders 记录（将 source_order_id 设为 NULL）
         scm_orders_stmt = select(SCMOrder).where(
