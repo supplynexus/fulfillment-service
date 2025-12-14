@@ -45,6 +45,59 @@ import { frontendApi } from '@/lib/api';
 
 const ITEMS_PER_PAGE = 20; // 每页显示20个订单
 
+const getAddressValidationDisplay = (
+  status: Order['address_validation_status'],
+  reasonCode?: string
+) => {
+  if (!status || status === 'not_checked') {
+    return {
+      label: '未校验',
+      color: 'default' as const,
+      tooltip: '此订单的地址尚未进行自动校验',
+    };
+  }
+
+  switch (status) {
+    case 'valid':
+      return {
+        label: '地址正常',
+        color: 'success' as const,
+        tooltip: '地址通过基础规则校验',
+      };
+    case 'invalid':
+      return {
+        label: '地址有问题',
+        color: 'error' as const,
+        tooltip:
+          '系统判断该地址存在明显问题，请在发货前人工确认（原因: ' +
+          (reasonCode || '请查看详情') +
+          '）',
+      };
+    case 'suspicious':
+      return {
+        label: '地址需确认',
+        color: 'warning' as const,
+        tooltip:
+          '系统检测到地址存在潜在风险，建议在发货前确认（原因: ' +
+          (reasonCode || '请查看详情') +
+          '）',
+      };
+    case 'failed':
+      return {
+        label: '校验失败',
+        color: 'info' as const,
+        tooltip:
+          '地址校验服务暂时失败，可能是系统或网络问题，并不代表地址本身有问题',
+      };
+    default:
+      return {
+        label: status,
+        color: 'default' as const,
+        tooltip: '地址校验状态: ' + status,
+      };
+  }
+};
+
 export function OrdersList() {
   const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
@@ -478,6 +531,7 @@ export function OrdersList() {
                   <TableCell>金额</TableCell>
                   <TableCell>状态</TableCell>
                   <TableCell>履约状态</TableCell>
+                  <TableCell>地址</TableCell>
                   <TableCell>
                     <Box display='flex' alignItems='center' gap={1}>
                       订单日期
@@ -557,6 +611,23 @@ export function OrdersList() {
                           )}
                           size='small'
                         />
+                      </TableCell>
+                      <TableCell>
+                        {(() => {
+                          const {
+                            label,
+                            color,
+                            tooltip,
+                          } = getAddressValidationDisplay(
+                            order.address_validation_status,
+                            order.address_validation_reason_code
+                          );
+                          return (
+                            <Tooltip title={tooltip}>
+                              <Chip label={label} color={color as any} size='small' />
+                            </Tooltip>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell>
                         <Typography variant='body2'>

@@ -50,6 +50,9 @@ from .jwt_blacklist import JwtBlacklist
 
 
 from .sync_config import SyncConfig, SyncJob, SyncType, SyncFrequency, SyncJobStatus
+from .automation_step import AutomationStep
+from .tenant_automation_config import TenantAutomationConfig
+from .automation_manual_button import AutomationManualButton
 
 __all__ = [
     "User",
@@ -103,5 +106,8 @@ __all__ = [
     "SyncJob", 
     "SyncType",
     "SyncFrequency",
-    "SyncJobStatus"
+    "SyncJobStatus",
+    "AutomationStep",
+    "TenantAutomationConfig",
+    "AutomationManualButton"
 ]

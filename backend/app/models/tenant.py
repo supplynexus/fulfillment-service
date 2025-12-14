@@ -43,6 +43,7 @@ class Tenant(Base):
     routing_rules = relationship("RoutingRule", back_populates="tenant")
     sync_configs = relationship("SyncConfig", back_populates="tenant")
     sync_jobs = relationship("SyncJob", back_populates="tenant")
+    automation_configs = relationship("TenantAutomationConfig", back_populates="tenant")
     
     # New Product System Relationships
     products_new = relationship("Product", back_populates="tenant", foreign_keys="Product.tenant_id")

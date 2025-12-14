@@ -45,6 +45,14 @@ SHOPIFY_API_VERSION=2023-10
 PRINTIFY_API_TOKEN=your-printify-api-token
 PRINTIFY_API_BASE_URL=https://api.printify.com/v1
 
+# Address Validation - Smarty International Street API (可选 - 用于 US/CA/JP 地址校验)
+# 设置为 true 时启用 Smarty 外部地址验证；开发阶段可以先保持为 false
+SMARTY_ENABLED=false
+SMARTY_AUTH_ID=
+SMARTY_AUTH_TOKEN=
+SMARTY_INTERNATIONAL_ENDPOINT=https://international-street.api.smarty.com/verify
+SMARTY_TIMEOUT_SECONDS=1.0
+
 # Security Settings (可选 - 用于高级安全功能)
 WEBHOOK_SECRET=your-webhook-secret-for-shopify-and-printify
 

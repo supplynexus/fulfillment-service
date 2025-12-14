@@ -35,6 +35,7 @@ from app.api.v1.endpoints import (
     product_categories,
     product_dimensions,
     product_variants,
+    automation,
 )
 
 api_router = APIRouter()
@@ -118,4 +119,9 @@ api_router.include_router(
 # Product Variants Management
 api_router.include_router(
     product_variants.router, prefix="/product-variants", tags=["product-variants"]
+)
+
+# Automation Management
+api_router.include_router(
+    automation.router, prefix="/automation", tags=["automation"]
 )

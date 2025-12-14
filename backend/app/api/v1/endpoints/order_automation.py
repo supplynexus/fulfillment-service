@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_async_db
 from app.core.timestamp_auth_middleware import verify_timestamp_auth
 from app.tasks.order_automation_tasks import (
-    process_new_shopify_orders,
+    process_new_orders_to_scm,
     sync_printify_orders_status,
     sync_scm_to_shopify_fulfillment,
 )
@@ -20,18 +20,18 @@ router = APIRouter()
 logger = get_logger(__name__)
 
 
-@router.post("/process-shopify-orders", response_model=dict)
-async def trigger_process_shopify_orders(
+@router.post("/process-orders-to-scm", response_model=dict)
+async def trigger_process_orders_to_scm(
     tenant_id: int = Query(..., description="租户ID"),
     limit: int = Query(50, ge=1, le=200, description="处理订单数量限制"),
     db: AsyncSession = Depends(get_async_db),
     auth: dict = Depends(verify_timestamp_auth),
 ) -> Any:
     """
-    手动触发处理新的Shopify订单
+    手动触发处理核心订单，路由到SCM系统（通用任务，不限制订单来源）
     """
     try:
-        logger.info("🔍 手动触发处理Shopify订单", tenant_id=tenant_id, limit=limit)
+        logger.info("🔍 手动触发处理核心订单路由到SCM系统", tenant_id=tenant_id, limit=limit)
 
         # 验证租户访问权限
         if auth.get("tenant_id") != tenant_id:
@@ -40,12 +40,12 @@ async def trigger_process_shopify_orders(
                 detail="Access denied to this tenant",
             )
 
-        # 异步执行任务
-        task = process_new_shopify_orders.delay(tenant_id, limit)
+        # 异步执行通用任务
+        task = process_new_orders_to_scm.delay(tenant_id, limit)
 
         return {
             "success": True,
-            "message": "Shopify订单处理任务已启动",
+            "message": "核心订单路由到SCM系统任务已启动",
             "task_id": task.id,
             "tenant_id": tenant_id,
             "limit": limit,
@@ -54,10 +54,10 @@ async def trigger_process_shopify_orders(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("❌ 触发处理Shopify订单失败", tenant_id=tenant_id, error=str(e))
+        logger.error("❌ 触发处理核心订单路由失败", tenant_id=tenant_id, error=str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error triggering Shopify order processing: {str(e)}",
+            detail=f"Error triggering order routing to SCM: {str(e)}",
         )
 
 
@@ -153,7 +153,7 @@ async def trigger_full_sync(
 ) -> Any:
     """
     手动触发完整的订单同步流程
-    包括：处理Shopify订单 -> 同步Printify状态 -> 同步Shopify履约
+    包括：处理核心订单路由到SCM -> 同步Printify状态 -> 同步Shopify履约
     """
     try:
         logger.info(
@@ -170,8 +170,8 @@ async def trigger_full_sync(
                 detail="Access denied to this tenant",
             )
 
-        # 依次启动所有任务
-        task1 = process_new_shopify_orders.delay(tenant_id, process_limit)
+        # 依次启动所有任务（使用通用任务）
+        task1 = process_new_orders_to_scm.delay(tenant_id, process_limit)
         task2 = sync_printify_orders_status.delay(tenant_id, sync_limit)
         task3 = sync_scm_to_shopify_fulfillment.delay(tenant_id, sync_limit)
 
@@ -179,7 +179,7 @@ async def trigger_full_sync(
             "success": True,
             "message": "完整订单同步流程已启动",
             "tasks": {
-                "process_shopify_orders": task1.id,
+                "process_orders_to_scm": task1.id,
                 "sync_printify_status": task2.id,
                 "sync_shopify_fulfillment": task3.id,
             },

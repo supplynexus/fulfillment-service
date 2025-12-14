@@ -19,6 +19,7 @@ from app.models.user import User
 from app.models.shopify_order import ShopifyOrder
 from app.models.order import Order, OrderItem  # core order models
 from app.models.product import ProductVariant
+from app.services.address_validation_service import validate_address
 from app.schemas.shopify_order import (
     ShopifyOrderCreate,
     ShopifyOrderUpdate,
@@ -685,39 +686,89 @@ async def sync_shopify_order_to_core(
         existing_result = await db.execute(existing_core_order_query)
         existing_core_order = existing_result.scalar_one_or_none()
         
+        # 转换 Shopify 地址格式到核心订单格式（无论是新建还是更新，都用同一套转换）
+        def convert_shopify_address(shopify_addr):
+            if not shopify_addr:
+                return {}
+
+            # 合并 firstName 和 lastName
+            first_name = shopify_addr.get("firstName", "")
+            last_name = shopify_addr.get("lastName", "")
+            full_name = f"{first_name} {last_name}".strip()
+
+            return {
+                "name": full_name,
+                "address1": shopify_addr.get("address1", ""),
+                "address2": shopify_addr.get("address2", ""),
+                "city": shopify_addr.get("city", ""),
+                "province": shopify_addr.get("province", ""),
+                "country": shopify_addr.get("country", ""),
+                "zip": shopify_addr.get("zip", ""),
+                "phone": shopify_addr.get("phone", ""),
+            }
+
+        shipping_address_core = convert_shopify_address(shopify_order.shipping_address)
+        billing_address_core = convert_shopify_address(shopify_order.billing_address)
+
+        # 地址验证（仅针对收货地址），失败不阻断同步
+        address_validation_status = None
+        address_validation_reason_code = None
+        address_validation_message = None
+        address_last_validated_at = None
+
+        try:
+            if shipping_address_core:
+                validation_result = validate_address(shipping_address_core)
+                address_validation_status = validation_result.status
+                address_validation_reason_code = validation_result.reason_code
+                address_validation_message = validation_result.message
+                address_last_validated_at = validation_result.validated_at
+                logger.info(
+                    "✅ 核心订单地址验证完成",
+                    status=address_validation_status,
+                    reason_code=address_validation_reason_code,
+                )
+            else:
+                address_validation_status = "suspicious"
+                address_validation_reason_code = "MISSING_SHIPPING_ADDRESS"
+                address_validation_message = "缺少收货地址信息，无法完成地址验证"
+                from datetime import datetime, timezone
+
+                address_last_validated_at = datetime.now(timezone.utc)
+                logger.warning(
+                    "⚠️ 核心订单缺少收货地址，标记为需人工确认",
+                )
+        except Exception as e:
+            from datetime import datetime, timezone
+
+            logger.error("❌ 核心订单地址验证失败", error=str(e))
+            address_validation_status = "failed"
+            address_validation_reason_code = "VALIDATION_EXCEPTION"
+            address_validation_message = str(e)
+            address_last_validated_at = datetime.now(timezone.utc)
+
         if existing_core_order:
             logger.info(f"ℹ️ 核心订单已存在，更新现有订单: {existing_core_order.id}")
             core_order = existing_core_order
+            # 同步最新的地址和验证结果
+            core_order.shipping_address = shipping_address_core
+            core_order.billing_address = billing_address_core
+            core_order.address_validation_status = address_validation_status
+            core_order.address_validation_reason_code = address_validation_reason_code
+            core_order.address_validation_message = address_validation_message
+            core_order.address_last_validated_at = address_last_validated_at
         else:
             # 创建核心订单
             logger.info(f"➕ 创建新的核心订单")
-            
+
             # 生成人类可读的订单编号
             from app.services.order_number_service import OrderNumberService
-            order_number = await OrderNumberService.generate_order_number(db, tenant.id, "ORD")
+
+            order_number = await OrderNumberService.generate_order_number(
+                db, tenant.id, "ORD"
+            )
             logger.info(f"📝 生成订单编号: {order_number}")
-            
-            # 转换 Shopify 地址格式到核心订单格式
-            def convert_shopify_address(shopify_addr):
-                if not shopify_addr:
-                    return {}
-                
-                # 合并 firstName 和 lastName
-                first_name = shopify_addr.get("firstName", "")
-                last_name = shopify_addr.get("lastName", "")
-                full_name = f"{first_name} {last_name}".strip()
-                
-                return {
-                    "name": full_name,
-                    "address1": shopify_addr.get("address1", ""),
-                    "address2": shopify_addr.get("address2", ""),
-                    "city": shopify_addr.get("city", ""),
-                    "province": shopify_addr.get("province", ""),
-                    "country": shopify_addr.get("country", ""),
-                    "zip": shopify_addr.get("zip", ""),
-                    "phone": shopify_addr.get("phone", "")
-                }
-            
+
             core_order = Order(
                 tenant_id=tenant.id,
                 external_system_id=None,  # 暂时不关联外部系统
@@ -726,18 +777,32 @@ async def sync_shopify_order_to_core(
                 external_order_name=shopify_order.name,
                 order_number=order_number,  # 使用生成的订单编号
                 status="pending",
-                total_amount=float(shopify_order.total_price) if shopify_order.total_price else 0.0,
-                subtotal_amount=float(shopify_order.subtotal_price) if shopify_order.subtotal_price else None,
-                tax_amount=float(shopify_order.total_tax) if shopify_order.total_tax else None,
+                total_amount=float(shopify_order.total_price)
+                if shopify_order.total_price
+                else 0.0,
+                subtotal_amount=float(shopify_order.subtotal_price)
+                if shopify_order.subtotal_price
+                else None,
+                tax_amount=float(shopify_order.total_tax)
+                if shopify_order.total_tax
+                else None,
                 currency=shopify_order.currency_code or "USD",
-                customer_email=shopify_order.customer_data.get("email", "") if shopify_order.customer_data else "",
-                customer_name=shopify_order.customer_data.get("name", "") if shopify_order.customer_data else "",
+                customer_email=shopify_order.customer_data.get("email", "")
+                if shopify_order.customer_data
+                else "",
+                customer_name=shopify_order.customer_data.get("name", "")
+                if shopify_order.customer_data
+                else "",
                 customer_phone=None,
-                shipping_address=convert_shopify_address(shopify_order.shipping_address),
-                billing_address=convert_shopify_address(shopify_order.billing_address),
+                shipping_address=shipping_address_core,
+                billing_address=billing_address_core,
                 shopify_raw_data=shopify_order.raw_data,
                 external_data=shopify_order.raw_data,
-                order_date=shopify_order.created_at
+                order_date=shopify_order.created_at,
+                address_validation_status=address_validation_status,
+                address_validation_reason_code=address_validation_reason_code,
+                address_validation_message=address_validation_message,
+                address_last_validated_at=address_last_validated_at,
             )
             db.add(core_order)
             await db.flush()  # 获取 ID

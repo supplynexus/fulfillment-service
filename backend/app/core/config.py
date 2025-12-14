@@ -61,6 +61,16 @@ class Settings(BaseSettings):
     HASHIDS_SALT: str = os.getenv("HASHIDS_SALT", "dev-hashids-salt-change-in-prod")
     HASHIDS_MIN_LENGTH: int = int(os.getenv("HASHIDS_MIN_LENGTH", "8"))
 
+    # Address validation - Smarty International Street API (US/CA/JP)
+    SMARTY_ENABLED: bool = os.getenv("SMARTY_ENABLED", "false").lower() == "true"
+    SMARTY_AUTH_ID: Optional[str] = os.getenv("SMARTY_AUTH_ID")
+    SMARTY_AUTH_TOKEN: Optional[str] = os.getenv("SMARTY_AUTH_TOKEN")
+    SMARTY_INTERNATIONAL_ENDPOINT: str = os.getenv(
+        "SMARTY_INTERNATIONAL_ENDPOINT",
+        "https://international-street.api.smarty.com/verify",
+    )
+    SMARTY_TIMEOUT_SECONDS: float = float(os.getenv("SMARTY_TIMEOUT_SECONDS", "1.0"))
+
     class Config:
         # 支持从ENV_FILE环境变量读取配置文件
         # 如果没有指定ENV_FILE，则按优先级查找：
