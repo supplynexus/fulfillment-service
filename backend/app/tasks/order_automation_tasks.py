@@ -6,7 +6,7 @@
 import asyncio
 from app.core.logging import get_logger
 from app.models.order import Order
-from app.models.scm_order import SCMOrder
+from app.models.scm_order import SCMOrder, ScmOrderSource
 from app.services.order_routing_service import OrderRoutingService
 from app.services.printify_service import PrintifyService
 from app.core.security import decrypt_data
@@ -259,6 +259,7 @@ def process_new_orders_to_scm(self, tenant_id: int, limit: int = 50):
                 
                 # 获取所有未处理的订单（不限制来源），并加载 items 关系
                 # 只查询还没有创建SCM订单的核心订单
+                # 检查 ScmOrderSource 表（实际关联表）和 SCMOrder.source_order_id（兼容旧数据）
                 result = await db.execute(
                     select(Order)
                     .options(selectinload(Order.items))  # 加载订单项
@@ -266,9 +267,19 @@ def process_new_orders_to_scm(self, tenant_id: int, limit: int = 50):
                         and_(
                             Order.tenant_id == tenant_id,
                             # 只处理还没有创建SCM订单的订单
+                            # 检查 ScmOrderSource 表（主要关联表）
+                            ~Order.id.in_(
+                                select(ScmOrderSource.source_order_id).where(
+                                    ScmOrderSource.tenant_id == tenant_id
+                                )
+                            ),
+                            # 同时检查 SCMOrder.source_order_id（兼容旧数据）
                             ~Order.id.in_(
                                 select(SCMOrder.source_order_id).where(
-                                    SCMOrder.source_order_id.isnot(None)
+                                    and_(
+                                        SCMOrder.source_order_id.isnot(None),
+                                        SCMOrder.tenant_id == tenant_id
+                                    )
                                 )
                             ),
                         )

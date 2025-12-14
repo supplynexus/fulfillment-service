@@ -120,6 +120,27 @@ def get_dynamic_beat_schedule(db: Session) -> Dict[str, Any]:
                 logger.warning(f"⚠️ 步骤未配置Celery任务，跳过: {config.step_key}")
                 continue
             
+            # 任务名称映射（优先级高于数据库中的配置）
+            # 用于修复旧的任务名称或统一任务名称
+            task_mapping = {
+                "app.tasks.order_automation_tasks.process_new_shopify_orders": "app.tasks.order_automation_tasks.process_new_orders_to_scm",
+                "sync_external_orders": "sync_shopify_orders_1min",
+            }
+            
+            # 按 step_key 的任务名称映射（优先级最高）
+            step_key_task_mapping = {
+                "create_scm_orders": "app.tasks.order_automation_tasks.process_new_orders_to_scm",
+                "create_fulfillment_orders": "app.tasks.order_automation_tasks.process_new_orders_to_scm",
+                "sync_external_orders": "sync_shopify_orders_1min",
+            }
+            
+            # 优先使用 step_key 映射，然后使用通用映射，最后使用数据库中的配置
+            celery_task_name = (
+                step_key_task_mapping.get(config.step_key) or
+                task_mapping.get(step.celery_task_name) or
+                step.celery_task_name
+            )
+            
             # 生成调度键
             schedule_key = f"tenant_{config.tenant_id}_step_{config.step_key}"
             
@@ -132,7 +153,7 @@ def get_dynamic_beat_schedule(db: Session) -> Dict[str, Any]:
             
             # 添加到调度
             schedule[schedule_key] = {
-                "task": step.celery_task_name,
+                "task": celery_task_name,
                 "schedule": celery_schedule,
                 "kwargs": task_kwargs,
                 "options": {
@@ -142,7 +163,7 @@ def get_dynamic_beat_schedule(db: Session) -> Dict[str, Any]:
             }
             
             logger.info(
-                f"✅ 添加调度任务: {schedule_key}, task={step.celery_task_name}, "
+                f"✅ 添加调度任务: {schedule_key}, task={celery_task_name}, "
                 f"schedule={celery_schedule}"
             )
         
@@ -175,10 +196,29 @@ def get_dynamic_beat_schedule_for_tenant(
         enabled_configs = service.get_enabled_tenant_configs(tenant_id=tenant_id)
         
         schedule = {}
+        # 任务名称映射（与上面的映射保持一致）
+        task_mapping = {
+            "app.tasks.order_automation_tasks.process_new_shopify_orders": "app.tasks.order_automation_tasks.process_new_orders_to_scm",
+            "sync_external_orders": "sync_shopify_orders_1min",
+        }
+        
+        step_key_task_mapping = {
+            "create_scm_orders": "app.tasks.order_automation_tasks.process_new_orders_to_scm",
+            "create_fulfillment_orders": "app.tasks.order_automation_tasks.process_new_orders_to_scm",
+            "sync_external_orders": "sync_shopify_orders_1min",
+        }
+        
         for config in enabled_configs:
             step = service.get_step_by_key(config.step_key)
             if not step or step.is_manual_only or not step.celery_task_name:
                 continue
+            
+            # 使用相同的映射逻辑
+            celery_task_name = (
+                step_key_task_mapping.get(config.step_key) or
+                task_mapping.get(step.celery_task_name) or
+                step.celery_task_name
+            )
             
             schedule_key = f"tenant_{config.tenant_id}_step_{config.step_key}"
             celery_schedule = parse_schedule(config.schedule, config.schedule_seconds)
@@ -187,7 +227,7 @@ def get_dynamic_beat_schedule_for_tenant(
             task_kwargs["tenant_id"] = config.tenant_id
             
             schedule[schedule_key] = {
-                "task": step.celery_task_name,
+                "task": celery_task_name,
                 "schedule": celery_schedule,
                 "kwargs": task_kwargs,
                 "options": {
