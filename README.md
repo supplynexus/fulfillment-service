@@ -47,18 +47,50 @@ python -m pip install -r requirements-minimal.txt
 1. **启动后端服务**
    ```bash
    cd backend
-   source .venv/bin/activate
+   source .venv/bin/activate  # Windows: .venv\Scripts\activate
    python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
    ```
 
-2. **启动前端服务**
+2. **启动 Celery 服务** (可选，用于定时任务)
+   
+   **Windows 用户:**
+   ```powershell
+   # 终端1: 启动 Celery Beat (定时任务调度器)
+   cd backend
+   .\.venv\Scripts\Activate.ps1
+   .\scripts\start_celery_beat_windows.ps1
+   # 或使用批处理: scripts\start_celery_beat_windows.bat
+   
+   # 终端2: 启动 Celery Worker (任务执行器)
+   cd backend
+   .\.venv\Scripts\Activate.ps1
+   .\scripts\start_celery_worker_windows.ps1
+   # 或使用批处理: scripts\start_celery_worker_windows.bat
+   # 或手动启动（使用 solo 池）:
+   # celery -A app.tasks.celery_app worker --loglevel=info --pool=solo -Q default,shopify,orders,order_automation
+   ```
+   
+   **Linux/Mac 用户:**
+   ```bash
+   # 终端1: 启动 Celery Beat (定时任务调度器)
+   cd backend
+   source .venv/bin/activate
+   celery -A app.tasks.celery_app beat --loglevel=info
+   
+   # 终端2: 启动 Celery Worker (任务执行器)
+   cd backend
+   source .venv/bin/activate
+   celery -A app.tasks.celery_app worker --loglevel=info -Q default,shopify,orders,order_automation
+   ```
+
+3. **启动前端服务**
    ```bash
    cd frontend
    npm install
    npm run dev
    ```
 
-3. **启动数据库和Redis**
+4. **启动数据库和Redis**
    ```bash
    docker-compose up -d postgres redis
    ```

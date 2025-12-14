@@ -100,7 +100,6 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
   const [order, setOrder] = useState<ScmOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [fulfilling, setFulfilling] = useState(false);
   const [fulfillmentError, setFulfillmentError] = useState<string | null>(null);
   const [mappingStatus, setMappingStatus] = useState<any>(null);
   const [checkingMapping, setCheckingMapping] = useState(false);
@@ -396,56 +395,6 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
     }
   };
 
-  const handleFulfillToPrintify = async () => {
-    if (!order) return;
-
-    try {
-      setFulfilling(true);
-      setFulfillmentError(null);
-
-      // 先检查商品映射
-      let currentMappingStatus = mappingStatus;
-      if (!currentMappingStatus) {
-        console.log('🔍 开始检查商品映射...');
-        currentMappingStatus = await checkProductMapping();
-        console.log('🔍 映射状态获取结果:', currentMappingStatus);
-      }
-
-      // 检查是否所有商品都已映射
-      console.log('🔍 检查映射状态:', {
-        mappingStatus: currentMappingStatus,
-        can_fulfill: currentMappingStatus?.can_fulfill,
-      });
-      if (!currentMappingStatus?.can_fulfill) {
-        console.log('❌ 商品映射检查失败，无法发货');
-        setFulfillmentError(
-          `无法发货：${currentMappingStatus?.unmapped_items || 0} 个商品未映射到 Printify`
-        );
-        return;
-      }
-
-      console.log('✅ 商品映射检查通过，开始发货流程');
-
-      const response = await frontendApi.post(
-        `/api/scm-orders/${orderId}/fulfill`,
-        {
-          fulfillment_channel: 'printify',
-          scm_order_id: orderId,
-        }
-      );
-
-      // 刷新订单详情以获取最新状态
-      await fetchOrderDetails();
-
-      // 显示成功消息
-      console.log('发货指示发送成功:', response.data);
-    } catch (error: any) {
-      console.error('发送发货指示失败:', error);
-      setFulfillmentError(error?.response?.data?.detail || '发送发货指示失败');
-    } finally {
-      setFulfilling(false);
-    }
-  };
 
   // 商品选择相关函数
   const handleSelectItem = (index: number) => {
@@ -642,20 +591,6 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
               <PrintIcon />
             </IconButton>
           </Tooltip>
-          <Tooltip title='发送到 Printify'>
-            <IconButton
-              onClick={handleFulfillToPrintify}
-              disabled={
-                fulfilling ||
-                checkingMapping ||
-                order?.fulfillment_status === 'fulfilled' ||
-                isEditing
-              }
-              color='primary'
-            >
-              <LocalShippingIcon />
-            </IconButton>
-          </Tooltip>
           {order.routing_metadata?.printify_order_id ? (
             <Tooltip title='解绑 Printify 订单'>
               <IconButton
@@ -707,11 +642,6 @@ export function ScmOrderDetails({ orderId }: ScmOrderDetailsProps) {
           <Alert severity='error' onClose={() => setFulfillmentError(null)}>
             {fulfillmentError}
           </Alert>
-        )}
-
-        {/* Fulfillment Loading Alert */}
-        {fulfilling && (
-          <Alert severity='info'>正在发送发货指示到 Printify...</Alert>
         )}
 
         {/* Mapping Check Loading Alert */}

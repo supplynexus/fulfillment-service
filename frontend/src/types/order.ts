@@ -25,6 +25,15 @@ export interface Order {
   tracking_url?: string;
   carrier?: string;
   fulfillment_status?: string;
+   address_validation_status?:
+    | 'not_checked'
+    | 'valid'
+    | 'invalid'
+    | 'suspicious'
+    | 'failed';
+  address_validation_reason_code?: string;
+  address_validation_message?: string;
+  address_last_validated_at?: string;
   order_date: string;
   processed_at?: string;
   fulfilled_at?: string;

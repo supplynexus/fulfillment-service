@@ -37,6 +37,7 @@ import {
   ExpandMore,
   Menu as MenuIcon,
   ChevronLeft as ChevronLeftIcon,
+  AutoAwesome as AutomationIcon,
 } from '@mui/icons-material';
 
 interface SidebarProps {
@@ -254,6 +255,12 @@ const menuItems: MenuItem[] = [
     label: '系统设置',
     icon: <SettingsIcon />,
     children: [
+      {
+        id: 'automation',
+        label: '自动化管理',
+        icon: <AutomationIcon />,
+        path: '/automation',
+      },
       {
         id: 'profile',
         label: '个人资料',

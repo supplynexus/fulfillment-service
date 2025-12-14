@@ -46,16 +46,27 @@ export async function GET(request: NextRequest) {
     const page = searchParams.get('page') || '1';
     const limit = searchParams.get('limit') || '10';
     const status = searchParams.get('status');
-    // const search = searchParams.get('search');
+    const search = searchParams.get('search');
+    const sort_by = searchParams.get('sort_by');
+    const sort_order = searchParams.get('sort_order');
 
-    // 构建后端请求参数
+    // 构建后端请求参数 - 后端接收的是 page 和 limit，不是 skip
     const backendParams = new URLSearchParams({
-      skip: String((parseInt(page) - 1) * parseInt(limit)),
+      page,
       limit,
     });
 
     if (status) {
       backendParams.append('status', status);
+    }
+    if (search) {
+      backendParams.append('search', search);
+    }
+    if (sort_by) {
+      backendParams.append('sort_by', sort_by);
+    }
+    if (sort_order) {
+      backendParams.append('sort_order', sort_order);
     }
 
     // 构建后端请求体（用于签名，但GET请求不发送body）

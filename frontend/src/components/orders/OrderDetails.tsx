@@ -398,6 +398,55 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
       </Box>
 
       <Stack spacing={3}>
+        {/* 地址验证结果提示 */}
+        {order.address_validation_status &&
+          order.address_validation_status !== 'valid' && (
+            <Alert
+              severity={
+                order.address_validation_status === 'invalid'
+                  ? 'error'
+                  : order.address_validation_status === 'suspicious'
+                    ? 'warning'
+                    : 'info'
+              }
+            >
+              {order.address_validation_status === 'invalid' && (
+                <>
+                  系统检测到该订单的收货地址可能不正确，请在发货前确认并必要时修改。
+                  {order.address_validation_message && (
+                    <>
+                      {' '}
+                      （原因: {order.address_validation_message}）
+                    </>
+                  )}
+                </>
+              )}
+              {order.address_validation_status === 'suspicious' && (
+                <>
+                  系统检测到该订单的收货地址存在潜在问题，建议在发货前人工确认。
+                  {order.address_validation_message && (
+                    <>
+                      {' '}
+                      （原因: {order.address_validation_message}）
+                    </>
+                  )}
+                </>
+              )}
+              {order.address_validation_status === 'failed' && (
+                <>
+                  地址验证服务暂时失败，目前无法自动判断地址是否有效。订单已继续处理，
+                  建议在发货前按需人工检查。
+                  {order.address_validation_message && (
+                    <>
+                      {' '}
+                      （错误信息: {order.address_validation_message}）
+                    </>
+                  )}
+                </>
+              )}
+            </Alert>
+          )}
+
         {/* Order Status and Basic Info */}
         <Card>
           <CardContent>
