@@ -247,7 +247,7 @@ async def trigger_automation_step(
         
         # 映射step_key到Celery任务（优先级高于数据库中的配置）
         task_mapping = {
-            "sync_external_orders": "app.tasks.shopify_tasks.sync_shopify_orders_1min_task",
+            "sync_external_orders": "sync_shopify_orders_1min",  # 使用装饰器中定义的 name
             "sync_to_core_orders": "app.tasks.order_automation_tasks.sync_shopify_orders_to_core",
             "create_scm_orders": "app.tasks.order_automation_tasks.process_new_orders_to_scm",  # 使用通用任务
             "create_fulfillment_orders": "app.tasks.order_automation_tasks.process_new_orders_to_scm",  # 使用通用任务
