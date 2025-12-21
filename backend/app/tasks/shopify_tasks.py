@@ -446,7 +446,7 @@ async def _sync_orders_async(
     sync_recent_only: bool = True,
     task=None
 ) -> Dict[str, Any]:
-    """异步同步订单的核心逻辑"""
+    """异步同步订单到 shopify_orders 表（步骤1：从 Shopify API 到本地 shopify_orders 表）"""
     
     # 获取数据库会话
     from app.core.database import AsyncSessionLocal
@@ -456,8 +456,8 @@ async def _sync_orders_async(
             # 创建订单服务
             order_service = ShopifyOrderService(db)
             
-            # 同步订单
-            result = await order_service.sync_orders(
+            # 同步订单到 shopify_orders 表（不是直接到核心订单表）
+            result = await order_service.sync_orders_to_shopify_table(
                 tenant_id=tenant_id,
                 query_filter=query_filter,
                 max_orders=max_orders,

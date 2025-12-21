@@ -4,7 +4,7 @@ Order processing tasks
 
 import logging
 from typing import Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from celery import current_task
 from app.tasks.celery_app import celery_app
 from app.core.database import get_sync_db
@@ -242,6 +242,54 @@ def process_shopify_order(self, order_data: Dict[str, Any]):
                 state="PROGRESS",
                 meta={"current": 2, "total": 3, "status": "Converting order data"}
             )
+        
+        # 检查订单创建时间，确保只处理一周以内的订单
+        created_at_str = order_data.get("created_at") or order_data.get("createdAt")
+        if created_at_str:
+            try:
+                # 解析创建时间
+                if isinstance(created_at_str, str):
+                    # 处理 ISO 格式时间字符串
+                    if created_at_str.endswith('Z'):
+                        created_at_str = created_at_str.replace('Z', '+00:00')
+                    created_at = datetime.fromisoformat(created_at_str)
+                else:
+                    created_at = created_at_str
+                
+                # 确保有时区信息
+                if created_at.tzinfo is None:
+                    created_at = created_at.replace(tzinfo=timezone.utc)
+                
+                # 计算一周前的时间
+                one_week_ago = datetime.now(timezone.utc) - timedelta(days=7)
+                
+                # 如果订单创建时间早于一周前，跳过处理
+                if created_at < one_week_ago:
+                    logger.warning(
+                        f"⏭️ 跳过古老订单（超过一周）: order_id={order_id}, "
+                        f"created_at={created_at.isoformat()}, "
+                        f"one_week_ago={one_week_ago.isoformat()}"
+                    )
+                    return {
+                        "status": "skipped",
+                        "message": f"Order is older than 7 days (created_at: {created_at.isoformat()})",
+                        "order_id": order_id
+                    }
+                
+                logger.info(
+                    f"✅ 订单在时间范围内: order_id={order_id}, "
+                    f"created_at={created_at.isoformat()}"
+                )
+            except Exception as e:
+                logger.warning(
+                    f"⚠️ 无法解析订单创建时间，继续处理: order_id={order_id}, error={e}"
+                )
+                # 如果无法解析时间，继续处理（可能是数据格式问题）
+        else:
+            logger.warning(
+                f"⚠️ 订单数据中没有创建时间字段，继续处理: order_id={order_id}"
+            )
+            # 如果没有创建时间字段，继续处理（可能是旧格式的 webhook）
         
         # Convert webhook order data to ShopifyOrder format
         order_dict = _convert_webhook_order_to_shopify_order(order_data)

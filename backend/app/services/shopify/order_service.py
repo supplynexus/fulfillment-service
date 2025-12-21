@@ -180,24 +180,30 @@ class ShopifyOrderService:
         )
 
     async def _get_smart_sync_timestamp(
-        self, tenant_id: int, buffer_minutes: int = 1440
+        self, tenant_id: int, buffer_minutes: int = 1440, max_days: int = 7
     ) -> datetime:
         """
         获取智能同步时间戳，防止漏单
         
-        注意：buffer_minutes 默认设置为 1440 分钟（24小时/1天），以应对：
-        - 时区差异问题
-        - 系统时间不同步
-        - 订单创建时间延迟
-        - 跨天订单同步
+        注意：
+        - buffer_minutes 默认设置为 1440 分钟（24小时/1天），以应对：
+          * 时区差异问题
+          * 系统时间不同步
+          * 订单创建时间延迟
+          * 跨天订单同步
+        - max_days 默认设置为 7 天（一周），确保只同步一周以内的订单
 
         策略：
         1. 优先使用外部系统的 last_sync_at
         2. 如果没有，使用数据库中该租户最新订单的 updated_at
         3. 如果都没有，使用当前时间减去 buffer_minutes
         4. 为了防漏单，将时间戳往前推 buffer_minutes 分钟
+        5. 无论使用哪种策略，最终时间戳不能早于 max_days 天前（确保只同步一周以内的订单）
         """
         try:
+            # 计算最大允许的时间戳（一周前）
+            max_allowed_time = datetime.now(timezone.utc) - timedelta(days=max_days)
+            
             # 1. 获取外部系统的最后同步时间
             result = await self.db.execute(
                 select(ExternalSystem.last_sync_at).where(
@@ -214,9 +220,17 @@ class ShopifyOrderService:
                 if external_sync_time.tzinfo is None:
                     external_sync_time = external_sync_time.replace(tzinfo=timezone.utc)
                 sync_time = external_sync_time - timedelta(minutes=buffer_minutes)
-                logger.info(
-                    f"使用外部系统同步时间: {external_sync_time} -> {sync_time} (缓冲: {buffer_minutes}分钟)"
-                )
+                
+                # 确保不超过最大时间限制（一周）
+                if sync_time < max_allowed_time:
+                    sync_time = max_allowed_time
+                    logger.info(
+                        f"使用外部系统同步时间，但被限制在一周内: {external_sync_time} -> {sync_time} (最大限制: {max_days}天)"
+                    )
+                else:
+                    logger.info(
+                        f"使用外部系统同步时间: {external_sync_time} -> {sync_time} (缓冲: {buffer_minutes}分钟)"
+                    )
                 return sync_time
 
             # 2. 获取数据库中该租户最新订单的更新时间
@@ -234,23 +248,41 @@ class ShopifyOrderService:
                 if latest_order_time.tzinfo is None:
                     latest_order_time = latest_order_time.replace(tzinfo=timezone.utc)
                 sync_time = latest_order_time - timedelta(minutes=buffer_minutes)
-                logger.info(
-                    f"使用最新订单时间: {latest_order_time} -> {sync_time} (缓冲: {buffer_minutes}分钟)"
-                )
+                
+                # 确保不超过最大时间限制（一周）
+                if sync_time < max_allowed_time:
+                    sync_time = max_allowed_time
+                    logger.info(
+                        f"使用最新订单时间，但被限制在一周内: {latest_order_time} -> {sync_time} (最大限制: {max_days}天)"
+                    )
+                else:
+                    logger.info(
+                        f"使用最新订单时间: {latest_order_time} -> {sync_time} (缓冲: {buffer_minutes}分钟)"
+                    )
                 return sync_time
 
-            # 3. 默认使用当前时间减去 buffer_minutes
+            # 3. 默认使用当前时间减去 buffer_minutes，但不超过一周
             # 使用 UTC 时间并确保有时区信息
             sync_time = datetime.now(timezone.utc) - timedelta(minutes=buffer_minutes)
-            logger.info(
-                f"使用默认时间: {sync_time} (缓冲: {buffer_minutes}分钟)"
-            )
+            
+            # 确保不超过最大时间限制（一周）
+            if sync_time < max_allowed_time:
+                sync_time = max_allowed_time
+                logger.info(
+                    f"使用默认时间，但被限制在一周内: {sync_time} (最大限制: {max_days}天)"
+                )
+            else:
+                logger.info(
+                    f"使用默认时间: {sync_time} (缓冲: {buffer_minutes}分钟)"
+                )
             return sync_time
 
         except Exception as e:
             logger.error(f"获取智能同步时间戳失败: {e}")
-            # 出错时使用保守的时间（24小时前），确保不会漏单
-            return datetime.now(timezone.utc) - timedelta(hours=24)
+            # 出错时使用保守的时间（一周前），确保只同步一周以内的订单
+            max_allowed_time = datetime.now(timezone.utc) - timedelta(days=max_days)
+            logger.info(f"出错时使用最大限制时间: {max_allowed_time} (最大限制: {max_days}天)")
+            return max_allowed_time
 
     async def sync_orders(
         self,
@@ -302,8 +334,9 @@ class ShopifyOrderService:
             if sync_recent_only:
                 # 使用智能时间戳，防止漏单
                 # 默认缓冲 1440 分钟（24小时/1天），以应对时区差异和系统时间不同步
+                # 最大限制 7 天（一周），确保只同步一周以内的订单
                 since_time = await self._get_smart_sync_timestamp(
-                    tenant_id, buffer_minutes=1440
+                    tenant_id, buffer_minutes=1440, max_days=7
                 )
                 # 确保时间戳有时区信息（Shopify API 需要 ISO 格式）
                 if since_time.tzinfo is None:
@@ -320,7 +353,7 @@ class ShopifyOrderService:
                     query_filter = time_filter
 
                 logger.info(f"智能同步时间戳: {since_time_iso}, 查询条件: {query_filter}")
-                logger.info(f"⏰ 同步时间范围: 从 {since_time_iso} 到现在 (缓冲: 1440分钟/1天)")
+                logger.info(f"⏰ 同步时间范围: 从 {since_time_iso} 到现在 (缓冲: 1440分钟/1天, 最大限制: 7天)")
 
             logger.info(
                 f"开始同步 Shopify 订单 (tenant_id: {tenant_id}, filter: {query_filter})"
@@ -701,8 +734,10 @@ class ShopifyOrderService:
             # 设置查询过滤条件
             if sync_recent_only:
                 # 使用智能时间戳，防止漏单
+                # 默认缓冲 1440 分钟（24小时/1天），以应对时区差异和系统时间不同步
+                # 最大限制 7 天（一周），确保只同步一周以内的订单
                 since_time = await self._get_smart_sync_timestamp(
-                    tenant_id, buffer_minutes=1440
+                    tenant_id, buffer_minutes=1440, max_days=7
                 )
                 if since_time.tzinfo is None:
                     since_time = since_time.replace(tzinfo=timezone.utc)
@@ -715,6 +750,7 @@ class ShopifyOrderService:
                     query_filter = time_filter
 
                 logger.info(f"智能同步时间戳: {since_time_iso}, 查询条件: {query_filter}")
+                logger.info(f"⏰ 同步时间范围: 从 {since_time_iso} 到现在 (缓冲: 1440分钟/1天, 最大限制: 7天)")
 
             logger.info(
                 f"开始同步 Shopify 订单到 shopify_orders 表 (tenant_id: {tenant_id}, filter: {query_filter})"

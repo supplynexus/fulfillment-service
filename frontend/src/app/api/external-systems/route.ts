@@ -40,9 +40,36 @@ export async function GET(request: NextRequest) {
     const systemType = searchParams.get('system_type')?.toUpperCase();
     const activeOnly = searchParams.get('active_only') !== 'false';
 
+    // Build query string for signature (must be included in signature)
+    const queryParams = new URLSearchParams();
+    if (systemType) queryParams.append('system_type', systemType);
+    if (!activeOnly) queryParams.append('active_only', 'false');
+
+    // 对于 GET 请求，签名字符串中的 body 应该是空字符串
+    const bodyString = '';
     const timestamp = Math.floor(Date.now() / 1000);
     const nonce = Math.random().toString(36).substring(2, 15);
-    const signatureString = `GET/api/v1/external-systems/${timestamp}${nonce}${tenantName}`;
+
+    // 构建签名字符串 - 必须包含查询参数以匹配后端签名验证逻辑
+    // 注意：后端路由定义为 @router.get("/")，所以路径应该带尾随斜杠
+    const queryString = queryParams.toString();
+    const backendPath = queryString
+      ? `/api/v1/external-systems/?${queryString}`
+      : `/api/v1/external-systems/`;
+    const signatureString = `GET${backendPath}${timestamp}${nonce}${tenantName}${bodyString}`;
+
+    logger.info('🔍 前端签名生成调试信息', {
+      method: 'GET',
+      path: backendPath,
+      queryString,
+      timestamp,
+      nonce,
+      tenantName,
+      bodyString,
+      bodyStringLength: bodyString.length,
+      signatureString,
+      signatureStringLength: signatureString.length,
+    });
 
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
 
@@ -54,19 +81,16 @@ export async function GET(request: NextRequest) {
       tenantName
     );
 
-    logger.info('Backend signature generated', {
+    logger.info('🔍 前端签名生成完成', {
       signatureLength: signature.length,
+      signature: signature.substring(0, 50) + '...',
       tenantName,
       systemType,
       activeOnly,
     });
 
-    // Build query string
-    const queryParams = new URLSearchParams();
-    if (systemType) queryParams.append('system_type', systemType);
-    if (!activeOnly) queryParams.append('active_only', 'false');
-
-    const backendUrl = `${process.env.BACKEND_API_URL}/api/v1/external-systems${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+    // 构建后端请求 URL - backendPath 已经包含查询参数
+    const backendUrl = `${process.env.BACKEND_API_URL}${backendPath}`;
 
     const backendResponse = await fetch(backendUrl, {
       method: 'GET',

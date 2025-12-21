@@ -244,15 +244,20 @@ async def trigger_automation_step(
         
         # 根据step_key触发对应的Celery任务
         task_params = trigger_request.params if trigger_request else {}
+        # 手动触发和自动触发都一样，默认不忽略标志（处理过就不再处理）
+        ignore_flags = trigger_request.ignore_flags if trigger_request and trigger_request.ignore_flags is not None else False
         
         # 映射step_key到Celery任务（优先级高于数据库中的配置）
         task_mapping = {
             "sync_external_orders": "sync_shopify_orders_1min",  # 使用装饰器中定义的 name
             "sync_to_core_orders": "app.tasks.order_automation_tasks.sync_shopify_orders_to_core",
-            "create_scm_orders": "app.tasks.order_automation_tasks.process_new_orders_to_scm",  # 使用通用任务
-            "create_fulfillment_orders": "app.tasks.order_automation_tasks.process_new_orders_to_scm",  # 使用通用任务
+            "create_scm_orders": "app.tasks.order_automation_tasks.process_new_orders_to_scm",
+            "create_printify_orders_from_scm": "app.tasks.order_automation_tasks.create_printify_orders_from_scm",
+            "sync_printify_orders_to_local": "app.tasks.order_automation_tasks.sync_printify_orders_to_local",
             "sync_fulfillment_status": "app.tasks.order_automation_tasks.sync_printify_orders_status",
             "sync_to_external_fulfillment": "app.tasks.order_automation_tasks.sync_scm_to_shopify_fulfillment",
+            "sync_shopify_fulfillment_to_local": "app.tasks.order_automation_tasks.sync_shopify_fulfillment_to_local",
+            "sync_shopify_local_fulfillment_to_core": "app.tasks.order_automation_tasks.sync_shopify_local_fulfillment_to_core",
         }
         
         # 优先使用代码中的映射，如果没有则使用数据库中的配置
@@ -269,7 +274,8 @@ async def trigger_automation_step(
         # 构建任务参数
         task_kwargs = {
             "tenant_id": tenant.id,
-            **task_params
+            "ignore_flags": ignore_flags,  # 默认False，处理过就不再处理
+            **{k: v for k, v in task_params.items() if k != "ignore_flags"}
         }
         
         # 发送任务到队列

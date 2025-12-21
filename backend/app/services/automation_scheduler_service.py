@@ -130,8 +130,11 @@ def get_dynamic_beat_schedule(db: Session) -> Dict[str, Any]:
             # 按 step_key 的任务名称映射（优先级最高）
             step_key_task_mapping = {
                 "create_scm_orders": "app.tasks.order_automation_tasks.process_new_orders_to_scm",
-                "create_fulfillment_orders": "app.tasks.order_automation_tasks.process_new_orders_to_scm",
+                "create_printify_orders_from_scm": "app.tasks.order_automation_tasks.create_printify_orders_from_scm",
                 "sync_external_orders": "sync_shopify_orders_1min",
+                "sync_printify_orders_to_local": "app.tasks.order_automation_tasks.sync_printify_orders_to_local",
+                "sync_shopify_fulfillment_to_local": "app.tasks.order_automation_tasks.sync_shopify_fulfillment_to_local",
+                "sync_shopify_local_fulfillment_to_core": "app.tasks.order_automation_tasks.sync_shopify_local_fulfillment_to_core",
             }
             
             # 优先使用 step_key 映射，然后使用通用映射，最后使用数据库中的配置
@@ -204,8 +207,11 @@ def get_dynamic_beat_schedule_for_tenant(
         
         step_key_task_mapping = {
             "create_scm_orders": "app.tasks.order_automation_tasks.process_new_orders_to_scm",
-            "create_fulfillment_orders": "app.tasks.order_automation_tasks.process_new_orders_to_scm",
+            "create_printify_orders_from_scm": "app.tasks.order_automation_tasks.create_printify_orders_from_scm",
             "sync_external_orders": "sync_shopify_orders_1min",
+            "sync_printify_orders_to_local": "app.tasks.order_automation_tasks.sync_printify_orders_to_local",
+            "sync_shopify_fulfillment_to_local": "app.tasks.order_automation_tasks.sync_shopify_fulfillment_to_local",
+            "sync_shopify_local_fulfillment_to_core": "app.tasks.order_automation_tasks.sync_shopify_local_fulfillment_to_core",
         }
         
         for config in enabled_configs:

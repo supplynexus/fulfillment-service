@@ -62,6 +62,7 @@ class OrderResponse(BaseModel):
     address_last_validated_at: Optional[datetime] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
+    scm_orders_count: int = 0  # 关联的 SCM 订单数量
 
     class Config:
         from_attributes = True

@@ -114,6 +114,7 @@ class AutomationStepWithConfigResponse(AutomationStepResponse):
 class AutomationTriggerRequest(BaseModel):
     """手动触发自动化步骤请求"""
     params: Optional[Dict[str, Any]] = Field(default_factory=dict, description="任务参数")
+    ignore_flags: Optional[bool] = Field(False, description="是否忽略处理标志，默认False表示处理过就不再处理。如需重新处理，可在画面上重置标志后再触发")
 
 
 class AutomationTriggerResponse(BaseModel):

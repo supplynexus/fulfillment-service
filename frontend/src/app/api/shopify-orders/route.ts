@@ -132,8 +132,12 @@ export async function GET(request: NextRequest) {
     // 生成后端签名
     const timestamp = Math.floor(Date.now() / 1000);
     const nonce = Math.random().toString(36).substring(2, 15);
-    const backendPath = `/api/v1/shopify-orders/`;
-    const signatureString = `GET${backendPath}${timestamp}${nonce}${tenantName}`;
+    // 构建包含查询参数的完整路径，以匹配后端签名验证逻辑
+    const backendPath = queryString 
+      ? `/api/v1/shopify-orders/?${queryString}`
+      : `/api/v1/shopify-orders/`;
+    const bodyString = '';
+    const signatureString = `GET${backendPath}${timestamp}${nonce}${tenantName}${bodyString}`;
 
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
     const signature = generateBackendSignature(

@@ -40,6 +40,7 @@ export interface Order {
   created_at: string;
   updated_at?: string;
   customer_id?: number;
+  scm_orders_count?: number; // 关联的 SCM 订单数量
   raw_data?: {
     fulfillments?: any[];
     tracking_number?: string;

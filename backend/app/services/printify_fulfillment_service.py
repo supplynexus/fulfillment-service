@@ -271,12 +271,62 @@ class PrintifyFulfillmentService:
             logger.info(f"🔍 调用 Printify API: endpoint={endpoint}, shop_id={shop_id}")
             logger.info(f"🔍 发货订单数据: {fulfillment_data}")
             
-            result = await self._call_printify_api(
-                credentials=printify_credentials,
-                endpoint=endpoint,
-                method="POST",
-                data=fulfillment_data
-            )
+            try:
+                result = await self._call_printify_api(
+                    credentials=printify_credentials,
+                    endpoint=endpoint,
+                    method="POST",
+                    data=fulfillment_data
+                )
+            except Exception as e:
+                error_str = str(e)
+                # 检查是否是订单已存在的错误
+                if "already exists" in error_str.lower() or "unique_id" in error_str.lower():
+                    logger.warning(
+                        f"⚠️ Printify 订单已存在: external_id={fulfillment_data.get('external_id')}, 尝试从数据库查找"
+                    )
+                    # 尝试从数据库查找已存在的订单
+                    from app.models.printify_order import PrintifyOrder
+                    from sqlalchemy import select, and_
+                    
+                    existing_order_result = await db.execute(
+                        select(PrintifyOrder).where(
+                            and_(
+                                PrintifyOrder.scm_order_id == scm_order.id,
+                                PrintifyOrder.tenant_id == tenant.id
+                            )
+                        )
+                    )
+                    existing_order = existing_order_result.scalar_one_or_none()
+                    
+                    if existing_order:
+                        logger.info(
+                            f"✅ 找到已存在的 Printify 订单: external_order_id={existing_order.external_order_id}"
+                        )
+                        # 返回已存在的订单信息
+                        return {
+                            "fulfillment_id": existing_order.external_order_id,
+                            "tracking_number": existing_order.tracking_number,
+                            "tracking_url": existing_order.tracking_url,
+                            "carrier": existing_order.carrier,
+                            "status": existing_order.status,
+                            "printify_order_id": existing_order.external_order_id
+                        }
+                    else:
+                        # 订单在 Printify 中存在但不在本地数据库，需要同步
+                        logger.error(
+                            f"❌ Printify 订单已存在但未在本地数据库中找到: external_id={fulfillment_data.get('external_id')}"
+                        )
+                        logger.error(
+                            f"   建议：运行同步任务从 Printify API 同步订单到本地数据库"
+                        )
+                        raise Exception(
+                            f"Printify 订单已存在 (external_id={fulfillment_data.get('external_id')})，但未在本地数据库中找到。"
+                            f"请运行同步任务或手动同步订单。"
+                        )
+                else:
+                    # 其他错误，直接抛出
+                    raise
             
             logger.info(f"✅ Printify 发货订单创建成功: fulfillment_id={result.get('id')}")
             
@@ -387,9 +437,38 @@ class PrintifyFulfillmentService:
     async def _build_fulfillment_data(self, scm_order, db, tenant) -> Dict[str, Any]:
         """构建发货订单数据"""
         try:
+            # 检查是否已经存在 Printify 订单（通过 external_id）
+            # 如果已存在，使用现有的 external_id；否则使用更唯一的标识
+            from app.models.printify_order import PrintifyOrder
+            from sqlalchemy import select, and_
+            
+            # 先尝试使用 scm_order.id 查找
+            existing_order_result = await db.execute(
+                select(PrintifyOrder).where(
+                    and_(
+                        PrintifyOrder.scm_order_id == scm_order.id,
+                        PrintifyOrder.tenant_id == tenant.id
+                    )
+                )
+            )
+            existing_order = existing_order_result.scalar_one_or_none()
+            
+            if existing_order:
+                # 如果已存在，使用现有的 external_order_id 作为 external_id
+                external_id = existing_order.external_order_id
+                logger.info(f"ℹ️ 使用已存在的 Printify 订单 external_id: {external_id}")
+            else:
+                # 如果不存在，使用 SCM 订单编号或 ID 作为 external_id
+                # 优先使用 scm_order_number，如果没有则使用 scm_{id}
+                if scm_order.scm_order_number:
+                    external_id = scm_order.scm_order_number
+                else:
+                    external_id = f"scm_{scm_order.id}"
+                logger.info(f"ℹ️ 使用新的 external_id: {external_id}")
+            
             # 从 SCM 订单构建 Printify 订单数据
             fulfillment_data = {
-                "external_id": f"scm_{scm_order.id}",
+                "external_id": external_id,
                 "line_items": [],
                 "shipping_method": 1,  # 标准发货
                 "send_shipping_notification": True,
@@ -403,7 +482,7 @@ class PrintifyFulfillmentService:
                     "region": scm_order.shipping_address.get("province", ""),
                     "city": scm_order.shipping_address.get("city", ""),
                     "address1": scm_order.shipping_address.get("address1", ""),
-                    "address2": scm_order.shipping_address.get("address2", ""),
+                    "address2": scm_order.shipping_address.get("address2") or "",  # 确保 None 转换为空字符串
                     "zip": scm_order.shipping_address.get("zip", "")
                 }
             }
@@ -848,15 +927,113 @@ class PrintifyFulfillmentService:
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout)) as session:
                 if method.upper() == "POST":
                     async with session.post(url, headers=headers, json=data) as response:
-                        response_data = await response.json()
-                        if response.status != 200:
-                            raise Exception(f"Printify API error: {response.status} - {response_data}")
+                        # 检查 Content-Type
+                        content_type = response.headers.get('Content-Type', '').lower()
+                        
+                        # 如果返回的是 HTML，说明可能是错误页面
+                        if 'text/html' in content_type:
+                            response_text = await response.text()
+                            logger.error(f"❌ Printify API 返回 HTML 错误页面: status={response.status}, url={url}")
+                            logger.error(f"   响应内容（前500字符）: {response_text[:500]}")
+                            raise Exception(f"Printify API 返回错误页面 (status={response.status}): 可能是认证失败或端点不存在")
+                        
+                        # 尝试解析 JSON
+                        try:
+                            response_data = await response.json()
+                        except Exception as json_error:
+                            # 如果 JSON 解析失败，读取文本内容
+                            response_text = await response.text()
+                            logger.error(f"❌ Printify API 响应 JSON 解析失败: {str(json_error)}")
+                            logger.error(f"   状态码: {response.status}")
+                            logger.error(f"   Content-Type: {content_type}")
+                            logger.error(f"   响应内容（前500字符）: {response_text[:500]}")
+                            raise Exception(f"Printify API 响应解析失败 (status={response.status}): {str(json_error)}")
+                        
+                        # 检查状态码
+                        if response.status not in [200, 201]:
+                            error_msg = response_data.get('message', 'Unknown error')
+                            error_code = response_data.get('code', response.status)
+                            errors = response_data.get('errors', {})
+                            
+                            # 记录详细的错误信息
+                            logger.error(f"❌ Printify API 错误: status={response.status}, code={error_code}, message={error_msg}")
+                            if errors:
+                                logger.error(f"   详细错误信息: {errors}")
+                                # 构建更详细的错误消息
+                                error_details = []
+                                if isinstance(errors, dict):
+                                    for key, value in errors.items():
+                                        if isinstance(value, dict):
+                                            error_details.append(f"{key}: {value.get('reason', value.get('message', str(value)))}")
+                                        else:
+                                            error_details.append(f"{key}: {value}")
+                                else:
+                                    error_details.append(str(errors))
+                                
+                                if error_details:
+                                    detailed_msg = f"{error_msg}. 详细信息: {'; '.join(error_details)}"
+                                else:
+                                    detailed_msg = f"{error_msg}. 错误详情: {errors}"
+                            else:
+                                detailed_msg = error_msg
+                            
+                            raise Exception(f"Printify API error (status={response.status}, code={error_code}): {detailed_msg}")
+                        
                         return response_data
                 else:
                     async with session.get(url, headers=headers) as response:
-                        response_data = await response.json()
-                        if response.status != 200:
-                            raise Exception(f"Printify API error: {response.status} - {response_data}")
+                        # 检查 Content-Type
+                        content_type = response.headers.get('Content-Type', '').lower()
+                        
+                        # 如果返回的是 HTML，说明可能是错误页面
+                        if 'text/html' in content_type:
+                            response_text = await response.text()
+                            logger.error(f"❌ Printify API 返回 HTML 错误页面: status={response.status}, url={url}")
+                            logger.error(f"   响应内容（前500字符）: {response_text[:500]}")
+                            raise Exception(f"Printify API 返回错误页面 (status={response.status}): 可能是认证失败或端点不存在")
+                        
+                        # 尝试解析 JSON
+                        try:
+                            response_data = await response.json()
+                        except Exception as json_error:
+                            # 如果 JSON 解析失败，读取文本内容
+                            response_text = await response.text()
+                            logger.error(f"❌ Printify API 响应 JSON 解析失败: {str(json_error)}")
+                            logger.error(f"   状态码: {response.status}")
+                            logger.error(f"   Content-Type: {content_type}")
+                            logger.error(f"   响应内容（前500字符）: {response_text[:500]}")
+                            raise Exception(f"Printify API 响应解析失败 (status={response.status}): {str(json_error)}")
+                        
+                        # 检查状态码
+                        if response.status not in [200, 201]:
+                            error_msg = response_data.get('message', 'Unknown error')
+                            error_code = response_data.get('code', response.status)
+                            errors = response_data.get('errors', {})
+                            
+                            # 记录详细的错误信息
+                            logger.error(f"❌ Printify API 错误: status={response.status}, code={error_code}, message={error_msg}")
+                            if errors:
+                                logger.error(f"   详细错误信息: {errors}")
+                                # 构建更详细的错误消息
+                                error_details = []
+                                if isinstance(errors, dict):
+                                    for key, value in errors.items():
+                                        if isinstance(value, dict):
+                                            error_details.append(f"{key}: {value.get('reason', value.get('message', str(value)))}")
+                                        else:
+                                            error_details.append(f"{key}: {value}")
+                                else:
+                                    error_details.append(str(errors))
+                                
+                                if error_details:
+                                    detailed_msg = f"{error_msg}. 详细信息: {'; '.join(error_details)}"
+                                else:
+                                    detailed_msg = f"{error_msg}. 错误详情: {errors}"
+                            else:
+                                detailed_msg = error_msg
+                            
+                            raise Exception(f"Printify API error (status={response.status}, code={error_code}): {detailed_msg}")
+                        
                         return response_data
                         
         except Exception as e:

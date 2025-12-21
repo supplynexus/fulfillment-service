@@ -4,15 +4,20 @@ import { jwtUtilsServer } from '@/lib/jwt-utils-server';
 import { keyLoader } from '@/lib/key-loader';
 import { generateBackendSignature } from '@/lib/signature';
 
-const logger = createLogger('api.orders');
+const logger = createLogger('api.scm-orders.order');
 
-export async function GET(request: NextRequest) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ orderId: string }> }
+) {
   const startTime = Date.now();
+  const { orderId } = await params;
 
   try {
     logger.requestStart(request.method, request.url, {
       userAgent: request.headers.get('user-agent'),
       contentType: request.headers.get('content-type'),
+      orderId,
     });
 
     // 验证前端 JWT token
@@ -36,70 +41,28 @@ export async function GET(request: NextRequest) {
 
     const { tenant_name: tenantName, sub: userId } = decodedToken;
     logger.info('Frontend JWT verified successfully', {
-      userId,
       tenantName,
+      userId,
       tokenType: 'access',
     });
 
-    // 获取查询参数
-    const { searchParams } = new URL(request.url);
-    const page = searchParams.get('page') || '1';
-    const limit = searchParams.get('limit') || '10';
-    const status = searchParams.get('status');
-    const search = searchParams.get('search');
-    const sort_by = searchParams.get('sort_by');
-    const sort_order = searchParams.get('sort_order');
-
-    // 构建后端请求参数 - 后端接收的是 page 和 limit，不是 skip
-    const backendParams = new URLSearchParams({
-      page,
-      limit,
-    });
-
-    if (status) {
-      backendParams.append('status', status);
-    }
-    if (search) {
-      backendParams.append('search', search);
-    }
-    if (sort_by) {
-      backendParams.append('sort_by', sort_by);
-    }
-    if (sort_order) {
-      backendParams.append('sort_order', sort_order);
-    }
-
-    // 构建后端请求体（用于签名，但GET请求不发送body）
-    // const requestBody = {
-    //   page: parseInt(page),
-    //   limit: parseInt(limit),
-    //   search: search || undefined,
-    // };
-
-    // 对于 GET 请求，签名字符串中的 body 应该是空字符串
-    const bodyString = ''; // GET 请求的 body 为空
+    // 构建后端请求路径 - 后端 API 使用整数 order_id，但我们需要先解码 hashid
+    // 实际上，后端应该支持 hashid，但为了兼容，我们先尝试直接使用 hashid
+    // 如果后端不支持，我们需要在前端解码
+    const backendPath = `/api/v1/scm-orders/order/${orderId}`;
+    const bodyString = '';
     const timestamp = Math.floor(Date.now() / 1000);
     const nonce = Math.random().toString(36).substring(2, 15);
-
-    // 构建签名字符串 - 必须包含查询参数以匹配后端签名验证逻辑
-    const queryString = backendParams.toString();
-    const backendPath = queryString
-      ? `/api/v1/orders/?${queryString}`
-      : `/api/v1/orders/`;
     const signatureString = `GET${backendPath}${timestamp}${nonce}${tenantName}${bodyString}`;
 
-    // 🔍 调试：打印签名生成信息
     logger.info('🔍 前端签名生成调试信息', {
       method: 'GET',
       path: backendPath,
-      queryString,
       timestamp,
       nonce,
       tenantName,
       bodyString,
-      bodyStringLength: bodyString.length,
       signatureString,
-      signatureStringLength: signatureString.length,
     });
 
     // 获取租户私钥
@@ -114,14 +77,8 @@ export async function GET(request: NextRequest) {
       tenantName
     );
 
-    logger.info('🔍 前端签名生成完成', {
-      signatureLength: signature.length,
-      signature: signature.substring(0, 50) + '...', // 只显示前50个字符
-      tenantName,
-    });
-
-    // 构建后端请求 URL - backendPath 已经包含查询参数
-    const backendUrl = `${process.env.BACKEND_API_URL}${backendPath}`;
+    // 构建后端请求 URL
+    const backendUrl = `${process.env.BACKEND_API_URL || 'http://localhost:8000'}${backendPath}`;
 
     logger.info('Forwarding request to backend', {
       backendEndpoint: backendUrl,
@@ -133,10 +90,10 @@ export async function GET(request: NextRequest) {
       headers: {
         'Content-Type': 'application/json',
         'X-Tenant-Name': tenantName,
+        'X-User-ID': userId,
         'X-Timestamp': timestamp.toString(),
         'X-Nonce': nonce,
         'X-Signature': signature,
-        'X-User-ID': userId.toString(),
       },
     });
 
@@ -161,22 +118,13 @@ export async function GET(request: NextRequest) {
     }
 
     const data = await backendResponse.json();
-    logger.info('🔍 前端API接收到的后端数据:', {
-      orders: data.orders?.length || 0,
-      total: data.total,
-      total_pages: data.total_pages,
-      current_page: data.current_page,
-      limit: data.limit,
-      fullData: data,
-    });
-
     logger.info('Request completed', {
       method: request.method,
       url: request.url,
       statusCode: 200,
       duration: `${responseTime}ms`,
       tenantName,
-      hasData: !!data,
+      scmOrdersCount: Array.isArray(data) ? data.length : 0,
     });
 
     return NextResponse.json(data);

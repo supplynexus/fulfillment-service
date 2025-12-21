@@ -51,7 +51,12 @@ export async function GET(
     const timestamp = Math.floor(Date.now() / 1000);
     const nonce = Math.random().toString(36).substring(2, 15);
     const bodyString = '';
-    const backendPath = `/api/v1/external-systems/shopify/${external_system_hashid}/orders`;
+    // Use searchParams.toString() to get query string in the same format as backend receives
+    const queryString = searchParams.toString();
+    // Build full path with query parameters to match backend signature verification
+    const backendPath = queryString
+      ? `/api/v1/external-systems/shopify/${external_system_hashid}/orders?${queryString}`
+      : `/api/v1/external-systems/shopify/${external_system_hashid}/orders`;
     const signatureString = `GET${backendPath}${timestamp}${nonce}${tenantName}${bodyString}`;
 
     logger.info('🔍 前端签名生成调试信息', {
@@ -81,7 +86,8 @@ export async function GET(
       tenantName,
     });
 
-    const backendUrl = `${process.env.BACKEND_API_URL || 'http://localhost:8000'}${backendPath}?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}&sort_by=${sortBy}&sort_order=${sortOrder}&status=${status}&financial_status=${financialStatus}&fulfillment_status=${fulfillmentStatus}`;
+    // backendPath already includes query parameters, so use it directly
+    const backendUrl = `${process.env.BACKEND_API_URL || 'http://localhost:8000'}${backendPath}`;
 
     logger.info('Forwarding request to backend', { backendUrl });
 

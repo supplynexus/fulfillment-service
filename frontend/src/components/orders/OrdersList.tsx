@@ -28,6 +28,7 @@ import {
   DialogContent,
   DialogActions,
   Checkbox,
+  Collapse,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -38,6 +39,8 @@ import {
   ArrowUpward as ArrowUpwardIcon,
   ArrowDownward as ArrowDownwardIcon,
   Delete as DeleteIcon,
+  ExpandMore as ExpandMoreIcon,
+  ExpandLess as ExpandLessIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
 import { Order, OrderStatus } from '@/types/order';
@@ -121,6 +124,11 @@ export function OrdersList() {
     'created_at'
   );
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  
+  // SCM 订单展开/收起相关状态
+  const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
+  const [scmOrdersMap, setScmOrdersMap] = useState<Map<string, any[]>>(new Map());
+  const [loadingScmOrders, setLoadingScmOrders] = useState<Set<string>>(new Set());
 
   const fetchOrders = useCallback(async () => {
     try {
@@ -391,6 +399,81 @@ export function OrdersList() {
     });
   };
 
+  // 获取订单的 SCM 订单
+  const fetchScmOrders = useCallback(async (orderIdHashid: string) => {
+    // 如果已经加载过，直接返回
+    if (scmOrdersMap.has(orderIdHashid)) {
+      return;
+    }
+
+    try {
+      setLoadingScmOrders(prev => new Set(prev).add(orderIdHashid));
+      
+      // 调用后端 API 获取 SCM 订单
+      // 注意：后端 API 使用的是 order_id (整数)，但我们需要先解码 hashid
+      // 实际上，我们可以直接使用 hashid，让后端处理解码
+      const response = await frontendApi.get(`/api/scm-orders/order/${orderIdHashid}`);
+      
+      const scmOrders = response.data || [];
+      setScmOrdersMap(prev => {
+        const newMap = new Map(prev);
+        newMap.set(orderIdHashid, scmOrders);
+        return newMap;
+      });
+    } catch (err: any) {
+      console.error(`Failed to fetch SCM orders for order ${orderIdHashid}:`, err);
+      // 如果获取失败，设置为空数组（可能是没有 SCM 订单）
+      setScmOrdersMap(prev => {
+        const newMap = new Map(prev);
+        newMap.set(orderIdHashid, []);
+        return newMap;
+      });
+    } finally {
+      setLoadingScmOrders(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(orderIdHashid);
+        return newSet;
+      });
+    }
+  }, [scmOrdersMap]);
+
+  // 切换订单展开/收起
+  const handleToggleExpand = useCallback(async (orderIdHashid: string) => {
+    const isExpanded = expandedOrders.has(orderIdHashid);
+    
+    if (isExpanded) {
+      // 收起
+      setExpandedOrders(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(orderIdHashid);
+        return newSet;
+      });
+    } else {
+      // 展开 - 先加载 SCM 订单
+      setExpandedOrders(prev => new Set(prev).add(orderIdHashid));
+      await fetchScmOrders(orderIdHashid);
+    }
+  }, [expandedOrders, fetchScmOrders]);
+
+  // 检查订单是否有 SCM 订单
+  const hasScmOrders = useCallback((order: Order) => {
+    // 优先使用订单数据中的 scm_orders_count 字段（从后端 API 返回）
+    if (order.scm_orders_count !== undefined) {
+      return order.scm_orders_count > 0;
+    }
+    // 如果已经加载过，检查是否有数据
+    if (scmOrdersMap.has(order.id_hashid)) {
+      const scmOrders = scmOrdersMap.get(order.id_hashid);
+      return scmOrders && scmOrders.length > 0;
+    }
+    // 如果正在加载，显示箭头（允许查看）
+    if (loadingScmOrders.has(order.id_hashid)) {
+      return true;
+    }
+    // 如果从未加载过，默认不显示箭头（符合用户要求：如果没有就不显示箭头）
+    return false;
+  }, [scmOrdersMap, loadingScmOrders]);
+
   if (loading && orders.length === 0) {
     return (
       <Box
@@ -525,6 +608,7 @@ export function OrdersList() {
                       onChange={e => handleSelectAll(e.target.checked)}
                     />
                   </TableCell>
+                  <TableCell width={50}></TableCell>
                   <TableCell>订单ID</TableCell>
                   <TableCell>Shopify订单号</TableCell>
                   <TableCell>客户</TableCell>
@@ -554,114 +638,244 @@ export function OrdersList() {
               <TableBody>
                 {orders.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} align='center'>
+                    <TableCell colSpan={10} align='center'>
                       <Typography variant='body2' color='text.secondary'>
                         {searchTerm ? '没有找到匹配的订单' : '暂无订单数据'}
                       </Typography>
                     </TableCell>
                   </TableRow>
                 ) : (
-                  orders.map(order => (
-                    <TableRow key={order.id_hashid} hover>
-                      <TableCell padding='checkbox'>
-                        <Checkbox
-                          checked={selectedOrders.has(order.id_hashid)}
-                          onChange={e =>
-                            handleSelectOrder(order.id_hashid, e.target.checked)
-                          }
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant='body2' fontWeight='medium'>
-                          {order.order_number || order.id_hashid}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant='body2'>
-                          {order.external_order_name || order.external_order_id}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Box>
-                          <Typography variant='body2' fontWeight='medium'>
-                            {order.customer_name || '未知客户'}
-                          </Typography>
-                          <Typography variant='caption' color='text.secondary'>
-                            {order.customer_email}
-                          </Typography>
-                        </Box>
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant='body2' fontWeight='medium'>
-                          {formatCurrency(order.total_amount, order.currency)}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Chip
-                          label={order.status}
-                          color={getStatusColor(order.status) as any}
-                          size='small'
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Chip
-                          label={order.fulfillment_status || 'unfulfilled'}
-                          color={getFulfillmentStatusColor(
-                            order.fulfillment_status
-                          )}
-                          size='small'
-                        />
-                      </TableCell>
-                      <TableCell>
-                        {(() => {
-                          const {
-                            label,
-                            color,
-                            tooltip,
-                          } = getAddressValidationDisplay(
-                            order.address_validation_status,
-                            order.address_validation_reason_code
-                          );
-                          return (
-                            <Tooltip title={tooltip}>
-                              <Chip label={label} color={color as any} size='small' />
-                            </Tooltip>
-                          );
-                        })()}
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant='body2'>
-                          {formatDate(order.order_date)}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Box display='flex' gap={1}>
-                          <Tooltip title='查看详情'>
-                            <IconButton
+                  orders.map(order => {
+                    const isExpanded = expandedOrders.has(order.id_hashid);
+                    const scmOrders = scmOrdersMap.get(order.id_hashid) || [];
+                    const isLoadingScm = loadingScmOrders.has(order.id_hashid);
+                    // 检查是否有 SCM 订单（使用订单对象，可以访问 scm_orders_count）
+                    const hasScm = hasScmOrders(order);
+                    
+                    return (
+                      <React.Fragment key={order.id_hashid}>
+                        <TableRow hover>
+                          <TableCell padding='checkbox'>
+                            <Checkbox
+                              checked={selectedOrders.has(order.id_hashid)}
+                              onChange={e =>
+                                handleSelectOrder(order.id_hashid, e.target.checked)
+                              }
+                            />
+                          </TableCell>
+                          <TableCell>
+                            {hasScm && (
+                              <IconButton
+                                size='small'
+                                onClick={() => handleToggleExpand(order.id_hashid)}
+                                disabled={isLoadingScm}
+                              >
+                                {isLoadingScm ? (
+                                  <CircularProgress size={16} />
+                                ) : isExpanded ? (
+                                  <ExpandLessIcon />
+                                ) : (
+                                  <ExpandMoreIcon />
+                                )}
+                              </IconButton>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant='body2' fontWeight='medium'>
+                              {order.order_number || order.id_hashid}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant='body2'>
+                              {order.external_order_name || order.external_order_id}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Box>
+                              <Typography variant='body2' fontWeight='medium'>
+                                {order.customer_name || '未知客户'}
+                              </Typography>
+                              <Typography variant='caption' color='text.secondary'>
+                                {order.customer_email}
+                              </Typography>
+                            </Box>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant='body2' fontWeight='medium'>
+                              {formatCurrency(order.total_amount, order.currency)}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Chip
+                              label={order.status}
+                              color={getStatusColor(order.status) as any}
                               size='small'
-                              onClick={() => handleViewOrder(order.id_hashid)}
-                            >
-                              <ViewIcon />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title='删除订单'>
-                            <IconButton
-                              size='small'
-                              color='error'
-                              onClick={() => handleDeleteOrder(order.id_hashid)}
-                              disabled={deletingOrders.has(order.id_hashid)}
-                            >
-                              {deletingOrders.has(order.id_hashid) ? (
-                                <CircularProgress size={16} />
-                              ) : (
-                                <DeleteIcon />
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Chip
+                              label={order.fulfillment_status || 'unfulfilled'}
+                              color={getFulfillmentStatusColor(
+                                order.fulfillment_status
                               )}
-                            </IconButton>
-                          </Tooltip>
-                        </Box>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                              size='small'
+                            />
+                          </TableCell>
+                          <TableCell>
+                            {(() => {
+                              const {
+                                label,
+                                color,
+                                tooltip,
+                              } = getAddressValidationDisplay(
+                                order.address_validation_status,
+                                order.address_validation_reason_code
+                              );
+                              return (
+                                <Tooltip title={tooltip}>
+                                  <Chip label={label} color={color as any} size='small' />
+                                </Tooltip>
+                              );
+                            })()}
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant='body2'>
+                              {formatDate(order.order_date)}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Box display='flex' gap={1}>
+                              <Tooltip title='查看详情'>
+                                <IconButton
+                                  size='small'
+                                  onClick={() => handleViewOrder(order.id_hashid)}
+                                >
+                                  <ViewIcon />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title='删除订单'>
+                                <IconButton
+                                  size='small'
+                                  color='error'
+                                  onClick={() => handleDeleteOrder(order.id_hashid)}
+                                  disabled={deletingOrders.has(order.id_hashid)}
+                                >
+                                  {deletingOrders.has(order.id_hashid) ? (
+                                    <CircularProgress size={16} />
+                                  ) : (
+                                    <DeleteIcon />
+                                  )}
+                                </IconButton>
+                              </Tooltip>
+                            </Box>
+                          </TableCell>
+                        </TableRow>
+                        {/* SCM 订单展开行 */}
+                        <TableRow>
+                          <TableCell colSpan={12} style={{ paddingBottom: 0, paddingTop: 0, paddingLeft: 0, paddingRight: 0 }}>
+                            <Collapse in={isExpanded} timeout='auto' unmountOnExit>
+                              <Box sx={{ py: 1 }}>
+                                {isLoadingScm ? (
+                                  <Box display='flex' justifyContent='center' p={2}>
+                                    <CircularProgress size={24} />
+                                  </Box>
+                                ) : scmOrders.length === 0 ? (
+                                  <Typography variant='body2' color='text.secondary' align='center' p={2}>
+                                    该订单没有关联的 SCM 订单
+                                  </Typography>
+                                ) : (
+                                  <TableContainer component={Paper} variant='outlined' sx={{ backgroundColor: 'grey.50', borderRadius: 0 }}>
+                                    <Table size='small'>
+                                      <TableHead>
+                                        <TableRow sx={{ backgroundColor: 'grey.400' }}>
+                                          <TableCell>SCM订单编号</TableCell>
+                                          <TableCell>状态</TableCell>
+                                          <TableCell>履约状态</TableCell>
+                                          <TableCell>目标系统</TableCell>
+                                          <TableCell>客户</TableCell>
+                                          <TableCell>创建时间</TableCell>
+                                          <TableCell>操作</TableCell>
+                                        </TableRow>
+                                      </TableHead>
+                                      <TableBody>
+                                        {scmOrders.map((scmOrder: any) => (
+                                          <TableRow key={scmOrder.id_hashid} hover sx={{ backgroundColor: 'grey.300' }}>
+                                            <TableCell>
+                                              <Typography variant='body2' fontWeight='medium'>
+                                                {scmOrder.scm_order_number || scmOrder.id_hashid}
+                                              </Typography>
+                                            </TableCell>
+                                            <TableCell>
+                                              <Chip
+                                                label={scmOrder.status || 'N/A'}
+                                                size='small'
+                                                color={
+                                                  scmOrder.status === 'fulfilled'
+                                                    ? 'success'
+                                                    : scmOrder.status === 'failed'
+                                                    ? 'error'
+                                                    : 'default'
+                                                }
+                                              />
+                                            </TableCell>
+                                            <TableCell>
+                                              <Chip
+                                                label={scmOrder.fulfillment_status || 'unfulfilled'}
+                                                size='small'
+                                                color={
+                                                  scmOrder.fulfillment_status === 'fulfilled'
+                                                    ? 'success'
+                                                    : 'default'
+                                                }
+                                              />
+                                            </TableCell>
+                                            <TableCell>
+                                              <Typography variant='body2'>
+                                                {scmOrder.routing_metadata?.target_system_type || 'N/A'}
+                                              </Typography>
+                                            </TableCell>
+                                            <TableCell>
+                                              <Box>
+                                                <Typography variant='body2' fontWeight='medium'>
+                                                  {scmOrder.customer_name || '未知客户'}
+                                                </Typography>
+                                                <Typography variant='caption' color='text.secondary'>
+                                                  {scmOrder.customer_email}
+                                                </Typography>
+                                              </Box>
+                                            </TableCell>
+                                            <TableCell>
+                                              <Typography variant='body2'>
+                                                {scmOrder.created_at
+                                                  ? formatDate(scmOrder.created_at)
+                                                  : 'N/A'}
+                                              </Typography>
+                                            </TableCell>
+                                            <TableCell>
+                                              <Tooltip title='查看SCM订单详情'>
+                                                <IconButton
+                                                  size='small'
+                                                  onClick={() =>
+                                                    router.push(`/scm-orders/${scmOrder.id_hashid}`)
+                                                  }
+                                                >
+                                                  <ViewIcon fontSize='small' />
+                                                </IconButton>
+                                              </Tooltip>
+                                            </TableCell>
+                                          </TableRow>
+                                        ))}
+                                      </TableBody>
+                                    </Table>
+                                  </TableContainer>
+                                )}
+                              </Box>
+                            </Collapse>
+                          </TableCell>
+                        </TableRow>
+                      </React.Fragment>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>

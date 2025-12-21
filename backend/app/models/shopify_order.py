@@ -59,6 +59,11 @@ class ShopifyOrder(Base):
     # 原始数据
     raw_data = Column(JSON, nullable=True)  # 完整的 Shopify 原始数据
     
+    # 自动化处理标志（避免重复处理）
+    auto_synced_to_core = Column(Boolean, nullable=False, default=False, index=True)  # 是否已自动同步到核心订单表
+    auto_synced_fulfillment_from_api = Column(Boolean, nullable=False, default=False, index=True)  # 是否已自动同步发货信息从API
+    auto_synced_fulfillment_to_core = Column(Boolean, nullable=False, default=False, index=True)  # 是否已自动同步发货信息到核心订单表
+    
     # 时间戳
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)

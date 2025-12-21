@@ -42,13 +42,16 @@ export async function GET(
 
     // Get query parameters
     const { searchParams } = new URL(request.url);
-    const limit = searchParams.get('limit') || '50';
-    const page = searchParams.get('page') || '1';
+    const queryString = searchParams.toString();
 
     const timestamp = Math.floor(Date.now() / 1000);
     const nonce = Math.random().toString(36).substring(2, 15);
-    const backendPath = `/api/v1/external-systems/printify/${external_system_hashid}/orders?limit=${limit}&page=${page}`;
-    const signatureString = `GET/api/v1/external-systems/printify/${external_system_hashid}/orders${timestamp}${nonce}${tenantName}`;
+    const bodyString = '';
+    // Build full path with query parameters to match backend signature verification
+    const backendPath = queryString
+      ? `/api/v1/external-systems/printify/${external_system_hashid}/orders?${queryString}`
+      : `/api/v1/external-systems/printify/${external_system_hashid}/orders`;
+    const signatureString = `GET${backendPath}${timestamp}${nonce}${tenantName}${bodyString}`;
 
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
 
