@@ -63,6 +63,8 @@ __pypackages__/
 
 # Celery stuff
 celerybeat-schedule
+celerybeat-schedule.dat
+celerybeat-schedule.dir
 celerybeat.pid
 
 # SageMath parsed files
