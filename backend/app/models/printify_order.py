@@ -39,6 +39,10 @@ class PrintifyOrder(Base):
     tracking_url = Column(String(500), nullable=True)
     carrier = Column(String(100), nullable=True)
     
+    # 自动化处理标志（避免重复处理）
+    auto_synced_from_api = Column(Boolean, nullable=False, default=False, index=True)  # 是否已自动从API同步
+    auto_synced_fulfillment_to_scm = Column(Boolean, nullable=False, default=False, index=True)  # 是否已自动同步发货信息到SCM订单
+    
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

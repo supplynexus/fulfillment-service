@@ -853,7 +853,7 @@ class OrderStatusSyncService:
             }
 
     def batch_sync_pending_orders_sync(
-        self, tenant_id: int, limit: int = 100
+        self, tenant_id: int, limit: int = 100, ignore_flags: bool = False
     ) -> Dict[str, Any]:
         """
         批量同步待处理的订单 (同步版本)
@@ -880,6 +880,7 @@ class OrderStatusSyncService:
                         SCMOrder.tenant_id == tenant_id,
                         SCMOrder.status.in_(["processing", "fulfilled"]),
                         SCMOrder.source_order_id.isnot(None),
+                        SCMOrder.auto_synced_fulfillment_to_shopify == False,  # 只处理未自动同步的订单
                     )
                 )
                 .limit(limit)
@@ -932,7 +933,7 @@ class OrderStatusSyncService:
                 "errors": [str(e)],
             }
 
-    def sync_scm_to_shopify_sync(self, scm_order_id: int) -> bool:
+    def sync_scm_to_shopify_sync(self, scm_order_id: int, ignore_flags: bool = False) -> bool:
         """
         同步SCM订单状态到Shopify (同步版本)
 
@@ -1025,6 +1026,9 @@ class OrderStatusSyncService:
                 # 更新SCM订单的履约状态
                 scm_order.fulfillment_status = scm_order.status
                 scm_order.updated_at = datetime.utcnow()
+                # 标记为已自动同步发货信息到Shopify（手动处理时也标记，避免下次自动处理）
+                if not ignore_flags:
+                    scm_order.auto_synced_fulfillment_to_shopify = True
 
                 db.commit()
 

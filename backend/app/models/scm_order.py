@@ -85,6 +85,12 @@ class SCMOrder(Base):
     # Printify integration
     printify_order_id = Column(String, nullable=True)  # Printify order ID
     printify_shop_id = Column(String, nullable=True)  # Printify shop ID
+    
+    # 自动化处理标志（避免重复处理）
+    auto_created_printify_order = Column(Boolean, nullable=False, default=False, index=True)  # 是否已自动创建Printify订单
+    auto_synced_fulfillment_from_printify = Column(Boolean, nullable=False, default=False, index=True)  # 是否已自动同步发货信息从Printify
+    auto_synced_fulfillment_to_shopify = Column(Boolean, nullable=False, default=False, index=True)  # 是否已自动同步发货信息到Shopify
+    
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

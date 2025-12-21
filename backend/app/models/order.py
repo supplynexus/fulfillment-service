@@ -99,6 +99,9 @@ class Order(Base):
     tracking_url = Column(String, nullable=True)
     fulfillment_status = Column(String, nullable=True)
 
+    # 自动化处理标志（避免重复处理）
+    auto_routed_to_scm = Column(Boolean, nullable=False, default=False, index=True)  # 是否已自动路由到SCM订单
+
     # Timestamps
     order_date = Column(DateTime(timezone=True), nullable=False)
     processed_at = Column(DateTime(timezone=True), nullable=True)

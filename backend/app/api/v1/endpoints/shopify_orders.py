@@ -10,6 +10,7 @@ from app.core.database import get_async_db
 from app.core.timestamp_auth_middleware import verify_timestamp_auth
 from app.services.shopify_service import ShopifyService
 from app.services.order_service import OrderService
+from app.services.shopify.order_service import ShopifyOrderService
 from app.schemas.order import OrderResponse, OrderListResponse
 
 router = APIRouter()
@@ -23,7 +24,8 @@ async def sync_shopify_orders(
     auth: dict = Depends(verify_timestamp_auth)
 ) -> Any:
     """
-    Sync orders from Shopify
+    Sync orders from Shopify API to shopify_orders table (step 1)
+    注意：这是步骤1，只同步到 shopify_orders 表，不会直接同步到核心订单表
     """
     try:
         # Verify tenant access
@@ -33,27 +35,29 @@ async def sync_shopify_orders(
                 detail="Access denied to this tenant"
             )
         
-        # Initialize services
-        shopify_service = ShopifyService(db)
-        order_service = OrderService(db)
+        # Initialize ShopifyOrderService (not ShopifyService)
+        order_service = ShopifyOrderService(db)
         
-        # Sync orders
-        result = await shopify_service.sync_orders(tenant_id, limit)
+        # Sync orders to shopify_orders table (not directly to core orders table)
+        result = await order_service.sync_orders_to_shopify_table(
+            tenant_id=tenant_id,
+            max_orders=limit,
+            sync_recent_only=True
+        )
         
-        # Close service
-        await shopify_service.close()
-        
-        if not result["success"]:
+        if not result.get("success", False):
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=result["message"]
+                detail=result.get("error", "Failed to sync orders")
             )
         
         return {
             "success": True,
-            "message": result["message"],
-            "orders_processed": result["orders_processed"],
-            "total_fetched": result["total_fetched"],
+            "message": f"Synced {result.get('orders_saved', 0)} new orders and updated {result.get('orders_updated', 0)} orders to shopify_orders table",
+            "orders_processed": result.get("orders_saved", 0) + result.get("orders_updated", 0),
+            "orders_saved": result.get("orders_saved", 0),
+            "orders_updated": result.get("orders_updated", 0),
+            "total_fetched": result.get("orders_fetched", 0),
             "errors": result.get("errors", [])
         }
         

@@ -60,7 +60,12 @@ async def get_scm_orders(
             query = query.where(SCMOrder.status == status)
             logger.info(f"🔍 应用状态过滤器: status={status}")
         if target_system_type:
-            query = query.where(SCMOrder.target_system_type == target_system_type)
+            # target_system_type 存储在 routing_metadata JSON 字段中
+            from sqlalchemy import text
+            query = query.where(
+                SCMOrder.routing_metadata.isnot(None),
+                text("scm_orders.routing_metadata->>'target_system_type' = :target_system_type").bindparam(target_system_type=target_system_type)
+            )
             logger.info(
                 f"🔍 应用系统类型过滤器: target_system_type={target_system_type}"
             )
@@ -105,6 +110,9 @@ async def get_scm_orders(
             scm_order_responses = []
             for scm_order in scm_orders:
                 # 手动构建响应对象，使用 hashids
+                # 处理 shipping_address 可能为 None 的情况（旧数据兼容）
+                shipping_address = scm_order.shipping_address if scm_order.shipping_address is not None else {}
+                
                 response = SCMOrderResponse(
                     id_hashid=encode_id(scm_order.id),
                     source_order_id_hashid=encode_id(scm_order.source_order_id) if scm_order.source_order_id else None,
@@ -117,7 +125,7 @@ async def get_scm_orders(
                     customer_email=scm_order.customer_email,
                     customer_name=scm_order.customer_name,
                     customer_phone=scm_order.customer_phone,
-                    shipping_address=scm_order.shipping_address,
+                    shipping_address=shipping_address,
                     billing_address=scm_order.billing_address,
                     routing_metadata=scm_order.routing_metadata,
                     tracking_number=scm_order.tracking_number,
@@ -212,6 +220,9 @@ async def get_scm_order(
         source_order_id_hashid = encode_id(source_orders[0][0])
 
     # 构建响应对象，使用 hashids
+    # 处理 shipping_address 可能为 None 的情况（旧数据兼容）
+    shipping_address = scm_order.shipping_address if scm_order.shipping_address is not None else {}
+    
     return SCMOrderResponse(
         id_hashid=encode_id(scm_order.id),
         source_order_id_hashid=source_order_id_hashid,
@@ -224,7 +235,7 @@ async def get_scm_order(
         customer_email=scm_order.customer_email,
         customer_name=scm_order.customer_name,
         customer_phone=scm_order.customer_phone,
-        shipping_address=scm_order.shipping_address,
+        shipping_address=shipping_address,
         billing_address=scm_order.billing_address,
         routing_metadata=scm_order.routing_metadata,
         tracking_number=scm_order.tracking_number,
@@ -244,29 +255,103 @@ async def get_scm_order(
 
 @router.get("/order/{order_id}", response_model=List[SCMOrderResponse])
 async def get_scm_orders_by_order_id(
-    order_id: int,
+    order_id: str,
     db: AsyncSession = Depends(get_async_db),
     auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
 ) -> List[SCMOrderResponse]:
     """
-    根据原始订单ID获取SCM订单
+    根据原始订单ID获取SCM订单（支持 hashid）
     """
+    from app.core.hashids_utils import decode_id, encode_id
+    from app.core.logging import RequestLogger
+    
+    logger = RequestLogger("scm_orders.get_scm_orders_by_order_id")
     tenant, user = auth
+
+    # 尝试解码 hashid
+    try:
+        decoded_order_id = decode_id(order_id)
+        logger.info(f"✅ Hashid 解码成功: {order_id} -> {decoded_order_id}")
+    except Exception as e:
+        # 如果不是 hashid，尝试直接使用作为整数
+        try:
+            decoded_order_id = int(order_id)
+            logger.info(f"ℹ️ 使用整数 order_id: {decoded_order_id}")
+        except ValueError:
+            logger.error(f"❌ 无效的订单ID格式: {order_id}")
+            raise HTTPException(status_code=400, detail="Invalid order ID format")
 
     # 验证原始订单存在
     result = await db.execute(
-        select(Order).where(Order.id == order_id, Order.tenant_id == tenant.id)
+        select(Order).where(Order.id == decoded_order_id, Order.tenant_id == tenant.id)
     )
     order = result.scalar_one_or_none()
 
     if not order:
+        logger.error(f"❌ 订单不存在: order_id={decoded_order_id}, tenant_id={tenant.id}")
         raise HTTPException(status_code=404, detail="Order not found")
 
-    # 获取SCM订单
-    routing_service = OrderRoutingService(db)
-    scm_orders = await routing_service.get_scm_orders_by_order_id(order_id, tenant.id)
+    # 获取SCM订单（通过 ScmOrderSource 表，支持多对多关系）
+    from app.models.scm_order import ScmOrderSource
+    scm_sources_result = await db.execute(
+        select(ScmOrderSource.scm_order_id).where(
+            ScmOrderSource.source_order_id == decoded_order_id,
+            ScmOrderSource.tenant_id == tenant.id
+        )
+    )
+    scm_order_ids = [row[0] for row in scm_sources_result.fetchall()]
+    
+    if not scm_order_ids:
+        logger.info(f"ℹ️ 订单 {decoded_order_id} 没有关联的 SCM 订单")
+        return []
+    
+    # 获取 SCM 订单详情
+    scm_orders_result = await db.execute(
+        select(SCMOrder).where(
+            SCMOrder.id.in_(scm_order_ids),
+            SCMOrder.tenant_id == tenant.id
+        )
+    )
+    scm_orders = scm_orders_result.scalars().all()
+    
+    logger.info(f"✅ 找到 {len(scm_orders)} 个 SCM 订单: order_id={decoded_order_id}")
+    
+    # 转换为响应格式
+    scm_order_responses = []
+    for scm_order in scm_orders:
+        shipping_address = scm_order.shipping_address if scm_order.shipping_address is not None else {}
+        scm_order_responses.append(
+            SCMOrderResponse(
+                id_hashid=encode_id(scm_order.id),
+                source_order_id_hashid=encode_id(decoded_order_id),
+                scm_order_number=scm_order.scm_order_number,
+                status=scm_order.status,
+                fulfillment_status=scm_order.fulfillment_status,
+                routing_strategy=scm_order.routing_strategy,
+                line_items=scm_order.line_items,
+                currency=scm_order.currency,
+                customer_email=scm_order.customer_email,
+                customer_name=scm_order.customer_name,
+                customer_phone=scm_order.customer_phone,
+                shipping_address=shipping_address,
+                billing_address=scm_order.billing_address,
+                routing_metadata=scm_order.routing_metadata,
+                tracking_number=scm_order.tracking_number,
+                tracking_url=scm_order.tracking_url,
+                carrier=scm_order.carrier,
+                shipped_at=scm_order.shipped_at,
+                delivered_at=scm_order.delivered_at,
+                error_message=scm_order.error_message,
+                retry_count=scm_order.retry_count,
+                shopify_fulfillment_order_id=scm_order.shopify_fulfillment_order_id,
+                shopify_fulfillment_id=scm_order.shopify_fulfillment_id,
+                created_at=scm_order.created_at,
+                updated_at=scm_order.updated_at,
+                fulfilled_at=scm_order.fulfilled_at,
+            )
+        )
 
-    return [SCMOrderResponse.from_orm(scm_order) for scm_order in scm_orders]
+    return scm_order_responses
 
 
 @router.post("/", response_model=SCMOrderResponse)
@@ -524,6 +609,15 @@ async def create_scm_order(
         scm_order_number = await OrderNumberService.generate_scm_order_number(db, tenant.id)
         logger.info(f"✅ SCM 订单编号生成成功: {scm_order_number}")
         
+        # 处理 routing_metadata：确保包含 target_system_type
+        # 如果手动创建时没有指定，默认设置为 PRINTIFY（与自动路由的默认行为一致）
+        routing_metadata = scm_order_data.routing_metadata.copy() if scm_order_data.routing_metadata else {}
+        if "target_system_type" not in routing_metadata:
+            # 手动创建时，如果没有指定目标系统，默认路由到 Printify
+            routing_metadata["target_system_type"] = "PRINTIFY"
+            routing_metadata["target_system_id"] = None
+            logger.info(f"ℹ️  手动创建订单未指定 target_system_type，默认设置为 PRINTIFY")
+        
         # 创建SCM订单
         logger.info(f"🔍 开始创建 SCM 订单对象: scm_order_number={scm_order_number}, normalized_items_count={len(normalized_items)}")
         scm_order = SCMOrder(
@@ -539,7 +633,7 @@ async def create_scm_order(
             customer_phone=scm_order_data.customer_phone,
             shipping_address=scm_order_data.shipping_address,
             billing_address=scm_order_data.billing_address,
-            routing_metadata=scm_order_data.routing_metadata,
+            routing_metadata=routing_metadata,
             shopify_order_id=scm_order_data.shopify_order_id,
         )
 
@@ -565,6 +659,9 @@ async def create_scm_order(
 
         # 构建响应对象，使用 hashids
         from app.core.hashids_utils import encode_id
+        # 处理 shipping_address 可能为 None 的情况（旧数据兼容）
+        shipping_address = scm_order.shipping_address if scm_order.shipping_address is not None else {}
+        
         return SCMOrderResponse(
             id_hashid=encode_id(scm_order.id),
             source_order_id_hashid=encode_id(decoded_source_ids[0]) if decoded_source_ids else None,
@@ -577,7 +674,7 @@ async def create_scm_order(
             customer_email=scm_order.customer_email,
             customer_name=scm_order.customer_name,
             customer_phone=scm_order.customer_phone,
-            shipping_address=scm_order.shipping_address,
+            shipping_address=shipping_address,
             billing_address=scm_order.billing_address,
             routing_metadata=scm_order.routing_metadata,
             tracking_number=scm_order.tracking_number,
@@ -1188,6 +1285,17 @@ async def delete_scm_order(
         if not scm_order:
             logger.error(f"❌ SCM订单不存在: scm_order_id={scm_order_id}, tenant_id={tenant.id}")
             raise HTTPException(status_code=404, detail="SCM order not found")
+        
+        # 先删除相关的 routing_status 记录（外键约束）
+        from app.models.scm_order import RoutingStatus
+        routing_status_stmt = delete(RoutingStatus).where(
+            and_(
+                RoutingStatus.scm_order_id == scm_order_id,
+                RoutingStatus.tenant_id == tenant.id
+            )
+        )
+        await db.execute(routing_status_stmt)
+        logger.info(f"✅ 删除相关路由状态记录: scm_order_id={scm_order_id}")
         
         # 先删除相关的 scm_order_sources 记录（外键约束）
         from app.models.scm_order import ScmOrderSource

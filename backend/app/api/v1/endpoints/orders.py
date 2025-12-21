@@ -5,6 +5,7 @@ Order management endpoints
 import logging
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func
 from typing import List, Optional
 from datetime import datetime
 
@@ -80,6 +81,25 @@ async def get_orders(
                 status_code=500, detail=f"Failed to get orders: {str(e)}"
             )
 
+        # 批量查询每个订单的 SCM 订单数量
+        logger.info(f"🔍 查询每个订单的 SCM 订单数量...")
+        from app.models.scm_order import ScmOrderSource
+        
+        order_ids = [order.id for order in orders]
+        scm_counts_result = await db.execute(
+            select(
+                ScmOrderSource.source_order_id,
+                func.count(ScmOrderSource.scm_order_id).label('scm_count')
+            )
+            .where(
+                ScmOrderSource.source_order_id.in_(order_ids),
+                ScmOrderSource.tenant_id == tenant.id
+            )
+            .group_by(ScmOrderSource.source_order_id)
+        )
+        scm_counts_map = {row[0]: row[1] for row in scm_counts_result.fetchall()}
+        logger.info(f"✅ 查询到 {len(scm_counts_map)} 个订单有 SCM 订单")
+        
         # 转换为响应格式
         logger.info(f"🔍 转换订单响应格式...")
         try:
@@ -87,6 +107,9 @@ async def get_orders(
             
             order_responses = []
             for order in orders:
+                # 获取该订单的 SCM 订单数量
+                scm_orders_count = scm_counts_map.get(order.id, 0)
+                
                 # 使用 hashids 替代原始 ID
                 order_data = {
                     "id_hashid": encode_id(order.id),
@@ -113,6 +136,7 @@ async def get_orders(
                     "address_last_validated_at": getattr(order, "address_last_validated_at", None),
                     "created_at": order.created_at,
                     "updated_at": order.updated_at,
+                    "scm_orders_count": scm_orders_count,  # 添加 SCM 订单数量
                 }
                 order_responses.append(order_data)
             logger.info(f"✅ 订单响应格式转换成功: {len(order_responses)} 个订单")
@@ -283,14 +307,15 @@ async def sync_orders(
     auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
 ) -> OrderSyncResponse:
     """
-    手动触发订单同步
+    手动触发订单同步（从 Shopify API 到 shopify_orders 表）
+    注意：这是步骤1，只同步到 shopify_orders 表，不会直接同步到核心订单表
     """
     tenant, user = auth
 
     order_service = ShopifyOrderService(db)
 
     try:
-        result = await order_service.sync_orders(
+        result = await order_service.sync_orders_to_shopify_table(
             tenant_id=tenant.id,
             sync_recent_only=sync_recent_only,
             max_orders=max_orders,

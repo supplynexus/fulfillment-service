@@ -24,7 +24,7 @@ TASK_NAME_FIXES = {
 # 按 step_key 的任务名称映射（用于特定步骤）
 STEP_KEY_TASK_MAPPING = {
     "create_scm_orders": "app.tasks.order_automation_tasks.process_new_orders_to_scm",
-    "create_fulfillment_orders": "app.tasks.order_automation_tasks.process_new_orders_to_scm",
+    "create_printify_orders_from_scm": "app.tasks.order_automation_tasks.create_printify_orders_from_scm",
 }
 
 def fix_task_names():

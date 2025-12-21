@@ -191,9 +191,10 @@ class OrderRoutingService:
             remaining_items = unmatched_items
 
         # 处理未匹配的商品（使用默认规则）
+        # 默认路由到 Printify（如果没有任何规则匹配）
         if remaining_items:
             default_decision = {
-                "target_system_type": "default_fulfillment",
+                "target_system_type": "PRINTIFY",  # 改为 PRINTIFY，而不是 default_fulfillment
                 "target_system_id": None,
                 "line_items": remaining_items,
                 "routing_metadata": {
@@ -367,6 +368,26 @@ class OrderRoutingService:
             for item in decision["line_items"]
         )
 
+        # 提取客户姓名，如果为空则尝试从shipping_address获取
+        customer_name = order.customer_name
+        if not customer_name and order.shipping_address:
+            # 尝试从shipping_address获取客户姓名
+            first_name = order.shipping_address.get("firstName") or order.shipping_address.get("first_name", "")
+            last_name = order.shipping_address.get("lastName") or order.shipping_address.get("last_name", "")
+            full_name = f"{first_name} {last_name}".strip()
+            if full_name:
+                customer_name = full_name
+                logger.info(f"从shipping_address提取客户姓名: {customer_name}")
+        
+        # 如果还是没有，尝试从billing_address获取
+        if not customer_name and order.billing_address:
+            first_name = order.billing_address.get("firstName") or order.billing_address.get("first_name", "")
+            last_name = order.billing_address.get("lastName") or order.billing_address.get("last_name", "")
+            full_name = f"{first_name} {last_name}".strip()
+            if full_name:
+                customer_name = full_name
+                logger.info(f"从billing_address提取客户姓名: {customer_name}")
+
         # 创建SCM订单
         # 将 target_system_type 和 target_system_id 添加到 routing_metadata 中
         routing_metadata = decision["routing_metadata"].copy() if decision.get("routing_metadata") else {}
@@ -381,7 +402,7 @@ class OrderRoutingService:
             line_items=normalized_line_items,
             currency=order.currency,
             customer_email=order.customer_email,
-            customer_name=order.customer_name,
+            customer_name=customer_name,
             customer_phone=order.customer_phone,
             shipping_address=order.shipping_address,
             billing_address=order.billing_address,

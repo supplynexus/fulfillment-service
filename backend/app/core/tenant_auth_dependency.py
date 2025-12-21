@@ -36,11 +36,15 @@ async def verify_tenant_auth(
         body_str = body.decode('utf-8') if body else ""
         
         # Create signature string
+        # Include query parameters in the path to match frontend signature generation
         method = request.method.upper()
         path = request.url.path
-        signature_string = f"{method}{path}{x_timestamp}{x_nonce}{x_tenant_name}{body_str}"
+        query_string = request.url.query
+        # Build full path with query parameters if they exist
+        full_path = f"{path}?{query_string}" if query_string else path
+        signature_string = f"{method}{full_path}{x_timestamp}{x_nonce}{x_tenant_name}{body_str}"
         
-        logger.info(f"🔍 后端签名验证调试信息: tenant_name={x_tenant_name}, method={method}, path={path}, timestamp={x_timestamp}, nonce={x_nonce}, body_length={len(body_str)}, signature_string_length={len(signature_string)}, x_signature_length={len(x_signature)}")
+        logger.info(f"🔍 后端签名验证调试信息: tenant_name={x_tenant_name}, method={method}, path={full_path}, query={query_string}, timestamp={x_timestamp}, nonce={x_nonce}, body_length={len(body_str)}, signature_string_length={len(signature_string)}, x_signature_length={len(x_signature)}")
         logger.info(f"🔍 后端构建的签名字符串: {signature_string}")
         logger.info(f"🔍 前端发送的签名: {x_signature[:50]}...")
         
