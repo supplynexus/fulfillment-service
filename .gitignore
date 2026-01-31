@@ -266,7 +266,14 @@ webhook_logs/
 .env.stg
 .env.prod
 
+# Production Docker Compose (may contain sensitive references)
+docker-compose.prod.yml
+
 # Deployment environment files (DO NOT commit actual environment files)
+deployment/environments/env.local
+deployment/environments/env.dev
+deployment/environments/env.stg
+deployment/environments/env.prod
 deployment/environments/frontend/env.local
 deployment/environments/frontend/env.dev
 deployment/environments/frontend/env.stg
