@@ -1264,9 +1264,7 @@ async def test_connection_by_external_id(
 
             # Test Printify connection
             logger.info(f"🔍 开始测试 Printify 连接: external_id={external_id}")
-            printify_service = PrintifyService(
-                access_token=access_token, shop_id=shop_id
-            )
+            printify_service = PrintifyService(printify_api_token=access_token)
             result = await printify_service.test_connection()
 
             if result["success"]:

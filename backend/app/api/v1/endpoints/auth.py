@@ -82,12 +82,9 @@ async def verify_tenant_signature(
             return False
 
         if not tenant:
-            print(f"❌ 租户不存在: {tenant_name}")
+            logger.error("❌ 租户不存在", tenant_name=tenant_name)
             return False
         # 日志记录：租户存在
-        from app.core.logging import get_logger
-
-        logger = get_logger(__name__)
         logger.info(
             "✅ 租户存在",
             tenant_id=tenant.id,
@@ -96,9 +93,6 @@ async def verify_tenant_signature(
         )
 
         if not tenant.public_key:
-            logger.error(
-                "❌ 租户公钥不存在", tenant_id=tenant.id, tenant_name=tenant.name
-            )
             logger.error(
                 "❌ 租户公钥不存在", tenant_id=tenant.id, tenant_name=tenant.name
             )
@@ -137,9 +131,22 @@ async def verify_tenant_signature(
         # 解码签名
         try:
             signature_bytes = base64.b64decode(signature.encode("utf-8"))
-            print(f"   signature_bytes_length: {len(signature_bytes)}")
+            logger.info(
+                "✅ 签名解码成功",
+                signature_bytes_length=len(signature_bytes),
+                tenant_id=tenant.id,
+                tenant_name=tenant.name,
+            )
         except Exception as e:
-            print(f"❌ 签名解码失败: {e}")
+            logger.error(
+                "❌ 签名解码失败",
+                error=str(e),
+                tenant_id=tenant.id,
+                tenant_name=tenant.name,
+            )
+            import traceback
+
+            logger.error("   异常堆栈", stack=traceback.format_exc())
             return False
 
         # 验证签名 - 使用 PKCS1v15 填充，与前端 RSA-SHA256 匹配
@@ -171,11 +178,14 @@ async def verify_tenant_signature(
         return True
 
     except Exception as e:
-        print(f"❌ 签名验证失败: {e}")
-        print(f"   Exception type: {type(e).__name__}")
+        from app.core.logging import get_logger
+
+        logger = get_logger(__name__)
+        logger.error("❌ 签名验证失败", error=str(e), tenant_name=tenant_name)
+        logger.error("   异常类型", error_type=type(e).__name__)
         import traceback
 
-        print(f"   Traceback: {traceback.format_exc()}")
+        logger.error("   异常堆栈", stack=traceback.format_exc())
         # 重新抛出异常，让调用者能够看到具体的错误信息
         raise e
 
@@ -219,9 +229,7 @@ async def login(
         # 验证签名
         # 构建 body 字符串，避免超过最大行长度
         # 按照PEP8规范，每行不超过79字符
-        body = (
-            f"username={username}" f"&password={password}" f"&tenant_name={tenant_name}"
-        )
+        body = f"username={username}&password={password}&tenant_name={tenant_name}"
         backend_path = "/api/v1/auth/login"
         signature_string = (
             f"POST{backend_path}{x_timestamp}{x_nonce}{tenant_name}{body}"
@@ -352,7 +360,7 @@ async def login_tenant(
         )
 
         # 验证签名
-        body = f"username={username}&password={password}&" f"tenant_name={tenant_name}"
+        body = f"username={username}&password={password}&tenant_name={tenant_name}"
         backend_path = "/api/v1/auth/login/tenant"
         signature_string = (
             f"POST{backend_path}{x_timestamp}{x_nonce}{tenant_name}{body}"
