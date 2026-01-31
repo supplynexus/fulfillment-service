@@ -1,0 +1,236 @@
+#!/bin/bash
+
+# Deployment script for SupplyNexus Fulfillment Service
+set -e
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Function to print colored output
+print_status() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+print_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Function to show usage
+show_usage() {
+    echo "Usage: ./deploy.sh <environment> <command> [options]"
+    echo ""
+    echo "Environments:"
+    echo "  local        - Local development environment"
+    echo "  dev          - Dev environment"
+    echo "  stg          - Staging environment"
+    echo "  prod         - Production environment"
+    echo ""
+    echo "Commands:"
+    echo "  start        - Start all services"
+    echo "  stop         - Stop all services"
+    echo "  restart      - Restart all services"
+    echo "  logs         - Show logs [service_name]"
+    echo "  db-upgrade   - Run database migrations"
+    echo "  db-status    - Check database migration status"
+    echo "  db-history   - Show migration history"
+    echo ""
+    echo "Examples:"
+    echo "  ./deploy.sh local start"
+    echo "  ./deploy.sh dev start"
+    echo "  ./deploy.sh prod db-upgrade"
+    echo "  ./deploy.sh stg logs backend"
+    echo ""
+    echo "Legacy usage (still supported):"
+    echo "  ENV_FILE=env.dev ./deploy.sh start"
+}
+
+# Parse arguments
+ENVIRONMENT=""
+COMMAND=""
+SERVICE_NAME=""
+
+# Check if first argument is environment or legacy ENV_FILE
+if [ -n "$ENV_FILE" ]; then
+    # Legacy mode: ENV_FILE environment variable
+    ENVIRONMENT=$(echo "$ENV_FILE" | sed 's/env\.//')
+    COMMAND="${1:-start}"
+    if [ "$COMMAND" = "logs" ] && [ -n "$2" ]; then
+        SERVICE_NAME="$2"
+    fi
+else
+    # New mode: environment as first argument
+    if [ $# -lt 2 ]; then
+        show_usage
+        exit 1
+    fi
+    
+    ENVIRONMENT="$1"
+    COMMAND="$2"
+    
+    # Handle logs command with optional service name
+    if [ "$COMMAND" = "logs" ] && [ -n "$3" ]; then
+        SERVICE_NAME="$3"
+    fi
+fi
+
+# Validate environment
+case "$ENVIRONMENT" in
+    local|dev|stg|prod)
+        ENV_FILE="env.$ENVIRONMENT"
+        ;;
+    *)
+        print_error "Invalid environment: $ENVIRONMENT"
+        echo "Valid environments: local, dev, stg, prod"
+        exit 1
+        ;;
+esac
+
+# Check if environment file exists
+ENV_FILE_PATH="$(dirname "$0")/../environments/backend/.$ENV_FILE"
+if [ ! -f "$ENV_FILE_PATH" ]; then
+    print_error "Environment file $ENV_FILE_PATH not found"
+    echo "Please create the environment file first:"
+    echo "  cp $(dirname "$0")/../environments/backend/env.example $ENV_FILE_PATH"
+    echo "  # Then edit $ENV_FILE_PATH with your actual values"
+    exit 1
+fi
+
+print_status "Using environment: $ENVIRONMENT (file: $ENV_FILE)"
+
+# Function to start services
+start_services() {
+    print_status "Starting services with environment: $ENVIRONMENT"
+    cd "$(dirname "$0")/../docker"
+    docker-compose up -d
+    print_success "Services started successfully"
+    
+    echo ""
+    echo "🎉 Deployment complete! Services are running:"
+    echo ""
+    echo "  📊 Backend API:        http://localhost:8000"
+    echo "  📊 API Documentation:  http://localhost:8000/api/v1/docs"
+    echo "  🌸 Flower (Celery):    http://localhost:5555"
+    echo "  🗃️  PostgreSQL:        localhost:5432"
+    echo "  ⚡ Redis:             localhost:6379"
+    echo ""
+    echo "To view logs, run:"
+    echo "  ./deploy.sh $ENVIRONMENT logs"
+}
+
+# Function to stop services
+stop_services() {
+    print_status "Stopping services..."
+    cd "$(dirname "$0")/../docker"
+    docker-compose down
+    print_success "Services stopped successfully"
+}
+
+# Function to restart services
+restart_services() {
+    print_status "Restarting services..."
+    cd "$(dirname "$0")/../docker"
+    docker-compose down
+    docker-compose up -d
+    print_success "Services restarted successfully"
+}
+
+# Function to show logs
+show_logs() {
+    cd "$(dirname "$0")/../docker"
+    if [ -z "$SERVICE_NAME" ]; then
+        print_status "Showing logs for all services..."
+        docker-compose logs -f
+    else
+        print_status "Showing logs for service: $SERVICE_NAME"
+        docker-compose logs -f "$SERVICE_NAME"
+    fi
+}
+
+# Function to run database migrations
+run_db_migrations() {
+    print_status "Running database migrations for environment: $ENVIRONMENT"
+    
+    # Check if Python is available
+    if command -v python &> /dev/null; then
+        print_status "Using local Python environment"
+        cd ..
+        ENV_FILE="$ENV_FILE" python scripts/db.py upgrade
+    else
+        print_status "Python not found, using Docker for database operations"
+        "$(dirname "$0")/db-docker.sh" "$ENVIRONMENT" upgrade
+    fi
+    
+    print_success "Database migrations completed"
+}
+
+# Function to check database status
+check_db_status() {
+    print_status "Checking database migration status for environment: $ENVIRONMENT"
+    
+    # Check if Python is available
+    if command -v python &> /dev/null; then
+        print_status "Using local Python environment"
+        cd ..
+        ENV_FILE="$ENV_FILE" python scripts/db.py current
+    else
+        print_status "Python not found, using Docker for database operations"
+        "$(dirname "$0")/db-docker.sh" "$ENVIRONMENT" current
+    fi
+}
+
+# Function to show database history
+show_db_history() {
+    print_status "Showing database migration history for environment: $ENVIRONMENT"
+    
+    # Check if Python is available
+    if command -v python &> /dev/null; then
+        print_status "Using local Python environment"
+        cd ..
+        ENV_FILE="$ENV_FILE" python scripts/db.py history
+    else
+        print_status "Python not found, using Docker for database operations"
+        "$(dirname "$0")/db-docker.sh" "$ENVIRONMENT" history
+    fi
+}
+
+# Main command handling
+case "$COMMAND" in
+    start)
+        start_services
+        ;;
+    stop)
+        stop_services
+        ;;
+    restart)
+        restart_services
+        ;;
+    logs)
+        show_logs
+        ;;
+    db-upgrade)
+        run_db_migrations
+        ;;
+    db-status)
+        check_db_status
+        ;;
+    db-history)
+        show_db_history
+        ;;
+    *)
+        print_error "Unknown command: $COMMAND"
+        echo "Available commands: start, stop, restart, logs, db-upgrade, db-status, db-history"
+        exit 1
+        ;;
+esac

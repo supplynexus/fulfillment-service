@@ -1,360 +1,216 @@
 # SupplyNexus Fulfillment Service
 
-Shopify 到 Printify 的订单履约自动化服务 - 为电商品牌提供无缝的按需打印订单处理。
+一个基于 FastAPI + Next.js 的 Shopify 到 Printify 订单履行自动化系统，支持多租户架构和完整的认证系统。
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Python](https://img.shields.io/badge/python-3.11+-blue.svg)
-![Node.js](https://img.shields.io/badge/node.js-18+-green.svg)
-![Docker](https://img.shields.io/badge/docker-compose-blue.svg)
+## 🚀 项目状态
 
-## 📋 项目概述
+**当前状态**: 认证系统重构完成，开发工具优化，准备进入业务功能开发阶段  
+**最后更新**: 2025-08-25
 
-SupplyNexus Fulfillment Service 是一个全栈的 SaaS 解决方案，专为电商品牌设计，实现 Shopify 订单到 Printify 打印服务的自动化履约流程。
+### ✅ 已完成功能
 
-### 🎯 核心功能
+- **认证系统**: 重构完成，统一使用租户级别RSA签名认证
+- **前端应用**: Next.js + React + TypeScript，完整的登录流程
+- **后端API**: FastAPI + PostgreSQL，完整的RESTful API
+- **Docker部署**: 完整的容器化部署配置
+- **开发工具**: 完善的代码质量检查和密钥管理工具
+- **开发环境**: 热重载、调试工具、环境管理
 
-- **自动订单处理**: 接收 Shopify webhook，自动创建 Printify 订单
-- **多租户架构**: 支持多个客户，数据完全隔离
-- **实时状态同步**: 订单状态实时更新，包含跟踪信息
-- **智能重试机制**: 失败订单自动重试，错误处理
-- **管理后台**: 完整的订单监控和客户管理界面
-- **异步任务队列**: Celery 处理耗时操作，确保响应速度
+### 🔧 最近重构
 
-### 🏗️ 技术架构
+- **认证系统重构**: 删除不必要的数据库表，统一使用租户级别认证
+- **开发工具优化**: 重组工具到 scripts/ 目录，新增 shell 脚本
+- **代码质量改进**: 修复导入错误，添加 pre-commit 配置
+- **数据库清理**: 删除 system_keys、api_keys、api_key_access_logs、user_keys 表
 
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Shopify       │    │  Frontend       │    │   Printify      │
-│   Webhook       │────│  (NextJS)       │    │   API           │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-                              │
-                              │
-                    ┌─────────────────┐
-                    │   Backend       │
-                    │   (FastAPI)     │
-                    └─────────────────┘
-                              │
-                    ┌─────────────────┐    ┌─────────────────┐
-                    │  PostgreSQL     │    │     Redis       │
-                    │  Database       │    │   + Celery      │
-                    └─────────────────┘    └─────────────────┘
-```
+## 🏃‍♂️ 快速开始
 
-## 🚀 快速开始
+### 开发环境
 
-### 系统要求
+#### Windows 用户 - 依赖安装
 
-- **Docker** 和 **Docker Compose**
-- **Python 3.11+** (开发时)
-- **Node.js 18+** (开发时)
-- **Git**
-
-### 一键安装开发环境
-
-```bash
-# 克隆项目
-git clone https://github.com/supplynexus/fulfillment-service.git
-cd fulfillment-service
-
-# 运行自动安装脚本
-./scripts/development/setup.sh
-```
-
-安装脚本将：
-1. ✅ 检查系统依赖
-2. ✅ 创建环境配置文件
-3. ✅ 安装后端和前端依赖
-4. ✅ 初始化数据库
-5. ✅ 启动开发环境
-
-### 手动安装
-
-如果自动安装脚本失败，可以手动执行以下步骤：
-
-#### 1. 环境配置
-
-```bash
-# 复制环境配置模板
-cp environment.example .env
-
-# 编辑环境变量（必须）
-vim .env
-```
-
-#### 2. 启动服务
-
-```bash
-# 启动开发环境
-docker-compose -f docker-compose.dev.yml up -d
-
-# 查看服务状态
-docker-compose -f docker-compose.dev.yml ps
-```
-
-#### 3. 数据库迁移
-
-```bash
-# 进入后端容器
-docker-compose -f docker-compose.dev.yml exec backend_dev bash
-
-# 运行迁移
-alembic upgrade head
-```
-
-## 🌐 服务访问
-
-启动成功后，您可以访问以下服务：
-
-| 服务 | 地址 | 描述 |
-|------|------|------|
-| 🖥️ **前端管理后台** | http://localhost:3000 | 订单监控和客户管理 |
-| 📊 **后端 API** | http://localhost:8000 | RESTful API 服务 |
-| 📚 **API 文档** | http://localhost:8000/api/v1/docs | Swagger/OpenAPI 文档 |
-| 🌸 **Celery 监控** | http://localhost:5555 | 任务队列监控 (Flower) |
-| 🗄️ **PostgreSQL** | localhost:5432 | 数据库服务 |
-| ⚡ **Redis** | localhost:6379 | 缓存和消息队列 |
-
-## 📁 项目结构
-
-```
-fulfillment-service/
-├── backend/                    # Python FastAPI 后端
-│   ├── app/
-│   │   ├── api/v1/            # API 路由
-│   │   ├── core/              # 核心配置
-│   │   ├── models/            # 数据模型
-│   │   ├── services/          # 业务逻辑
-│   │   ├── tasks/             # Celery 任务
-│   │   ├── schemas/           # Pydantic 模式
-│   │   └── utils/             # 工具函数
-│   ├── tests/                 # 测试文件
-│   ├── requirements.txt       # Python 依赖
-│   └── Dockerfile            # Docker 配置
-├── frontend/                   # NextJS 前端
-│   ├── src/
-│   │   ├── app/              # App Router 页面
-│   │   ├── components/       # React 组件
-│   │   ├── lib/              # 工具库
-│   │   ├── types/            # TypeScript 类型
-│   │   └── utils/            # 工具函数
-│   ├── package.json          # Node 依赖
-│   └── Dockerfile           # Docker 配置
-├── shared/                    # 共享类型和工具
-├── database/                  # 数据库相关
-│   ├── migrations/           # Alembic 迁移
-│   └── seeds/               # 初始数据
-├── deployment/               # 部署配置
-├── docs/                    # 项目文档
-├── scripts/                 # 开发脚本
-├── docker-compose.yml       # 生产环境
-├── docker-compose.dev.yml   # 开发环境
-└── environment.example      # 环境变量模板
-```
-
-## ⚙️ 配置指南
-
-### 环境变量
-
-关键的环境变量配置：
-
-```bash
-# Shopify 配置
-SHOPIFY_API_KEY=your-shopify-api-key
-SHOPIFY_API_SECRET=your-shopify-api-secret
-
-# Printify 配置
-PRINTIFY_API_TOKEN=your-printify-api-token
-
-# 安全配置
-SECRET_KEY=your-super-secret-key
-WEBHOOK_SECRET=your-webhook-secret
-
-# 数据库配置
-DATABASE_URL=postgresql+asyncpg://user:pass@host:port/db
-REDIS_URL=redis://host:port/db
-```
-
-### Webhook 配置
-
-在 Shopify 管理后台配置 webhook：
-
-- **URL**: `https://your-domain.com/api/v1/webhooks/shopify/orders/create`
-- **Format**: JSON
-- **Events**: Order creation
-- **Verification**: 使用 WEBHOOK_SECRET
-
-## 🛠️ 开发指南
-
-### 开发命令
-
-```bash
-# 启动开发环境
-./scripts/development/start.sh
-
-# 停止开发环境
-./scripts/development/stop.sh
-
-# 查看日志
-docker-compose -f docker-compose.dev.yml logs -f [service_name]
-
-# 进入容器
-docker-compose -f docker-compose.dev.yml exec backend_dev bash
-docker-compose -f docker-compose.dev.yml exec frontend_dev sh
-```
-
-### 数据库操作
-
-```bash
-# 创建新的迁移
-alembic revision --autogenerate -m "Description"
-
-# 应用迁移
-alembic upgrade head
-
-# 查看迁移历史
-alembic history
-```
-
-### 后端开发
-
-```bash
-# 安装依赖
+如果遇到 `pydantic-core` 编译错误，请使用以下方法：
+```cmd
 cd backend
-pip install -r requirements.txt
+# 升级 pip
+python -m pip install --upgrade pip setuptools wheel
 
-# 运行测试
-pytest
+# 安装预编译的 pydantic
+python -m pip install --only-binary=all pydantic>=2.8.0
 
-# 代码格式化
-black app/
-isort app/
-flake8 app/
+# 安装其他依赖
+python -m pip install -r requirements-minimal.txt
 ```
 
-### 前端开发
+#### 启动服务
+
+1. **启动后端服务**
+   ```bash
+   cd backend
+   source .venv/bin/activate  # Windows: .venv\Scripts\activate
+   python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+   ```
+
+2. **启动 Celery 服务** (可选，用于定时任务)
+   
+   **Windows 用户:**
+   ```powershell
+   # 终端1: 启动 Celery Beat (定时任务调度器)
+   cd backend
+   .\.venv\Scripts\Activate.ps1
+   .\scripts\start_celery_beat_windows.ps1
+   # 或使用批处理: scripts\start_celery_beat_windows.bat
+   
+   # 终端2: 启动 Celery Worker (任务执行器)
+   cd backend
+   .\.venv\Scripts\Activate.ps1
+   .\scripts\start_celery_worker_windows.ps1
+   # 或使用批处理: scripts\start_celery_worker_windows.bat
+   # 或手动启动（使用 solo 池）:
+   # celery -A app.tasks.celery_app worker --loglevel=info --pool=solo -Q default,shopify,orders,order_automation
+   ```
+   
+   **Linux/Mac 用户:**
+   ```bash
+   # 终端1: 启动 Celery Beat (定时任务调度器)
+   cd backend
+   source .venv/bin/activate
+   celery -A app.tasks.celery_app beat --loglevel=info
+   
+   # 终端2: 启动 Celery Worker (任务执行器)
+   cd backend
+   source .venv/bin/activate
+   celery -A app.tasks.celery_app worker --loglevel=info -Q default,shopify,orders,order_automation
+   ```
+
+3. **启动前端服务**
+   ```bash
+   cd frontend
+   npm install
+   npm run dev
+   ```
+
+4. **启动数据库和Redis**
+   ```bash
+   docker-compose up -d postgres redis
+   ```
+
+### 代码质量检查
 
 ```bash
-# 安装依赖
-cd frontend
-npm install
+cd backend/scripts
 
-# 开发模式
-npm run dev
+# 快速检查
+./quick_check.sh
 
-# 类型检查
-npm run type-check
+# 详细导入检查
+./check_imports.sh
 
-# 代码格式化
-npm run lint:fix
+# 语法检查
+./check_syntax.sh
+
+# 全面质量检查
+./check_code_quality.sh
 ```
 
-## 🧪 测试
-
-### 运行测试
+### Docker部署
 
 ```bash
-# 后端测试
-docker-compose -f docker-compose.dev.yml exec backend_dev pytest
-
-# 前端测试
-docker-compose -f docker-compose.dev.yml exec frontend_dev npm test
-
-# 集成测试
-docker-compose -f docker-compose.dev.yml exec backend_dev pytest tests/integration/
+cd deployment/docker/frontend
+./deploy.sh dev up
 ```
 
-### 测试覆盖率
+### 验证部署
 
 ```bash
-# 后端覆盖率
-pytest --cov=app tests/
-
-# 前端覆盖率
-npm run test:coverage
+./scripts/verify-deployment.sh
 ```
 
-## 🚢 部署
+## 🔐 认证系统
 
-### 生产环境部署
+### 认证架构
+- **统一认证**: 所有业务API使用租户级别RSA签名认证
+- **简化架构**: 删除用户级别密钥管理，统一使用租户公钥
+- **算法匹配**: 前端和后端统一使用 RSA-SHA256 + PKCS1v15 填充
 
+### 认证流程
+1. 前端接收用户登录信息
+2. 生成RSA签名（使用租户私钥）
+3. 发送请求到后端API
+4. 后端验证签名和用户凭据
+5. 返回用户信息给前端
+6. 前端生成JWT令牌（使用前端私钥）
+7. 存储令牌到localStorage
+
+### 密钥管理
 ```bash
-# 构建和启动生产环境
-docker-compose up -d
+cd backend/scripts
 
-# 查看服务状态
-docker-compose ps
+# 更新租户公钥
+./update_tenant_public_key.sh <tenant_name> <private_key_file>
 
-# 查看日志
-docker-compose logs -f
+# 生成新密钥对
+./generate_keys.sh <tenant_name> --save-db
 ```
 
-### 环境配置
+## 🌐 访问地址
 
-生产环境需要更新的配置：
+- **前端应用**: http://localhost:3000
+- **后端API**: http://localhost:8000
+- **API文档**: http://localhost:8000/docs
 
-- ✅ 更强的 `SECRET_KEY`
-- ✅ 生产数据库连接
-- ✅ 真实的 API 凭证
-- ✅ 正确的域名和 CORS 设置
-- ✅ Sentry 错误跟踪
-- ✅ 邮件通知配置
+## 📋 下一步计划
 
-## 📊 监控
+### 短期目标 (1-2周)
+1. **完善仪表板**: 数据可视化界面
+2. **用户管理**: 用户CRUD操作界面
+3. **订单管理**: 基础订单管理功能
 
-### 健康检查
+### 中期目标 (1个月)
+1. **Shopify集成**: 商品和订单同步
+2. **Printify集成**: 订单履行自动化
+3. **监控系统**: 系统监控和告警
 
-- **Backend**: `GET /health`
-- **Frontend**: `GET /`
-- **Celery**: 通过 Flower 界面
+## 📝 重要说明
 
-### 日志
+### 开发环境配置
+- 开发环境已放宽安全限制以支持Docker容器通信
+- 生产环境将启用严格的安全配置
+- 所有敏感信息通过环境变量管理
 
-- **应用日志**: Docker 容器日志
-- **访问日志**: Nginx 访问日志
-- **错误跟踪**: Sentry (如已配置)
+### 密钥管理
+- 密钥文件不打包到Docker镜像中
+- 运行时通过卷挂载提供密钥
+- 支持多租户密钥管理
 
-## 🤝 贡献指南
+### 文件结构
+- `frontend/src/lib/`: 前端核心库文件（认证、API、主题等）
+- `frontend/public/`: 静态资源目录
+- `frontend/keys/`: JWT 密钥文件目录
+- `backend/scripts/`: 开发工具和脚本目录
+
+## 📚 详细文档
+
+- **项目进度**: [docs/PROGRESS_LOG.md](docs/PROGRESS_LOG.md)
+- **快速开始**: [docs/QUICK_START.md](docs/QUICK_START.md)
+- **开发指南**: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
+- **部署指南**: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+- **架构说明**: [deployment/ARCHITECTURE.md](deployment/ARCHITECTURE.md)
+
+## 🤝 贡献
 
 1. Fork 项目
 2. 创建功能分支 (`git checkout -b feature/AmazingFeature`)
 3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
 4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 创建 Pull Request
-
-### 开发规范
-
-- 遵循 PEP 8 (Python) 和 ESLint (TypeScript)
-- 编写测试用例
-- 更新相关文档
-- 确保所有测试通过
-
-## 📝 API 文档
-
-完整的 API 文档可在以下地址查看：
-
-- **Swagger UI**: http://localhost:8000/api/v1/docs
-- **ReDoc**: http://localhost:8000/api/v1/redoc
-
-### 主要 API 端点
-
-- `POST /api/v1/auth/login` - 用户登录
-- `GET /api/v1/customers` - 获取客户列表
-- `POST /api/v1/customers` - 创建客户
-- `GET /api/v1/orders` - 获取订单列表
-- `POST /api/v1/webhooks/shopify/orders/create` - Shopify 订单 webhook
-
-## 📞 支持
-
-如果您遇到问题或需要帮助：
-
-- 📧 **邮箱**: support@supplynexus.store
-- 📱 **GitHub Issues**: [创建 Issue](https://github.com/supplynexus/fulfillment-service/issues)
-- 📚 **文档**: 查看 `docs/` 目录下的详细文档
+5. 打开 Pull Request
 
 ## 📄 许可证
 
-本项目基于 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
+本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
 
 ---
 
-**由 SupplyNexus 团队用 ❤️ 开发**
+**项目状态**: 认证系统重构完成，开发工具优化，准备进入业务功能开发阶段  
+**最后更新**: 2025-08-25  
+**下一步重点**: Shopify和Printify集成

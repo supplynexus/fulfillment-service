@@ -1,0 +1,23 @@
+# Redis 环境配置模板
+# 复制此文件到对应环境，然后编辑配置
+#
+# 使用方法:
+# 1. 复制此文件: cp environment.example environment.dev
+# 2. 编辑配置文件: vim environment.dev
+# 3. 启动 Redis: cd deployment/docker/redis && ./deploy.sh dev
+
+# Redis 密码（重要：修改默认密码）
+REDIS_PASSWORD=your-secure-redis-password-here-change-this
+
+# 容器配置
+CONTAINER_NAME=supplynexus-redis-dev
+
+# 端口配置
+REDIS_PORT=6380
+
+# 数据目录配置
+DATA_DIR=./data-dev
+
+# 可选：性能配置
+# REDIS_MAXMEMORY=256mb
+# REDIS_MAXMEMORY_POLICY=allkeys-lru

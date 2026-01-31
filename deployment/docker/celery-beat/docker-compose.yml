@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  celery_beat:
+    build:
+      context: ../../../backend
+      dockerfile: Dockerfile
+    command: celery -A app.tasks.celery_app beat --loglevel=info
+    env_file:
+      - ../../environments/backend/${ENV_FILE:-.env.dev}
+    volumes:
+      - ../../../backend:/app
+      - beat_logs:/app/logs
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - fulfillment_network
+    restart: unless-stopped
+    container_name: supplynexus-celery-beat-dev
+
+volumes:
+  beat_logs:
+
+networks:
+  fulfillment_network:
+    external: true

@@ -1,112 +1,51 @@
 """
-Security utilities for authentication and authorization
+Security utilities for authentication and data encryption
 """
 
+import base64
 from datetime import datetime, timedelta
-from typing import Optional, Union
-from jose import JWTError, jwt
-from passlib.context import CryptContext
+from typing import Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
+from cryptography.fernet import Fernet
+import hashlib
+import os
 
-from app.core.config import settings
 from app.core.database import get_async_db
 from app.models.user import User
-from app.services.user_service import UserService
 
-# Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-# OAuth2 scheme
-oauth2_scheme = OAuth2PasswordBearer(
-    tokenUrl=f"{settings.API_V1_STR}/auth/login"
-)
+# OAuth2 scheme for JWT tokens (kept for compatibility but not used)
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 
-def create_access_token(
-    data: dict, 
-    expires_delta: Optional[timedelta] = None
-) -> str:
-    """Create a JWT access token"""
-    to_encode = data.copy()
+# Encryption utilities for sensitive data
+def get_encryption_key() -> bytes:
+    """Get or generate encryption key for sensitive data"""
+    # Use a combination of environment variables and system info as base
+    key_base = (
+        os.getenv("ENCRYPTION_SALT", "default-encryption-salt") +
+        os.getenv("ENVIRONMENT", "dev") +
+        "SupplyNexus"
+    ).encode()
     
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(
-            minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
-        )
-    
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(
-        to_encode, 
-        settings.SECRET_KEY, 
-        algorithm=settings.ALGORITHM
-    )
-    return encoded_jwt
+    # Generate a 32-byte key using SHA-256
+    key = hashlib.sha256(key_base).digest()
+    # Convert to base64 for Fernet
+    return base64.urlsafe_b64encode(key)
 
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a password against its hash"""
-    return pwd_context.verify(plain_password, hashed_password)
+def encrypt_data(data: str) -> str:
+    """Encrypt sensitive data"""
+    key = get_encryption_key()
+    f = Fernet(key)
+    encrypted_data = f.encrypt(data.encode())
+    return encrypted_data.decode()
 
 
-def get_password_hash(password: str) -> str:
-    """Hash a password"""
-    return pwd_context.hash(password)
-
-
-async def get_current_user(
-    db: AsyncSession = Depends(get_async_db),
-    token: str = Depends(oauth2_scheme)
-) -> User:
-    """Get the current authenticated user"""
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    
-    try:
-        payload = jwt.decode(
-            token, 
-            settings.SECRET_KEY, 
-            algorithms=[settings.ALGORITHM]
-        )
-        user_id: str = payload.get("sub")
-        if user_id is None:
-            raise credentials_exception
-    except JWTError:
-        raise credentials_exception
-    
-    user_service = UserService(db)
-    user = await user_service.get(id=int(user_id))
-    if user is None:
-        raise credentials_exception
-    
-    return user
-
-
-async def get_current_active_user(
-    current_user: User = Depends(get_current_user)
-) -> User:
-    """Get the current active user"""
-    if not current_user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Inactive user"
-        )
-    return current_user
-
-
-async def get_current_superuser(
-    current_user: User = Depends(get_current_user)
-) -> User:
-    """Get the current superuser"""
-    if not current_user.is_superuser:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
-        )
-    return current_user
+def decrypt_data(encrypted_data: str) -> str:
+    """Decrypt sensitive data"""
+    key = get_encryption_key()
+    f = Fernet(key)
+    decrypted_data = f.decrypt(encrypted_data.encode())
+    return decrypted_data.decode()

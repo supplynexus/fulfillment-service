@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: ../../../frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://host.docker.internal:8000}
+        NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-SupplyNexus Fulfillment Service}
+    image: supplynexus-frontend:${VERSION:-latest}
+    container_name: supplynexus-frontend-${ENVIRONMENT:-local}
+    env_file:
+      - ${ENV_FILE:-../../environments/frontend/env.local}
+    ports:
+      - '${FRONTEND_PORT:-3000}:3000'
+    restart: unless-stopped
+    environment:
+      # === 运行时配置 ===
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+
+      # === 应用配置 ===
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://host.docker.internal:8000}
+      - BACKEND_API_URL=${BACKEND_API_URL:-http://host.docker.internal:8000}
+      - NEXT_PUBLIC_APP_NAME=${NEXT_PUBLIC_APP_NAME:-SupplyNexus Fulfillment Service}
+      - NEXT_PUBLIC_ENVIRONMENT=${NEXT_PUBLIC_ENVIRONMENT:-local}
+
+      # === 认证配置 ===
+      # 注意：私钥通过 keyLoader 动态加载，不需要环境变量配置
+      - FRONTEND_JWT_PRIVATE_KEY_PATH=${FRONTEND_JWT_PRIVATE_KEY_PATH:-./keys/frontend_jwt_private_key.pem}
+      - FRONTEND_JWT_PUBLIC_KEY_PATH=${FRONTEND_JWT_PUBLIC_KEY_PATH:-./keys/frontend_jwt_public_key.pem}
+
+      # === 租户配置 ===
+      # 注意：租户配置在前端代码中硬编码，私钥从文件系统加载
+
+      # === 日志配置 ===
+      - LOG_DIR=/var/log/app
+
+    volumes:
+      # 挂载密钥文件目录
+      - ../../../frontend/keys:/app/keys:ro
+      # 挂载日志目录
+      - ./logs-${ENVIRONMENT:-local}:/app/logs
+      - ./logs-${ENVIRONMENT:-local}:/var/log/app
+      # 挂载环境变量文件（如果需要）
+      - ${ENV_FILE:-../../environments/frontend/env.local}:/app/.env.local:ro
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+
+    networks:
+      - frontend_network
+
+networks:
+  frontend_network:
+    driver: bridge

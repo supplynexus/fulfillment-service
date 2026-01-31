@@ -31,7 +31,7 @@ vi .env
 
 # 根据部署环境调整容器名称：
 # 开发环境：CONTAINER_NAME=supplynexus-postgres-dev
-# 测试环境：CONTAINER_NAME=supplynexus-postgres-staging  
+# 测试环境：CONTAINER_NAME=supplynexus-postgres-stg  
 # 生产环境：CONTAINER_NAME=supplynexus-postgres-prod
 ```
 
@@ -41,7 +41,7 @@ vi .env
 ```bash
 # 一键部署指定环境
 ./deploy.sh dev      # 开发环境
-./deploy.sh staging  # 测试环境
+./deploy.sh stg  # 测试环境
 ./deploy.sh prod     # 生产环境
 ```
 
@@ -49,7 +49,7 @@ vi .env
 ```bash
 # 复制对应环境的配置
 cp environment.dev .env     # 开发环境
-cp environment.staging .env # 测试环境  
+cp environment.stg .env # 测试环境  
 cp environment.prod .env    # 生产环境
 
 # 编辑密码（重要！）
@@ -84,7 +84,7 @@ docker-compose exec postgresql psql -U supplynexus_admin -d supplynexus
 数据存储在环境特定目录中，避免冲突：
 
 - **开发环境**: `./data-dev/`
-- **测试环境**: `./data-staging/`  
+- **测试环境**: `./data-stg/`  
 - **生产环境**: `./data-prod/`
 
 每个环境的数据完全独立，可以在同一服务器上安全运行多个环境。

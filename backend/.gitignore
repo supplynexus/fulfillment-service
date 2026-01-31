@@ -1,0 +1,12 @@
+
+# Environment files with sensitive data
+.env.local
+.env.dev
+.env.prod
+.env.stg
+*.backup
+
+# Keys directory - contains sensitive private/public keys
+keys/
+*.pem
+*.key

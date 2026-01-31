@@ -1,0 +1,196 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { createLogger } from '@/lib/logger';
+import { jwtUtilsServer } from '@/lib/jwt-utils-server';
+import { keyLoader } from '@/lib/key-loader';
+import { generateBackendSignature } from '@/lib/signature';
+
+const logger = createLogger('api.orders');
+
+export async function GET(request: NextRequest) {
+  const startTime = Date.now();
+
+  try {
+    logger.requestStart(request.method, request.url, {
+      userAgent: request.headers.get('user-agent'),
+      contentType: request.headers.get('content-type'),
+    });
+
+    // 验证前端 JWT token
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      logger.error('Missing or invalid authorization header');
+      return NextResponse.json(
+        { detail: 'Missing or invalid authorization header' },
+        { status: 401 }
+      );
+    }
+
+    const frontendToken = authHeader.substring(7);
+    let decodedToken;
+    try {
+      decodedToken = jwtUtilsServer.verifyToken(frontendToken);
+    } catch (error) {
+      logger.error('Invalid frontend token', { error: String(error) });
+      return NextResponse.json({ detail: 'Invalid token' }, { status: 401 });
+    }
+
+    const { tenant_name: tenantName, sub: userId } = decodedToken;
+    logger.info('Frontend JWT verified successfully', {
+      userId,
+      tenantName,
+      tokenType: 'access',
+    });
+
+    // 获取查询参数
+    const { searchParams } = new URL(request.url);
+    const page = searchParams.get('page') || '1';
+    const limit = searchParams.get('limit') || '10';
+    const status = searchParams.get('status');
+    const search = searchParams.get('search');
+    const sort_by = searchParams.get('sort_by');
+    const sort_order = searchParams.get('sort_order');
+
+    // 构建后端请求参数 - 后端接收的是 page 和 limit，不是 skip
+    const backendParams = new URLSearchParams({
+      page,
+      limit,
+    });
+
+    if (status) {
+      backendParams.append('status', status);
+    }
+    if (search) {
+      backendParams.append('search', search);
+    }
+    if (sort_by) {
+      backendParams.append('sort_by', sort_by);
+    }
+    if (sort_order) {
+      backendParams.append('sort_order', sort_order);
+    }
+
+    // 构建后端请求体（用于签名，但GET请求不发送body）
+    // const requestBody = {
+    //   page: parseInt(page),
+    //   limit: parseInt(limit),
+    //   search: search || undefined,
+    // };
+
+    // 对于 GET 请求，签名字符串中的 body 应该是空字符串
+    const bodyString = ''; // GET 请求的 body 为空
+    const timestamp = Math.floor(Date.now() / 1000);
+    const nonce = Math.random().toString(36).substring(2, 15);
+
+    // 构建签名字符串 - 必须包含查询参数以匹配后端签名验证逻辑
+    const queryString = backendParams.toString();
+    const backendPath = queryString
+      ? `/api/v1/orders/?${queryString}`
+      : `/api/v1/orders/`;
+    const signatureString = `GET${backendPath}${timestamp}${nonce}${tenantName}${bodyString}`;
+
+    // 🔍 调试：打印签名生成信息
+    logger.info('🔍 前端签名生成调试信息', {
+      method: 'GET',
+      path: backendPath,
+      queryString,
+      timestamp,
+      nonce,
+      tenantName,
+      bodyString,
+      bodyStringLength: bodyString.length,
+      signatureString,
+      signatureStringLength: signatureString.length,
+    });
+
+    // 获取租户私钥
+    const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
+
+    // 生成后端签名
+    const signature = generateBackendSignature(
+      privateKey,
+      signatureString,
+      timestamp,
+      nonce,
+      tenantName
+    );
+
+    logger.info('🔍 前端签名生成完成', {
+      signatureLength: signature.length,
+      signature: signature.substring(0, 50) + '...', // 只显示前50个字符
+      tenantName,
+    });
+
+    // 构建后端请求 URL - backendPath 已经包含查询参数
+    const backendUrl = `${process.env.BACKEND_API_URL}${backendPath}`;
+
+    logger.info('Forwarding request to backend', {
+      backendEndpoint: backendUrl,
+    });
+
+    // 发送请求到后端
+    const backendResponse = await fetch(backendUrl, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Tenant-Name': tenantName,
+        'X-Timestamp': timestamp.toString(),
+        'X-Nonce': nonce,
+        'X-Signature': signature,
+        'X-User-ID': userId.toString(),
+      },
+    });
+
+    const responseTime = Date.now() - startTime;
+    logger.info('Backend response received', {
+      status: backendResponse.status,
+      statusText: backendResponse.statusText,
+      duration: `${responseTime}ms`,
+    });
+
+    if (!backendResponse.ok) {
+      const errorText = await backendResponse.text();
+      logger.error('Backend request failed', {
+        status: backendResponse.status,
+        statusText: backendResponse.statusText,
+        error: errorText,
+      });
+      return NextResponse.json(
+        { detail: 'Backend request failed' },
+        { status: backendResponse.status }
+      );
+    }
+
+    const data = await backendResponse.json();
+    logger.info('🔍 前端API接收到的后端数据:', {
+      orders: data.orders?.length || 0,
+      total: data.total,
+      total_pages: data.total_pages,
+      current_page: data.current_page,
+      limit: data.limit,
+      fullData: data,
+    });
+
+    logger.info('Request completed', {
+      method: request.method,
+      url: request.url,
+      statusCode: 200,
+      duration: `${responseTime}ms`,
+      tenantName,
+      hasData: !!data,
+    });
+
+    return NextResponse.json(data);
+  } catch (error) {
+    const responseTime = Date.now() - startTime;
+    logger.error('Request failed', {
+      error: String(error),
+      errorMessage: error instanceof Error ? error.message : 'Unknown error',
+      duration: `${responseTime}ms`,
+    });
+
+    return NextResponse.json(
+      { detail: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Token Test</title>
+</head>
+<body>
+    <h1>Token Test</h1>
+    <div id="result"></div>
+    
+    <script>
+        // 检查 localStorage 中的 token
+        const token = localStorage.getItem('access_token');
+        const result = document.getElementById('result');
+        
+        if (token) {
+            result.innerHTML = '<p>Token found: ' + token.substring(0, 50) + '...</p>';
+            
+            try {
+                const parts = token.split('.');
+                if (parts.length === 3) {
+                    const payload = JSON.parse(atob(parts[1]));
+                    result.innerHTML += '<p>Token payload: ' + JSON.stringify(payload, null, 2) + '</p>';
+                    
+                    const now = Math.floor(Date.now() / 1000);
+                    const expired = payload.exp < now;
+                    result.innerHTML += '<p>Token expired: ' + expired + '</p>';
+                    result.innerHTML += '<p>Current time: ' + now + '</p>';
+                    result.innerHTML += '<p>Token exp: ' + payload.exp + '</p>';
+                }
+            } catch (e) {
+                result.innerHTML += '<p>Error parsing token: ' + e.message + '</p>';
+            }
+        } else {
+            result.innerHTML = '<p>No token found</p>';
+        }
+    </script>
+</body>
+</html>

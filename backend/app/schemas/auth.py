@@ -9,6 +9,13 @@ from pydantic import BaseModel, EmailStr
 class Token(BaseModel):
     access_token: str
     token_type: str
+    refresh_token: Optional[str] = None
+
+
+class TenantLoginResponse(BaseModel):
+    user: dict
+    tenant: dict
+    tenant_name: str
 
 
 class TokenData(BaseModel):

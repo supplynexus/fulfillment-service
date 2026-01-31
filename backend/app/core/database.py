@@ -10,11 +10,17 @@ from sqlalchemy import create_engine
 from app.core.config import settings
 
 # Create async engine for main application
+# 配置连接池以处理事件循环变化
 async_engine = create_async_engine(
     settings.DATABASE_URL,
-    echo=True if settings.ENVIRONMENT == "development" else False,
+    echo=True if settings.ENVIRONMENT == "dev" else False,
     pool_pre_ping=True,
     pool_recycle=300,
+    # 当连接返回池时重置连接，确保连接可以在不同事件循环中使用
+    pool_reset_on_return='commit',
+    # 设置连接池大小，避免连接过多
+    pool_size=5,
+    max_overflow=10,
 )
 
 # Create async session factory
@@ -27,7 +33,7 @@ AsyncSessionLocal = async_sessionmaker(
 # Create sync engine for Alembic migrations
 sync_engine = create_engine(
     settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://"),
-    echo=True if settings.ENVIRONMENT == "development" else False,
+    echo=True if settings.ENVIRONMENT == "dev" else False,
     pool_pre_ping=True,
     pool_recycle=300,
 )

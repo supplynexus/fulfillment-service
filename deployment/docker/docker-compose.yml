@@ -1,0 +1,194 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: supplynexus
+      POSTGRES_USER: supplynexus_admin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-in-production}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    networks:
+      - fulfillment_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Redis Cache and Message Broker
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    networks:
+      - fulfillment_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Backend API
+  backend:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    env_file:
+      - ../environments/backend/${ENV_FILE:-.env.dev}
+    volumes:
+      - ../../backend:/app
+      - backend_logs:/app/logs
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - fulfillment_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  # Celery Worker
+  celery_worker:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    command: celery -A app.tasks.celery_app worker --loglevel=info
+    env_file:
+      - ../environments/backend/${ENV_FILE:-.env.dev}
+    volumes:
+      - ../../backend:/app
+      - worker_logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - fulfillment_network
+    restart: unless-stopped
+
+  # Celery Beat (Scheduler)
+  celery_beat:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    command: celery -A app.tasks.celery_app beat --loglevel=info
+    env_file:
+      - ../environments/backend/${ENV_FILE:-.env.dev}
+    volumes:
+      - ../../backend:/app
+      - beat_logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - fulfillment_network
+    restart: unless-stopped
+
+  # Flower (Celery Monitoring)
+  flower:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    command: celery -A app.tasks.celery_app flower --port=5555
+    env_file:
+      - ../environments/backend/${ENV_FILE:-.env.dev}
+    ports:
+      - "${FLOWER_PORT:-5555}:5555"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - fulfillment_network
+    restart: unless-stopped
+
+  # Frontend Application
+  frontend:
+    build:
+      context: ../../frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+        NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-SupplyNexus Fulfillment Service}
+    image: supplynexus-frontend:${FRONTEND_VERSION:-latest}
+    container_name: supplynexus-frontend-${ENVIRONMENT:-local}
+    ports:
+      - '${FRONTEND_PORT:-3000}:3000'
+    restart: unless-stopped
+    environment:
+      # === 运行时配置 ===
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+
+      # === 应用配置 ===
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      - NEXT_PUBLIC_APP_NAME=${NEXT_PUBLIC_APP_NAME:-SupplyNexus Fulfillment Service}
+      - NEXT_PUBLIC_ENVIRONMENT=${NEXT_PUBLIC_ENVIRONMENT:-production}
+
+      # === 认证配置 ===
+      # 注意：私钥通过 keyLoader 动态加载，不需要环境变量配置
+
+      # === 租户配置 ===
+      # 注意：租户配置在前端代码中硬编码，私钥从文件系统加载
+
+      # === 日志配置 ===
+      - LOG_DIR=/var/log/app
+
+    volumes:
+      # 挂载密钥目录（从宿主机）
+      - ${KEYS_PATH:-../../frontend/keys}:/app/keys:ro
+      # 挂载日志目录
+      - frontend_logs:/var/log/app
+      # 挂载环境变量文件
+      - ../environments/frontend/${ENV_FILE:-env.local}:/app/.env.local:ro
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+
+    depends_on:
+      backend:
+        condition: service_healthy
+
+    networks:
+      - fulfillment_network
+
+volumes:
+  postgres_data:
+  redis_data:
+  backend_logs:
+  worker_logs:
+  beat_logs:
+  frontend_logs:
+
+networks:
+  fulfillment_network:
+    driver: bridge

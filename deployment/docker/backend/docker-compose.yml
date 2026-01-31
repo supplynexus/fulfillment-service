@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  # Backend API Service
+  backend:
+    build:
+      context: ../../../backend
+      dockerfile: Dockerfile
+    container_name: supplynexus-backend
+    env_file:
+      - ../environments/${ENV_FILE:-env.dev}
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - HEALTH_CHECK_API_KEY=${HEALTH_CHECK_API_KEY}
+      - HEALTH_CHECK_RATE_LIMIT=${HEALTH_CHECK_RATE_LIMIT:-10}
+      - HEALTH_CHECK_RATE_WINDOW=${HEALTH_CHECK_RATE_WINDOW:-60}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    networks:
+      - backend_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.backend.rule=Host(`api.dev.supplynexus.store`)"
+      - "traefik.http.routers.backend.tls=true"
+      - "traefik.http.services.backend.loadbalancer.server.port=8000"
+
+networks:
+  backend_network:
+    driver: bridge

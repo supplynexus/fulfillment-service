@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  celery_worker:
+    build:
+      context: ../../../backend
+      dockerfile: Dockerfile
+    command: celery -A app.tasks.celery_app worker --loglevel=info
+    env_file:
+      - ../../environments/backend/${ENV_FILE:-.env.dev}
+    volumes:
+      - ../../../backend:/app
+      - worker_logs:/app/logs
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - fulfillment_network
+    restart: unless-stopped
+    container_name: supplynexus-celery-worker-dev
+
+volumes:
+  worker_logs:
+
+networks:
+  fulfillment_network:
+    external: true

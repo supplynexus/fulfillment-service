@@ -1,0 +1,992 @@
+'use client';
+
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Button,
+  Chip,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Grid,
+  Alert,
+  CircularProgress,
+  Tooltip,
+  Pagination,
+  Stack,
+  Autocomplete,
+  Checkbox,
+} from '@mui/material';
+import {
+  Refresh as RefreshIcon,
+  Visibility as ViewIcon,
+  Search as SearchIcon,
+  FilterList as FilterIcon,
+  ShoppingCart as OrderIcon,
+  Store as StoreIcon,
+  CalendarToday as DateIcon,
+  AttachMoney as PriceIcon,
+  LocalShipping as ShippingIcon,
+  CheckCircle as CheckCircleIcon,
+  CheckCircle as StatusIcon,
+  Error as ErrorIcon,
+  Info as InfoIcon,
+  Link as LinkIcon,
+  LinkOff as LinkOffIcon,
+  Delete as DeleteIcon,
+} from '@mui/icons-material';
+import { frontendApi } from '@/lib/api';
+import { frontendLogger } from '@/lib/frontend-logger';
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+import { DashboardLayout } from '@/components/layout/DashboardLayout';
+
+// 订单状态类型
+type OrderStatus =
+  | 'pending'
+  | 'processing'
+  | 'shipped'
+  | 'delivered'
+  | 'cancelled'
+  | 'on_hold';
+
+// Printify 订单接口
+interface PrintifyOrder {
+  id: number;
+  external_order_id: string;
+  scm_order_id?: number;
+  status: OrderStatus;
+  total_price?: string;
+  currency?: string;
+  customer_email?: string;
+  customer_name?: string;
+  shipping_address?: any;
+  billing_address?: any;
+  tracking_number?: string;
+  tracking_url?: string;
+  carrier?: string;
+  created_at: string;
+  updated_at?: string;
+  shipped_at?: string;
+  delivered_at?: string;
+  external_system?: {
+    id: number;
+    name: string;
+    system_type: string;
+  };
+  scm_order?: {
+    id: number;
+    scm_order_number?: string;
+    status: string;
+  };
+  printify_data?: any;
+  external_data?: any;
+}
+
+function PrintifyOrdersPage() {
+  const [orders, setOrders] = useState<PrintifyOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all');
+  const [selectedOrder, setSelectedOrder] = useState<PrintifyOrder | null>(
+    null
+  );
+  const [openOrderDialog, setOpenOrderDialog] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [loadingOrders, setLoadingOrders] = useState(false);
+  const [syncingLogistics, setSyncingLogistics] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+
+  // 绑定相关状态
+  const [bindDialogOpen, setBindDialogOpen] = useState(false);
+  const [scmOrders, setScmOrders] = useState<any[]>([]);
+  const [selectedScmOrder, setSelectedScmOrder] = useState<any>(null);
+  const [binding, setBinding] = useState(false);
+  const [bindError, setBindError] = useState<string | null>(null);
+  const [unbinding, setUnbinding] = useState(false);
+  const [unbindError, setUnbindError] = useState<string | null>(null);
+
+  // 批量删除相关状态
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<number>>(new Set());
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // 获取订单列表
+  const fetchOrders = useCallback(
+    async (page: number = 1) => {
+      try {
+        setLoadingOrders(true);
+        setError(null);
+
+        frontendLogger.info('🔍 开始获取 Printify 订单列表', {
+          page: page,
+          status: statusFilter,
+          search: searchTerm,
+        });
+
+        const params = new URLSearchParams({
+          page: page.toString(),
+          limit: '20',
+        });
+
+        if (statusFilter !== 'all') {
+          params.append('status', statusFilter);
+        }
+
+        if (searchTerm) {
+          params.append('search', searchTerm);
+        }
+
+        const response = await frontendApi.get(
+          `/api/printify-orders?${params.toString()}`
+        );
+
+        if (response.data.success && response.data.orders) {
+          const ordersData = response.data.orders || [];
+          setOrders(ordersData);
+          setTotalCount(response.data.total_count || 0);
+          setTotalPages(response.data.total_pages || 1);
+          setCurrentPage(page);
+          frontendLogger.info('✅ Printify 订单列表获取成功', {
+            count: ordersData.length,
+            total: response.data.total_count,
+          });
+        } else {
+          throw new Error(response.data.message || '获取订单列表失败');
+        }
+      } catch (error) {
+        frontendLogger.error('❌ 获取 Printify 订单列表失败', {
+          error: String(error),
+        });
+        setError('获取订单列表失败');
+      } finally {
+        setLoadingOrders(false);
+      }
+    },
+    [statusFilter, searchTerm]
+  );
+
+  // 刷新订单列表
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await fetchOrders(currentPage);
+      // 清空选择
+      setSelectedOrderIds(new Set());
+      frontendLogger.info('✅ 订单列表刷新成功');
+    } catch (error) {
+      frontendLogger.error('❌ 订单列表刷新失败', { error: String(error) });
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchOrders, currentPage]);
+
+  // 搜索处理
+  const handleSearch = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(event.target.value);
+    setCurrentPage(1);
+  };
+
+  // 状态过滤处理
+  const handleStatusFilter = (event: any) => {
+    setStatusFilter(event.target.value);
+    setCurrentPage(1);
+  };
+
+  // 查看订单详情
+  const handleViewOrder = (order: PrintifyOrder) => {
+    setSelectedOrder(order);
+    setOpenOrderDialog(true);
+  };
+
+  // 分页处理
+  const handlePageChange = (
+    event: React.ChangeEvent<unknown>,
+    page: number
+  ) => {
+    setCurrentPage(page);
+  };
+
+  // 同步物流信息
+  const handleSyncLogistics = useCallback(async () => {
+    try {
+      setSyncingLogistics(true);
+      setSyncMessage('正在同步物流信息...');
+      setError(null);
+
+      frontendLogger.info('🔍 开始同步 Printify 订单物流信息');
+
+      const response = await frontendApi.post(
+        '/api/printify-orders/sync-logistics'
+      );
+
+      if (response.data.success) {
+        setSyncMessage(
+          `✅ 同步完成！共同步了 ${response.data.synced_count || 0} 个订单的物流信息`
+        );
+        frontendLogger.info('✅ Printify 订单物流信息同步成功', {
+          syncedCount: response.data.synced_count,
+          totalOrders: response.data.total_orders,
+          errorCount: response.data.error_count,
+        });
+
+        // 同步完成后刷新订单列表
+        await fetchOrders(currentPage);
+      } else {
+        setSyncMessage(`⚠️ 同步失败: ${response.data.message || '未知错误'}`);
+        frontendLogger.error('❌ Printify 订单物流信息同步失败', response.data);
+      }
+    } catch (error: any) {
+      frontendLogger.error('❌ Printify 订单物流信息同步失败', {
+        error: error.message,
+      });
+      setError(error.response?.data?.detail || '同步失败，请稍后重试');
+      setSyncMessage(null);
+    } finally {
+      setSyncingLogistics(false);
+      // 3秒后清除同步消息
+      setTimeout(() => setSyncMessage(null), 3000);
+    }
+  }, [fetchOrders, currentPage]);
+
+  // 获取 SCM 订单列表
+  const fetchScmOrders = async () => {
+    try {
+      const response = await frontendApi.get('/api/scm-orders');
+      setScmOrders(response.data.orders || []);
+    } catch (err: any) {
+      console.error('Failed to fetch SCM orders:', err);
+      setBindError('Failed to fetch SCM orders');
+    }
+  };
+
+  // 绑定 SCM 订单
+  const handleBindScmOrder = async (printifyOrderId: number) => {
+    if (!selectedScmOrder) return;
+
+    try {
+      setBinding(true);
+      setBindError(null);
+      const response = await frontendApi.post(`/api/printify-orders/${printifyOrderId}/bind-scm`, {
+        scm_order_hashid: selectedScmOrder.id_hashid
+      });
+      
+      if (response.data.success) {
+        setBindDialogOpen(false);
+        setSelectedScmOrder(null);
+        fetchOrders(currentPage); // 刷新订单列表
+      }
+    } catch (err: any) {
+      console.error('Failed to bind SCM order:', err);
+      setBindError(err.response?.data?.error || 'Failed to bind SCM order');
+    } finally {
+      setBinding(false);
+    }
+  };
+
+  // 解绑 SCM 订单
+  const handleUnbindScmOrder = async (printifyOrderId: number) => {
+    try {
+      setUnbinding(true);
+      setUnbindError(null);
+      const response = await frontendApi.post(`/api/printify-orders/${printifyOrderId}/unbind-scm`);
+      
+      if (response.data.success) {
+        fetchOrders(currentPage); // 刷新订单列表
+      }
+    } catch (err: any) {
+      console.error('Failed to unbind SCM order:', err);
+      setUnbindError(err.response?.data?.error || 'Failed to unbind SCM order');
+    } finally {
+      setUnbinding(false);
+    }
+  };
+
+  // 打开绑定对话框
+  const handleOpenBindDialog = (printifyOrderId: number) => {
+    setBindDialogOpen(true);
+    setSelectedScmOrder(null);
+    setBindError(null);
+    fetchScmOrders();
+  };
+
+  // 批量选择处理
+  const handleSelectOrder = (orderId: number, checked: boolean) => {
+    setSelectedOrderIds(prev => {
+      const newSet = new Set(prev);
+      if (checked) {
+        newSet.add(orderId);
+      } else {
+        newSet.delete(orderId);
+      }
+      return newSet;
+    });
+  };
+
+  // 全选/取消全选
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      const allIds = new Set(orders.map(order => order.id));
+      setSelectedOrderIds(allIds);
+    } else {
+      setSelectedOrderIds(new Set());
+    }
+  };
+
+  // 批量删除
+  const handleBatchDelete = async () => {
+    if (selectedOrderIds.size === 0) {
+      setDeleteError('请至少选择一个订单');
+      return;
+    }
+
+    if (!confirm(`确定要删除选中的 ${selectedOrderIds.size} 个订单吗？此操作不可恢复。`)) {
+      return;
+    }
+
+    try {
+      setDeleting(true);
+      setDeleteError(null);
+
+      frontendLogger.info('🗑️ 开始批量删除 Printify 订单', {
+        orderIds: Array.from(selectedOrderIds),
+        count: selectedOrderIds.size,
+      });
+
+      const response = await frontendApi.post('/api/printify-orders/batch-delete', {
+        order_ids: Array.from(selectedOrderIds),
+      });
+
+      if (response.data.success) {
+        frontendLogger.info('✅ 批量删除 Printify 订单成功', {
+          deletedCount: response.data.deleted_count,
+        });
+
+        // 清空选择
+        setSelectedOrderIds(new Set());
+        
+        // 刷新订单列表
+        await fetchOrders(currentPage);
+        
+        // 显示成功消息
+        alert(`成功删除 ${response.data.deleted_count} 个订单`);
+      } else {
+        throw new Error(response.data.message || '删除失败');
+      }
+    } catch (error: any) {
+      frontendLogger.error('❌ 批量删除 Printify 订单失败', {
+        error: error.message,
+        response: error.response?.data,
+      });
+      setDeleteError(error.response?.data?.detail || error.message || '删除失败，请稍后重试');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  // 初始加载
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true);
+      try {
+        await fetchOrders(1);
+      } catch (error) {
+        frontendLogger.error('❌ 初始数据加载失败', { error: String(error) });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, [fetchOrders]);
+
+  // 状态颜色映射
+  const getStatusColor = (status: OrderStatus) => {
+    switch (status) {
+      case 'pending':
+        return 'warning';
+      case 'processing':
+        return 'info';
+      case 'shipped':
+        return 'primary';
+      case 'delivered':
+        return 'success';
+      case 'cancelled':
+        return 'error';
+      case 'on_hold':
+        return 'default';
+      default:
+        return 'default';
+    }
+  };
+
+  // 状态图标映射
+  const getStatusIcon = (status: OrderStatus) => {
+    switch (status) {
+      case 'pending':
+        return <InfoIcon />;
+      case 'processing':
+        return <StatusIcon />;
+      case 'shipped':
+        return <ShippingIcon />;
+      case 'delivered':
+        return <CheckCircleIcon />;
+      case 'cancelled':
+        return <ErrorIcon />;
+      case 'on_hold':
+        return <InfoIcon />;
+      default:
+        return <InfoIcon />;
+    }
+  };
+
+  // 格式化日期
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  // 格式化价格
+  const formatPrice = (price: string | undefined, currency: string = 'USD') => {
+    if (!price) return 'N/A';
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currency,
+    }).format(parseFloat(price));
+  };
+
+  if (loading) {
+    return (
+      <Box
+        display='flex'
+        justifyContent='center'
+        alignItems='center'
+        minHeight='400px'
+      >
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  return (
+    <Box>
+      <Box
+        display='flex'
+        justifyContent='space-between'
+        alignItems='center'
+        mb={3}
+      >
+        <Typography variant='h4' component='h1'>
+          Printify 订单管理
+        </Typography>
+        <Box display='flex' gap={2}>
+          {selectedOrderIds.size > 0 && (
+            <Button
+              variant='contained'
+              startIcon={<DeleteIcon />}
+              onClick={handleBatchDelete}
+              disabled={deleting}
+              color='error'
+            >
+              {deleting ? '删除中...' : `删除选中 (${selectedOrderIds.size})`}
+            </Button>
+          )}
+          <Button
+            variant='outlined'
+            startIcon={<ShippingIcon />}
+            onClick={handleSyncLogistics}
+            disabled={syncingLogistics}
+            color='primary'
+          >
+            {syncingLogistics ? '同步中...' : '同步物流信息'}
+          </Button>
+          <Tooltip title='刷新'>
+            <IconButton onClick={handleRefresh} disabled={refreshing}>
+              <RefreshIcon />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      </Box>
+
+      {error && (
+        <Alert severity='error' sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
+
+      {deleteError && (
+        <Alert severity='error' sx={{ mb: 2 }} onClose={() => setDeleteError(null)}>
+          {deleteError}
+        </Alert>
+      )}
+
+      {syncMessage && (
+        <Alert
+          severity={syncMessage.includes('✅') ? 'success' : 'warning'}
+          sx={{ mb: 2 }}
+        >
+          {syncMessage}
+        </Alert>
+      )}
+
+      {/* 搜索和过滤 */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }} alignItems='center'>
+            <Box sx={{ width: "100%" }} sm={6} md={4}>
+              <TextField
+                fullWidth
+                label='搜索订单'
+                value={searchTerm}
+                onChange={handleSearch}
+                InputProps={{
+                  startAdornment: (
+                    <SearchIcon sx={{ mr: 1, color: 'text.secondary' }} />
+                  ),
+                }}
+                placeholder='搜索订单ID或客户邮箱'
+              />
+            </Box>
+            <Box sx={{ width: "100%" }} sm={6} md={3}>
+              <FormControl fullWidth>
+                <InputLabel>状态过滤</InputLabel>
+                <Select
+                  value={statusFilter}
+                  onChange={handleStatusFilter}
+                  label='状态过滤'
+                >
+                  <MenuItem value='all'>全部状态</MenuItem>
+                  <MenuItem value='pending'>待处理</MenuItem>
+                  <MenuItem value='processing'>处理中</MenuItem>
+                  <MenuItem value='shipped'>已发货</MenuItem>
+                  <MenuItem value='delivered'>已送达</MenuItem>
+                  <MenuItem value='cancelled'>已取消</MenuItem>
+                  <MenuItem value='on_hold'>暂停</MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
+          </Box>
+        </CardContent>
+      </Card>
+
+      {/* 订单列表 */}
+      <Card>
+        <CardContent>
+          <Box
+            display='flex'
+            justifyContent='space-between'
+            alignItems='center'
+            mb={2}
+          >
+            <Typography variant='h6'>订单列表 ({totalCount} 个订单)</Typography>
+            {loadingOrders && <CircularProgress size={24} />}
+          </Box>
+
+          {orders.length === 0 ? (
+            <Box textAlign='center' py={4}>
+              <Typography variant='body1' color='text.secondary'>
+                暂无订单数据
+              </Typography>
+            </Box>
+          ) : (
+            <>
+              <TableContainer component={Paper}>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell padding="checkbox">
+                        <Checkbox
+                          indeterminate={selectedOrderIds.size > 0 && selectedOrderIds.size < orders.length}
+                          checked={orders.length > 0 && selectedOrderIds.size === orders.length}
+                          onChange={(e) => handleSelectAll(e.target.checked)}
+                        />
+                      </TableCell>
+                      <TableCell>订单ID</TableCell>
+                      <TableCell>SCM订单</TableCell>
+                      <TableCell>客户信息</TableCell>
+                      <TableCell>状态</TableCell>
+                      <TableCell>总价</TableCell>
+                      <TableCell>创建时间</TableCell>
+                      <TableCell>操作</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {orders.map(order => (
+                      <TableRow key={order.id}>
+                        <TableCell padding="checkbox">
+                          <Checkbox
+                            checked={selectedOrderIds.has(order.id)}
+                            onChange={(e) => handleSelectOrder(order.id, e.target.checked)}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant='body2' fontFamily='monospace'>
+                            {order.external_order_id}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          {order.scm_order ? (
+                            <Box display='flex' alignItems='center' gap={1}>
+                              <LinkIcon fontSize='small' color='primary' />
+                              <Typography variant='body2'>
+                                SCM-{order.scm_order.id}
+                              </Typography>
+                            </Box>
+                          ) : (
+                            <Typography variant='body2' color='text.secondary'>
+                              N/A
+                            </Typography>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Box>
+                            <Typography variant='body2'>
+                              {order.customer_name || 'N/A'}
+                            </Typography>
+                            <Typography
+                              variant='caption'
+                              color='text.secondary'
+                            >
+                              {order.customer_email || 'N/A'}
+                            </Typography>
+                          </Box>
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            icon={getStatusIcon(order.status)}
+                            label={order.status}
+                            color={getStatusColor(order.status) as any}
+                            size='small'
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant='body2'>
+                            {formatPrice(order.total_price, order.currency)}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant='body2'>
+                            {formatDate(order.created_at)}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Box display="flex" gap={1}>
+                            <Tooltip title='查看详情'>
+                              <IconButton
+                                size='small'
+                                onClick={() => handleViewOrder(order)}
+                              >
+                                <ViewIcon />
+                              </IconButton>
+                            </Tooltip>
+                            {order.scm_order_id ? (
+                              <Tooltip title='解绑 SCM 订单'>
+                                <IconButton
+                                  size='small'
+                                  onClick={() => handleUnbindScmOrder(order.id)}
+                                  disabled={unbinding}
+                                  color='error'
+                                >
+                                  {unbinding ? <CircularProgress size={16} /> : <LinkOffIcon />}
+                                </IconButton>
+                              </Tooltip>
+                            ) : (
+                              <Tooltip title='绑定 SCM 订单'>
+                                <IconButton
+                                  size='small'
+                                  onClick={() => handleOpenBindDialog(order.id)}
+                                  color='primary'
+                                >
+                                  <LinkIcon />
+                                </IconButton>
+                              </Tooltip>
+                            )}
+                          </Box>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+
+              {/* 分页 */}
+              {totalPages > 1 && (
+                <Box display='flex' justifyContent='center' mt={3}>
+                  <Pagination
+                    count={totalPages}
+                    page={currentPage}
+                    onChange={handlePageChange}
+                    color='primary'
+                  />
+                </Box>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* 订单详情对话框 */}
+      <Dialog
+        open={openOrderDialog}
+        onClose={() => setOpenOrderDialog(false)}
+        maxWidth='md'
+        fullWidth
+      >
+        <DialogTitle>
+          <Box display='flex' alignItems='center' gap={2}>
+            <OrderIcon color='primary' />
+            订单详情
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          {selectedOrder && (
+            <Box>
+              {/* 订单基本信息 */}
+              <Card sx={{ mb: 2 }}>
+                <CardContent>
+                  <Typography variant='h6' gutterBottom>
+                    订单信息
+                  </Typography>
+                  <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
+                    <Box sx={{ width: "100%" }} sm={6}>
+                      <Typography variant='body2' color='text.secondary'>
+                        订单ID
+                      </Typography>
+                      <Typography variant='body1' fontFamily='monospace'>
+                        {selectedOrder.external_order_id}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ width: "100%" }} sm={6}>
+                      <Typography variant='body2' color='text.secondary'>
+                        状态
+                      </Typography>
+                      <Chip
+                        icon={getStatusIcon(selectedOrder.status)}
+                        label={selectedOrder.status}
+                        color={getStatusColor(selectedOrder.status) as any}
+                        size='small'
+                      />
+                    </Box>
+                    <Box sx={{ width: "100%" }} sm={6}>
+                      <Typography variant='body2' color='text.secondary'>
+                        SCM订单
+                      </Typography>
+                      <Typography variant='body1'>
+                        {selectedOrder.scm_order
+                          ? `SCM-${selectedOrder.scm_order.id}`
+                          : 'N/A'}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ width: "100%" }} sm={6}>
+                      <Typography variant='body2' color='text.secondary'>
+                        总价
+                      </Typography>
+                      <Typography variant='body1'>
+                        {formatPrice(
+                          selectedOrder.total_price,
+                          selectedOrder.currency
+                        )}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ width: "100%" }} sm={6}>
+                      <Typography variant='body2' color='text.secondary'>
+                        创建时间
+                      </Typography>
+                      <Typography variant='body1'>
+                        {formatDate(selectedOrder.created_at)}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ width: "100%" }} sm={6}>
+                      <Typography variant='body2' color='text.secondary'>
+                        更新时间
+                      </Typography>
+                      <Typography variant='body1'>
+                        {selectedOrder.updated_at
+                          ? formatDate(selectedOrder.updated_at)
+                          : 'N/A'}
+                      </Typography>
+                    </Box>
+                  </Box>
+                </CardContent>
+              </Card>
+
+              {/* 客户信息 */}
+              <Card sx={{ mb: 2 }}>
+                <CardContent>
+                  <Typography variant='h6' gutterBottom>
+                    客户信息
+                  </Typography>
+                  <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
+                    <Box sx={{ width: "100%" }} sm={6}>
+                      <Typography variant='body2' color='text.secondary'>
+                        姓名
+                      </Typography>
+                      <Typography variant='body1'>
+                        {selectedOrder.customer_name || 'N/A'}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ width: "100%" }} sm={6}>
+                      <Typography variant='body2' color='text.secondary'>
+                        邮箱
+                      </Typography>
+                      <Typography variant='body1'>
+                        {selectedOrder.customer_email || 'N/A'}
+                      </Typography>
+                    </Box>
+                  </Box>
+                </CardContent>
+              </Card>
+
+              {/* 物流信息 */}
+              {(selectedOrder.tracking_number ||
+                selectedOrder.tracking_url) && (
+                <Card sx={{ mb: 2 }}>
+                  <CardContent>
+                    <Typography variant='h6' gutterBottom>
+                      物流信息
+                    </Typography>
+                    <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
+                      <Box sx={{ width: "100%" }} sm={6}>
+                        <Typography variant='body2' color='text.secondary'>
+                          跟踪号
+                        </Typography>
+                        <Typography variant='body1'>
+                          {selectedOrder.tracking_number || 'N/A'}
+                        </Typography>
+                      </Box>
+                      <Box sx={{ width: "100%" }} sm={6}>
+                        <Typography variant='body2' color='text.secondary'>
+                          承运商
+                        </Typography>
+                        <Typography variant='body1'>
+                          {selectedOrder.carrier || 'N/A'}
+                        </Typography>
+                      </Box>
+                      {selectedOrder.tracking_url && (
+                        <Box sx={{ width: "100%" }}>
+                          <Typography variant='body2' color='text.secondary'>
+                            跟踪链接
+                          </Typography>
+                          <Typography
+                            variant='body1'
+                            component='a'
+                            href={selectedOrder.tracking_url}
+                            target='_blank'
+                            rel='noopener noreferrer'
+                            sx={{
+                              color: 'primary.main',
+                              textDecoration: 'none',
+                            }}
+                          >
+                            {selectedOrder.tracking_url}
+                          </Typography>
+                        </Box>
+                      )}
+                    </Box>
+                  </CardContent>
+                </Card>
+              )}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenOrderDialog(false)}>关闭</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 绑定 SCM 订单对话框 */}
+      <Dialog open={bindDialogOpen} onClose={() => setBindDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>绑定 SCM 订单</DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            <Autocomplete
+              options={scmOrders}
+              getOptionLabel={(option) => `${option.scm_order_number || 'N/A'} - ${option.customer_name || 'Unknown Customer'}`}
+              value={selectedScmOrder}
+              onChange={(event, newValue) => setSelectedScmOrder(newValue)}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="选择 SCM 订单"
+                  placeholder="搜索 SCM 订单..."
+                />
+              )}
+              renderOption={(props, option) => (
+                <Box component="li" {...props}>
+                  <Box>
+                    <Typography variant="body2" fontWeight="medium">
+                      {option.scm_order_number || 'N/A'}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      客户: {option.customer_name || 'Unknown'} | 状态: {option.status} | 履行状态: {option.fulfillment_status || 'N/A'}
+                    </Typography>
+                  </Box>
+                </Box>
+              )}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setBindDialogOpen(false)}>取消</Button>
+          <Button
+            onClick={() => handleBindScmOrder(selectedScmOrder?.printifyOrderId)}
+            disabled={!selectedScmOrder || binding}
+            variant="contained"
+            color="primary"
+          >
+            {binding ? '绑定中...' : '绑定'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 绑定错误提示 */}
+      {bindError && (
+        <Alert severity="error" onClose={() => setBindError(null)}>
+          {bindError}
+        </Alert>
+      )}
+
+      {/* 解绑错误提示 */}
+      {unbindError && (
+        <Alert severity="error" onClose={() => setUnbindError(null)}>
+          {unbindError}
+        </Alert>
+      )}
+    </Box>
+  );
+}
+
+export default function Page() {
+  return (
+    <ProtectedRoute>
+      <DashboardLayout>
+        <PrintifyOrdersPage />
+      </DashboardLayout>
+    </ProtectedRoute>
+  );
+}

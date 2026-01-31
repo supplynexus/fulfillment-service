@@ -1,0 +1,22 @@
+# =================================================================
+# SupplyNexus Frontend Local Environment Configuration
+# =================================================================
+
+# Backend API Configuration
+NEXT_PUBLIC_API_URL=http://host.docker.internal:8000
+BACKEND_API_URL=http://host.docker.internal:8000
+NEXT_PUBLIC_APP_NAME=SupplyNexus Fulfillment Service
+
+# Frontend JWT Configuration
+FRONTEND_JWT_PRIVATE_KEY_PATH=./keys/frontend_jwt_private_key.pem
+FRONTEND_JWT_PUBLIC_KEY_PATH=./keys/frontend_jwt_public_key.pem
+
+# Local Development Settings
+NODE_ENV=production
+NEXT_PUBLIC_ENVIRONMENT=local
+
+# Security Settings
+NEXT_TELEMETRY_DISABLED=1
+
+# Performance Settings
+NEXT_PUBLIC_ENABLE_ANALYTICS=false
