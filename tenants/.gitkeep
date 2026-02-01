@@ -1,0 +1,2 @@
+# 此目录用于存储 tenant 特定的配置和凭据
+# 所有敏感文件（*.token, login_info.json 等）都不会被提交到 Git
