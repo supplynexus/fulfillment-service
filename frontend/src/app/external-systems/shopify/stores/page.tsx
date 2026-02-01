@@ -422,46 +422,73 @@ export default function ShopifyStoresPage() {
 
   const handleSaveStore = async () => {
     try {
+      setError(null);
+      
+      // Prepare the request body
+      const requestBody = {
+        name: formData.name,
+        system_type: 'SHOPIFY',
+        external_id: formData.external_id,
+        external_system_id: formData.credentials.shop_id, // Shopify shop ID
+        base_url: formData.base_url || `https://${formData.credentials.shop_id}.myshopify.com`,
+        credentials: formData.credentials,
+        settings: formData.settings,
+        is_active: formData.is_active,
+        sync_enabled: formData.sync_enabled,
+        webhook_enabled: formData.webhook_enabled,
+      };
+
       if (editingStore) {
-        // Update existing store
+        // Update existing store - use numeric ID for backend API
+        const response = await fetch(
+          `/api/external-systems/${editingStore.id}`,
+          {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${localStorage.getItem('access_token')}`,
+            },
+            body: JSON.stringify(requestBody),
+          }
+        );
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.detail || `HTTP ${response.status}`);
+        }
+
+        const updatedStore = await response.json();
         setStores(
           stores.map(store =>
-            store.id === editingStore.id
-              ? {
-                  ...store,
-                  name: formData.name,
-                  external_id: formData.external_id,
-                  base_url: formData.base_url,
-                  credentials: formData.credentials,
-                  settings: formData.settings,
-                  is_active: formData.is_active,
-                  sync_enabled: formData.sync_enabled,
-                  webhook_enabled: formData.webhook_enabled,
-                }
-              : store
+            store.id === editingStore.id ? { ...store, ...updatedStore } : store
           )
         );
+        frontendLogger.info('Shopify 店铺更新成功', { storeId: editingStore.id });
       } else {
-        // Add new store
-        const newStore: ShopifyStore = {
-          id: Date.now(), // Temporary ID
-          id_hashid: '', // Will be set by backend
-          name: formData.name,
-          system_type: 'SHOPIFY',
-          external_id: formData.external_id,
-          base_url: formData.base_url,
-          credentials: formData.credentials,
-          settings: formData.settings,
-          is_active: formData.is_active,
-          sync_enabled: formData.sync_enabled,
-          webhook_enabled: formData.webhook_enabled,
-          created_at: new Date().toISOString(),
-        };
+        // Add new store - call backend API
+        const response = await fetch('/api/external-systems', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${localStorage.getItem('access_token')}`,
+          },
+          body: JSON.stringify(requestBody),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.detail || `HTTP ${response.status}`);
+        }
+
+        const newStore = await response.json();
         setStores([...stores, newStore]);
+        frontendLogger.info('Shopify 店铺创建成功', { storeId: newStore.id });
       }
       setOpenDialog(false);
-    } catch (err) {
-      setError('保存店铺失败');
+      // Refresh the list to get the latest data from backend
+      await fetchStores();
+    } catch (err: any) {
+      setError(err.message || '保存店铺失败');
       console.error('Error saving store:', err);
     }
   };
