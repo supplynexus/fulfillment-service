@@ -48,7 +48,7 @@ services:
     volumes:
       - ./backend:/app
     ports:
-      - "8000:8000"
+      - "8001:8000"  # Dev 环境使用 8001，避免与 prod 的 8000 冲突
     depends_on:
       - postgres
       - redis
@@ -109,12 +109,14 @@ services:
       NEXT_PUBLIC_API_URL: http://backend_dev:8000
       BACKEND_API_URL: http://backend_dev:8000
       NODE_ENV: dev
+      NEXT_PUBLIC_ENVIRONMENT: dev
+      NEXT_PUBLIC_VERSION: 1.0.0
     volumes:
       - ./frontend:/app
       - /app/node_modules
       - /app/.next
     ports:
-      - "3000:3000"
+      - "3001:3000"  # Dev 环境使用 3001，避免与 prod 的 3000 冲突
     depends_on:
       - backend_dev
     networks:
