@@ -193,6 +193,8 @@ export function PrintifyMapping() {
     null
   );
   const [mappings, setMappings] = useState<ProductMapping[]>([]);
+  const [selectedMappingIds, setSelectedMappingIds] = useState<string[]>([]);
+  const mappingRowsPerPage = 10;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -236,7 +238,7 @@ export function PrintifyMapping() {
   // 分页状态
   const [corePage, setCorePage] = useState(1);
   const [printifyPage, setPrintifyPage] = useState(1);
-  const [mappingPage, setMappingPage] = useState(1);
+  const [mappingListPage, setMappingListPage] = useState(1); // 仅用于「现有映射关系」表格翻页
   const [itemsPerPage] = useState(10);
 
   // 获取核心商品数据
@@ -350,8 +352,8 @@ export function PrintifyMapping() {
 
       const response = await frontendApi.get('/api/products/mappings/', {
         params: {
-          page: mappingPage,
-          limit: itemsPerPage,
+          page: 1,
+          limit: 100,
           system_type: 'PRINTIFY',
         },
       });
@@ -370,7 +372,7 @@ export function PrintifyMapping() {
       });
       setError('获取映射关系失败');
     }
-  }, [mappingPage, itemsPerPage]);
+  }, []);
 
   // 初始化数据
   const fetchData = useCallback(async () => {
@@ -397,6 +399,17 @@ export function PrintifyMapping() {
       fetchPrintifyProducts(selectedStore);
     }
   }, [selectedStore, fetchPrintifyProducts]);
+
+  // 映射列表变化时，若当前页无数据则回到第 1 页
+  useEffect(() => {
+    const maxPage = Math.max(
+      1,
+      Math.ceil(mappings.length / mappingRowsPerPage)
+    );
+    if (mappingListPage > maxPage) {
+      setMappingListPage(1);
+    }
+  }, [mappings.length, mappingListPage, mappingRowsPerPage]);
 
   useEffect(() => {
     fetchData();
@@ -588,7 +601,7 @@ export function PrintifyMapping() {
 
       frontendLogger.info('✅ 商品映射删除成功', { mappingId });
 
-      // 刷新数据
+      setSelectedMappingIds(prev => prev.filter(id => id !== mappingId));
       await fetchData();
     } catch (error) {
       frontendLogger.error('❌ 删除商品映射失败', {
@@ -597,6 +610,58 @@ export function PrintifyMapping() {
       });
       setError('删除商品映射失败');
     }
+  };
+
+  // 批量删除映射
+  const handleRemoveMappings = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    try {
+      frontendLogger.info('🗑️ 开始批量删除商品映射', { count: ids.length });
+      for (const id of ids) {
+        await frontendApi.delete(`/api/products/mappings/${id}`);
+      }
+      frontendLogger.info('✅ 批量删除映射成功', { count: ids.length });
+      setSelectedMappingIds([]);
+      await fetchData();
+    } catch (error) {
+      frontendLogger.error('❌ 批量删除映射失败', {
+        error: String(error),
+      });
+      setError('批量删除映射失败');
+    }
+  };
+
+  // 当前页的映射（用于全选）
+  const currentPageMappings = mappings.slice(
+    (mappingListPage - 1) * mappingRowsPerPage,
+    (mappingListPage - 1) * mappingRowsPerPage + mappingRowsPerPage
+  );
+  const currentPageIds = currentPageMappings.map(m => m.id_hashid);
+  const allCurrentPageSelected =
+    currentPageIds.length > 0 &&
+    currentPageIds.every(id => selectedMappingIds.includes(id));
+  const someCurrentPageSelected = currentPageIds.some(id =>
+    selectedMappingIds.includes(id)
+  );
+
+  const handleToggleSelectAllMappings = () => {
+    if (allCurrentPageSelected) {
+      setSelectedMappingIds(prev =>
+        prev.filter(id => !currentPageIds.includes(id))
+      );
+    } else {
+      setSelectedMappingIds(prev => [
+        ...new Set([...prev, ...currentPageIds]),
+      ]);
+    }
+  };
+
+  const handleToggleSelectMapping = (idHashid: string) => {
+    setSelectedMappingIds(prev =>
+      prev.includes(idHashid)
+        ? prev.filter(id => id !== idHashid)
+        : [...prev, idHashid]
+    );
   };
 
   // 查看映射详情
@@ -739,14 +804,14 @@ export function PrintifyMapping() {
     );
   };
 
-  // 获取商品价格范围
+  // 获取商品价格范围（Printify API 返回分为单位，显示时除以 100 转为元）
   const getProductPriceRange = (product: PrintifyProduct) => {
-    const prices = product.variants.map(v => v.price).filter(p => p > 0);
+    const prices = product.variants.map(v => v.price / 100).filter(p => p > 0);
     if (prices.length === 0) return 'N/A';
-    if (prices.length === 1) return `$${prices[0]}`;
+    if (prices.length === 1) return `$${prices[0].toFixed(2)}`;
     const min = Math.min(...prices);
     const max = Math.max(...prices);
-    return min === max ? `$${min}` : `$${min} - $${max}`;
+    return min === max ? `$${min.toFixed(2)}` : `$${min.toFixed(2)} - $${max.toFixed(2)}`;
   };
 
   if (loading) {
@@ -1045,14 +1110,63 @@ export function PrintifyMapping() {
       {mappings.length > 0 && (
         <Card sx={{ mt: 3 }}>
           <CardContent>
-            <Typography variant='h6' component='h2' mb={2}>
-              现有映射关系
-            </Typography>
+            <Box
+              display='flex'
+              alignItems='center'
+              justifyContent='space-between'
+              flexWrap='wrap'
+              gap={2}
+              mb={2}
+            >
+              <Typography variant='h6' component='h2'>
+                现有映射关系
+              </Typography>
+              {selectedMappingIds.length > 0 && (
+                <Stack direction='row' alignItems='center' spacing={2}>
+                  <Typography variant='body2' color='text.secondary'>
+                    已选 {selectedMappingIds.length} 条
+                  </Typography>
+                  <Button
+                    variant='outlined'
+                    color='error'
+                    size='small'
+                    startIcon={<DeleteIcon />}
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          `确定删除选中的 ${selectedMappingIds.length} 条映射吗？`
+                        )
+                      ) {
+                        handleRemoveMappings(selectedMappingIds);
+                      }
+                    }}
+                  >
+                    批量删除
+                  </Button>
+                  <Button
+                    size='small'
+                    onClick={() => setSelectedMappingIds([])}
+                  >
+                    取消选择
+                  </Button>
+                </Stack>
+              )}
+            </Box>
 
             <TableContainer component={Paper} variant='outlined'>
               <Table>
                 <TableHead>
                   <TableRow>
+                    <TableCell padding='checkbox'>
+                      <Checkbox
+                        indeterminate={
+                          someCurrentPageSelected && !allCurrentPageSelected
+                        }
+                        checked={allCurrentPageSelected}
+                        onChange={handleToggleSelectAllMappings}
+                        aria-label='全选当前页'
+                      />
+                    </TableCell>
                     <TableCell>核心商品</TableCell>
                     <TableCell>Printify 商品</TableCell>
                     <TableCell>状态</TableCell>
@@ -1061,8 +1175,19 @@ export function PrintifyMapping() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {mappings.map(mapping => (
+                  {currentPageMappings.map(mapping => (
                     <TableRow key={mapping.id} hover>
+                      <TableCell padding='checkbox'>
+                        <Checkbox
+                          checked={selectedMappingIds.includes(
+                            mapping.id_hashid
+                          )}
+                          onChange={() =>
+                            handleToggleSelectMapping(mapping.id_hashid)
+                          }
+                          aria-label={`选择 ${mapping.core_product_title}`}
+                        />
+                      </TableCell>
                       <TableCell>
                         <Typography variant='body2' fontWeight='medium'>
                           {mapping.core_product_title}
@@ -1158,6 +1283,33 @@ export function PrintifyMapping() {
                 </TableBody>
               </Table>
             </TableContainer>
+            {mappings.length > mappingRowsPerPage && (
+              <Box
+                display='flex'
+                justifyContent='center'
+                alignItems='center'
+                py={2}
+                gap={1}
+              >
+                <Pagination
+                  count={Math.ceil(mappings.length / mappingRowsPerPage)}
+                  page={mappingListPage}
+                  onChange={(_, p) => setMappingListPage(p)}
+                  color='primary'
+                  showFirstButton
+                  showLastButton
+                />
+                <Typography variant='body2' color='text.secondary'>
+                  共 {mappings.length} 条，第{' '}
+                  {(mappingListPage - 1) * mappingRowsPerPage + 1}–
+                  {Math.min(
+                    mappingListPage * mappingRowsPerPage,
+                    mappings.length
+                  )}{' '}
+                  条
+                </Typography>
+              </Box>
+            )}
           </CardContent>
         </Card>
       )}

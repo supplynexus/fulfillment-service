@@ -354,7 +354,11 @@ const ShopifyProductsPage: React.FC = () => {
           selectedProduct.variants?.map(variant => ({
             external_variant_id: variant.id,
             title: variant.title,
-            sku: variant.sku || '',
+            // 避免空 SKU：Shopify 未填时用变体 ID 占位，防止 (tenant_id, sku) 唯一约束冲突
+            sku:
+              variant.sku?.trim() ||
+              variant.id?.replace('gid://shopify/ProductVariant/', '') ||
+              `VAR-${selectedProduct.id?.replace('gid://shopify/Product/', '')}-${variant.id?.replace('gid://shopify/ProductVariant/', '')}`,
             price: parseFloat(variant.price) || 0,
             compare_at_price: variant.compareAtPrice
               ? parseFloat(variant.compareAtPrice)

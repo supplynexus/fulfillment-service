@@ -32,15 +32,17 @@ import { frontendApi } from '@/lib/api';
 import { frontendLogger } from '@/lib/frontend-logger';
 
 interface Variant {
-  id: string;
+  id?: string;
   id_hashid: string;
   sku: string;
-  title: string;
+  title?: string;
+  name?: string;
   price: number;
-  inventory_quantity: number;
+  inventory_quantity?: number;
   option1?: string;
   option2?: string;
   option3?: string;
+  attributes?: Record<string, unknown>;
 }
 
 interface VariantMappingDialogProps {
@@ -81,36 +83,41 @@ export function VariantMappingDialog({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  /** 从变体 title/name/attributes/option1-3 生成显示标签，如 "Light Pink / S" */
+  const getCoreVariantDisplayLabel = (variant: Variant): string => {
+    if (variant.title != null && String(variant.title).trim()) return String(variant.title).trim();
+    if (variant.name != null && String(variant.name).trim()) return String(variant.name).trim();
+    const attrs = variant.attributes as Record<string, unknown> | undefined;
+    if (attrs && typeof attrs === 'object') {
+      const titleFromAttrs = attrs.title;
+      if (titleFromAttrs != null && String(titleFromAttrs).trim()) return String(titleFromAttrs).trim();
+      const parts = Object.entries(attrs)
+        .filter(([k, v]) => k !== 'title' && v != null && v !== '')
+        .map(([, v]) => String(v));
+      if (parts.length > 0) return parts.join(' / ');
+    }
+    const options = [variant.option1, variant.option2, variant.option3]
+      .filter((v): v is string => v != null && String(v).trim() !== '');
+    if (options.length > 0) return options.join(' / ');
+    return variant.sku || '—';
+  };
+
   // 初始化映射
   useEffect(() => {
     if (open && coreProduct.variants && printifyProduct.variants) {
-      console.log('核心商品变体:', coreProduct.variants);
-      console.log('Printify 变体:', printifyProduct.variants);
-
-      // 调试：检查变体数据结构
-      if (coreProduct.variants.length > 0) {
-        console.log('第一个核心商品变体的结构:', coreProduct.variants[0]);
-        console.log(
-          '第一个核心商品变体的 id_hashid:',
-          coreProduct.variants[0].id_hashid
-        );
-      }
-
       const initialMappings: VariantMapping[] = coreProduct.variants.map(
         (coreVariant, index) => {
-          // 使用 index 作为 ID，因为 coreVariant.id 可能是 undefined
-          const variantId = coreVariant.id || `variant-${index}`;
+          const variantId = (coreVariant as Variant & { id?: string }).id ?? coreVariant.id_hashid ?? `variant-${index}`;
           return {
-            core_variant_id: variantId,
-            external_variant_id: '', // 用户需要手动选择
-            core_variant_sku: coreVariant.sku,
+            core_variant_id: String(variantId),
+            external_variant_id: '',
+            core_variant_sku: coreVariant.sku ?? '',
             external_variant_sku: '',
-            core_variant_title: coreVariant.title,
+            core_variant_title: getCoreVariantDisplayLabel(coreVariant as Variant),
             external_variant_title: '',
           };
         }
       );
-      console.log('初始映射:', initialMappings);
       setMappings(initialMappings);
     }
   }, [open, coreProduct, printifyProduct]);
@@ -287,11 +294,11 @@ export function VariantMappingDialog({
                     </TableHead>
                     <TableBody>
                       {coreProduct.variants.map((variant, index) => (
-                        <TableRow key={`core-variant-${variant.id}-${index}`}>
+                        <TableRow key={`core-variant-${variant.id_hashid ?? variant.id}-${index}`}>
                           <TableCell>{variant.sku}</TableCell>
-                          <TableCell>{variant.title}</TableCell>
+                          <TableCell>{getCoreVariantDisplayLabel(variant as Variant)}</TableCell>
                           <TableCell>${variant.price}</TableCell>
-                          <TableCell>{variant.inventory_quantity}</TableCell>
+                          <TableCell>{variant.inventory_quantity ?? '—'}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -368,10 +375,10 @@ export function VariantMappingDialog({
                       <TableCell>
                         <Box>
                           <Typography variant='body2' fontWeight='medium'>
-                            {mapping.core_variant_title}
+                            {mapping.core_variant_title || '—'}
                           </Typography>
-                          <Typography variant='caption' color='text.secondary'>
-                            SKU: {mapping.core_variant_sku}
+                          <Typography variant='caption' color='text.secondary' display='block'>
+                            SKU: {mapping.core_variant_sku || 'N/A'}
                           </Typography>
                         </Box>
                       </TableCell>

@@ -52,17 +52,23 @@ export async function GET(request: NextRequest) {
     const nonce = Math.random().toString(36).substring(2, 15);
     const backendPath = `/api/v1/products/external-products/`;
     const queryString = `skip=${skip}&limit=${limit}`;
-    const fullPath = `${backendPath}?${queryString}`;
-    // 签名字符串不包含查询参数，只包含路径
-    const signatureString = `GET${backendPath}${timestamp}${nonce}${tenantName}`;
+    // 构建签名字符串 - 必须包含查询参数以匹配后端签名验证逻辑
+    const fullPath = queryString
+      ? `${backendPath}?${queryString}`
+      : backendPath;
+    const bodyString = ''; // GET 请求的 body 为空
+    const signatureString = `GET${fullPath}${timestamp}${nonce}${tenantName}${bodyString}`;
 
     // 🔍 调试：打印签名生成信息
     logger.info('🔍 前端签名生成调试信息', {
       method: 'GET',
-      path: backendPath,
+      path: fullPath,
+      queryString,
       timestamp,
       nonce,
       tenantName,
+      bodyString,
+      bodyStringLength: bodyString.length,
       signatureString,
       signatureStringLength: signatureString.length,
     });
@@ -82,7 +88,7 @@ export async function GET(request: NextRequest) {
       tenantName,
     });
 
-    // 调用后端 API
+    // 调用后端 API - fullPath 已经包含查询参数
     const backendUrl = `${process.env.BACKEND_API_URL}${fullPath}`;
     const backendResponse = await fetch(backendUrl, {
       method: 'GET',
