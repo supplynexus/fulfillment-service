@@ -322,6 +322,9 @@ deployment/docker/redis/data-*/
 
 # AI Assistant directories (personal configurations and caches)
 .cursor/
+# 但允许提交 .cursor/rules/ 下的 skills 文件
+!.cursor/rules/
+!.cursor/rules/*.mdc
 .serena/
 .specify/
 
