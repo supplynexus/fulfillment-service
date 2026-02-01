@@ -7,6 +7,9 @@
 ## 文件说明
 
 - `backend.conf` - 后端 API 的 Nginx 配置样本
+- `api.dev.supplynexus.store.conf` - 开发环境 API 服务配置
+- `api.supplynexus.store.conf` - 生产环境 API 服务配置
+- `admin.supplynexus.store.conf` - 生产环境前端管理后台配置
 - `README.md` - 本说明文档
 
 ## 部署步骤
