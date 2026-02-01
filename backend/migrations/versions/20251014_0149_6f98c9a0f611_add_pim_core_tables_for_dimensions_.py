@@ -673,11 +673,21 @@ def upgrade() -> None:
         )
     """)
     
-    op.create_unique_constraint(
-        "uq_product_mappings_tenant_core_external",
-        "product_mappings",
-        ["tenant_id", "core_product_id", "external_system_id"],
-    )
+    # 安全地创建约束（如果不存在的话）
+    result = connection.execute(sa.text("""
+        SELECT constraint_name FROM information_schema.table_constraints 
+        WHERE table_name = 'product_mappings' AND constraint_name = 'uq_product_mappings_tenant_core_external'
+    """))
+    
+    if not result.fetchone():
+        op.create_unique_constraint(
+            "uq_product_mappings_tenant_core_external",
+            "product_mappings",
+            ["tenant_id", "core_product_id", "external_system_id"],
+        )
+        print("Constraint uq_product_mappings_tenant_core_external created successfully")
+    else:
+        print("Constraint uq_product_mappings_tenant_core_external already exists, skipping")
     # 安全地删除约束（如果存在的话）
     result = connection.execute(sa.text("""
         SELECT constraint_name FROM information_schema.table_constraints 
