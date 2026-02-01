@@ -218,8 +218,8 @@ export default function ShopifyStoresPage() {
   };
 
   const handleViewProducts = async (store: ShopifyStore) => {
-    if (!store.external_id) {
-      setError('该店铺未配置 external_id，无法获取商品列表。');
+    if (!store.id_hashid) {
+      setError('该店铺未配置 id_hashid，无法获取商品列表。');
       return;
     }
 
@@ -230,7 +230,7 @@ export default function ShopifyStoresPage() {
       setOpenProductsDialog(true);
 
       const response = await fetch(
-        `/api/external-systems/shopify/${store.external_id}/products`,
+        `/api/external-systems/shopify/${store.id_hashid}/products`,
         {
           method: 'GET',
           headers: {
@@ -260,8 +260,8 @@ export default function ShopifyStoresPage() {
   };
 
   const handleViewOrders = async (store: ShopifyStore) => {
-    if (!store.external_id) {
-      setError('该店铺未配置 external_id，无法获取订单列表。');
+    if (!store.id_hashid) {
+      setError('该店铺未配置 id_hashid，无法获取订单列表。');
       return;
     }
 
@@ -272,7 +272,7 @@ export default function ShopifyStoresPage() {
       setOpenOrdersDialog(true);
 
       const response = await fetch(
-        `/api/external-systems/shopify/${store.external_id}/orders`,
+        `/api/external-systems/shopify/${store.id_hashid}/orders`,
         {
           method: 'GET',
           headers: {
@@ -714,11 +714,11 @@ export default function ShopifyStoresPage() {
                         size='small'
                         onClick={() => handleViewProducts(store)}
                         color='secondary'
-                        disabled={!store.external_id}
+                        disabled={!store.id_hashid}
                         title={
-                          store.external_id
+                          store.id_hashid
                             ? '查看商品'
-                            : '该店铺未配置 external_id，无法查看商品'
+                            : '该店铺未配置 id_hashid，无法查看商品'
                         }
                       >
                         <InventoryIcon />
@@ -727,11 +727,11 @@ export default function ShopifyStoresPage() {
                         size='small'
                         onClick={() => handleViewOrders(store)}
                         color='warning'
-                        disabled={!store.external_id}
+                        disabled={!store.id_hashid}
                         title={
-                          store.external_id
+                          store.id_hashid
                             ? '查看订单'
-                            : '该店铺未配置 external_id，无法查看订单'
+                            : '该店铺未配置 id_hashid，无法查看订单'
                         }
                       >
                         <ShoppingCartIcon />
@@ -741,19 +741,19 @@ export default function ShopifyStoresPage() {
                         onClick={() => handleSyncOrders(store)}
                         color='success'
                         disabled={
-                          !store.external_id ||
-                          (store.external_id
-                            ? syncingOrders[store.external_id]
+                          !store.id_hashid ||
+                          (store.id_hashid
+                            ? syncingOrders[store.id_hashid]
                             : false)
                         }
                         title={
-                          store.external_id
+                          store.id_hashid
                             ? '同步订单到数据库'
-                            : '该店铺未配置 external_id，无法同步订单'
+                            : '该店铺未配置 id_hashid，无法同步订单'
                         }
                       >
-                        {store.external_id &&
-                        syncingOrders[store.external_id] ? (
+                        {store.id_hashid &&
+                        syncingOrders[store.id_hashid] ? (
                           <CircularProgress size={16} />
                         ) : (
                           <SyncIcon />

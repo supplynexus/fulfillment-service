@@ -64,36 +64,35 @@ export default function SkusPage() {
       setLoading(true);
       setError(null);
       const { frontendApi } = await import('@/lib/api');
-      const data = await frontendApi.get('/api/product-variants');
-      setSkus(data);
+      const response = await frontendApi.get('/api/product-variants');
+      // 后端返回 { variants: [...], total, page, page_size }
+      setSkus(response.variants || []);
     } catch (err: any) {
       console.error('加载SKU列表失败:', err);
       setError(err.message || '加载SKU列表失败');
-      // 使用mock数据作为fallback
+      // 使用mock数据作为fallback - 匹配后端 VariantResponse 结构
       setSkus([
         {
-          id: '1',
+          id: 1,
           sku: 'IMP-BSC-BLK-L',
-          name: 'IMPEACH BASIC BLACK - L',
-          product_id: '1',
-          attributes: { color: 'Black', size: 'L' },
+          product_id: 1,
           price: 29.99,
-          cost: 15.00,
-          stock: 100,
+          cost_price: 15.00,
+          weight: 0.5,
           is_active: true,
           created_at: '2025-01-01T00:00:00Z',
+          updated_at: '2025-01-01T00:00:00Z',
         },
         {
-          id: '2',
+          id: 2,
           sku: 'IMP-BSC-BLK-M',
-          name: 'IMPEACH BASIC BLACK - M',
-          product_id: '1',
-          attributes: { color: 'Black', size: 'M' },
+          product_id: 1,
           price: 29.99,
-          cost: 15.00,
-          stock: 50,
+          cost_price: 15.00,
+          weight: 0.5,
           is_active: true,
           created_at: '2025-01-01T00:00:00Z',
+          updated_at: '2025-01-01T00:00:00Z',
         },
       ]);
     } finally {
@@ -104,17 +103,16 @@ export default function SkusPage() {
   useEffect(() => {
     loadSkus();
     
-    // 初始化列配置
+    // 初始化列配置 - 匹配后端 VariantResponse 结构
     const initialColumns = [
       { id: 'sku', label: 'SKU', field: 'sku', type: 'text', sortable: true, filterable: true },
-      { id: 'name', label: '名称', field: 'name', type: 'text', sortable: true, filterable: true },
       { id: 'product_id', label: '产品ID', field: 'product_id', type: 'text', sortable: true, filterable: true },
-      { id: 'attributes', label: '属性', field: 'attributes', type: 'chip', sortable: false, filterable: false },
       { id: 'price', label: '价格', field: 'price', type: 'number', sortable: true, filterable: true },
-      { id: 'cost', label: '成本', field: 'cost', type: 'number', sortable: true, filterable: true },
-      { id: 'stock', label: '库存', field: 'stock', type: 'number', sortable: true, filterable: true },
+      { id: 'cost_price', label: '成本', field: 'cost_price', type: 'number', sortable: true, filterable: true },
+      { id: 'weight', label: '重量', field: 'weight', type: 'number', sortable: true, filterable: true },
       { id: 'is_active', label: '状态', field: 'is_active', type: 'boolean', sortable: true, filterable: true },
       { id: 'created_at', label: '创建时间', field: 'created_at', type: 'date', sortable: true, filterable: true },
+      { id: 'updated_at', label: '更新时间', field: 'updated_at', type: 'date', sortable: true, filterable: true },
     ];
     setColumns(initialColumns);
   }, []);
@@ -319,11 +317,10 @@ export default function SkusPage() {
           <AdvancedSearch
             fields={[
               { key: 'sku', label: 'SKU', type: 'text' },
-              { key: 'name', label: '名称', type: 'text' },
               { key: 'product_id', label: '产品ID', type: 'text' },
               { key: 'price', label: '价格', type: 'number', min: 0, max: 10000 },
-              { key: 'cost', label: '成本', type: 'number', min: 0, max: 10000 },
-              { key: 'stock', label: '库存', type: 'number', min: 0, max: 10000 },
+              { key: 'cost_price', label: '成本', type: 'number', min: 0, max: 10000 },
+              { key: 'weight', label: '重量', type: 'number', min: 0, max: 1000 },
               { key: 'is_active', label: '状态', type: 'boolean' },
               { key: 'created_at', label: '创建时间', type: 'date' },
             ]}
