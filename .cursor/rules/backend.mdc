@@ -1,153 +1,110 @@
 ---
-description: Backend 开发环境规则和启动命令规范
-alwaysApply: false
+description: Backend Python/FastAPI development rules
+globs: ["app/**/*", "alembic/**/*", "scripts/**/*.py", "tests/**/*.py", "requirements.txt", "pyproject.toml"]
 ---
-# Backend 开发环境规则
 
-## 1. 环境配置规则
+# Backend 开发规则
 
-### 环境变量管理
-- **绝对禁止** 在命令行中使用 `export` 或直接在命令前设置环境变量
-- 环境变量必须通过 `.env` 文件或环境配置文件设置
+## 技术栈
+- **Python 3.11+** + **FastAPI**
+- **SQLAlchemy 2.0** (异步)
+- **PostgreSQL** + **Redis**
+- **Pydantic** 数据验证
 
-## 2. 服务启动规则
+## 日志记录模板
 
-### 标准启动命令
-当需要启动 backend 服务时，**必须使用以下命令**：
+```python
+from app.core.logging import get_logger
 
-```bash
-cd backend && source .venv/bin/activate && python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+logger = get_logger(__name__)
+
+try:
+    logger.info("🔍 开始处理请求", params=params, tenant_id=tenant.id)
+    # 业务逻辑
+    logger.info("✅ 步骤完成", result=result, count=len(result))
+except Exception as e:
+    logger.error("❌ 操作失败", error=str(e), tenant_id=tenant.id)
+    import traceback
+    logger.error("   异常堆栈", stack=traceback.format_exc())
+    raise HTTPException(status_code=500, detail=f"详细错误信息: {str(e)}")
 ```
 
-### 开发环境启动（推荐方式）
-使用三个终端分别启动服务：
+## 加密数据处理
 
-#### 终端1: FastAPI Web 服务
-```bash
-cd backend && source .venv/bin/activate && python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```python
+from app.core.security import decrypt_data
+
+# 1. 接收加密数据
+encrypted_access_token = request_data.get('access_token')
+
+# 2. 解密凭据
+try:
+    access_token = decrypt_data(encrypted_access_token)
+    logger.info("✅ 凭据解密成功")
+except Exception as e:
+    logger.error(f"❌ 凭据解密失败: {str(e)}")
+    raise HTTPException(status_code=400, detail="Failed to decrypt credentials")
+
+# 3. 使用解密后的数据
+external_service = ExternalService(api_token=access_token)
 ```
 
-#### 终端2: Celery Worker
-```bash
-cd backend && source .venv/bin/activate && celery -A app.tasks.celery_app worker --loglevel=info
+### 测试连接 - 支持明文和加密两种格式
+
+```python
+try:
+    # 尝试解密（已保存店铺）
+    access_token = decrypt_data(encrypted_access_token)
+except Exception:
+    # 解密失败，使用明文（对话框测试）
+    access_token = encrypted_access_token
 ```
 
-#### 终端3: Celery Beat
-```bash
-cd backend && source .venv/bin/activate && celery -A app.tasks.celery_app beat --loglevel=info
+## Hashids 处理
+
+### 返回数据时编码
+
+```python
+from app.core.hashids_utils import encode_id
+
+system_dict = {
+    "id_hashid": encode_id(system.id),  # ✅ 使用 hashids
+    # "id": system.id,  # ❌ 禁止暴露原始 ID
+    "name": system.name,
+}
 ```
 
-### 后台启动方式（可选）
-```bash
-cd backend && source .venv/bin/activate && ./scripts/start_celery.sh
+### 接收数据时解码
+
+```python
+from app.core.hashids_utils import decode_id
+
+try:
+    external_system_id = decode_id(external_system_hashid)
+except Exception as e:
+    raise HTTPException(status_code=400, detail="Invalid ID")
+
+# 使用解码后的 ID 查询数据库
+external_system = await service.get(external_system_id, tenant.id)
 ```
 
-### 启动前检查
-- 确保在 backend 目录下执行，且虚拟环境已激活
-- 如果已经在 backend 目录时，就不要 cd backend 了
-- 所有服务都应该后台运行并监控日志
+## 数据库主键安全
 
-## 3. 数据库操作规则
+- **❌ 禁止**：返回 `id`, `tenant_id`, `user_id` 等主键字段
+- **✅ 必须**：使用 `id_hashid` 替代所有主键
+- **✅ 必须**：日志中不记录敏感数据
 
-### 数据库访问优先级
-1. **优先使用** MCP postgres-supplynexus-local 工具
-2. **备选方案** Docker容器访问
-3. **最后选择** Python脚本（避免创建临时测试文件）
+## API 开发流程
 
-### 数据库结构修改流程
-**绝对禁止直接执行 SQL DDL 命令**
+1. 先设计后端 API 接口
+2. 实现路由和业务逻辑
+3. 前端实现调用
+4. 测试验证
 
-1. **修改模型文件** - 在 `app/models/` 目录下修改相应的 SQLAlchemy 模型
-2. **生成 Alembic 迁移文件** - 执行 `alembic revision --autogenerate -m "描述"`
-3. **执行迁移** - 执行 `alembic upgrade head`
+## 常见错误预防
 
-### 迁移文件管理
-- 迁移文件位于 `migrations/versions/` 目录
-- 每次修改数据库结构都必须生成新的迁移文件
-- 迁移文件一旦提交到版本控制，不得修改
-- 如果需要修改，创建新的迁移文件
-
-## 4. 开发规范
-
-### 错误处理
-- 发现错误时立即修复，不要重复错误
-- 优先使用三个终端分别启动的方式，便于监控和调试
-
-### 临时文件管理
-- **临时测试文件必须放入 `temp/` 目录**，方便事后统一删除
-
-
-
-# Backend 开发环境规则
-
-## 1. 环境配置规则
-
-### 环境变量管理
-- **绝对禁止** 在命令行中使用 `export` 或直接在命令前设置环境变量
-- 环境变量必须通过 `.env` 文件或环境配置文件设置
-
-## 2. 服务启动规则
-
-### 标准启动命令
-当需要启动 backend 服务时，**必须使用以下命令**：
-
-```bash
-cd backend && source .venv/bin/activate && python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-### 开发环境启动（推荐方式）
-使用三个终端分别启动服务：
-
-#### 终端1: FastAPI Web 服务
-```bash
-cd backend && source .venv/bin/activate && python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-#### 终端2: Celery Worker
-```bash
-cd backend && source .venv/bin/activate && celery -A app.tasks.celery_app worker --loglevel=info
-```
-
-#### 终端3: Celery Beat
-```bash
-cd backend && source .venv/bin/activate && celery -A app.tasks.celery_app beat --loglevel=info
-```
-
-### 后台启动方式（可选）
-```bash
-cd backend && source .venv/bin/activate && ./scripts/start_celery.sh
-```
-
-### 启动前检查
-- 确保在 backend 目录下执行，且虚拟环境已激活
-- 如果已经在 backend 目录时，就不要 cd backend 了
-- 所有服务都应该后台运行并监控日志
-
-## 3. 数据库操作规则
-
-### 数据库访问优先级
-1. **优先使用** MCP postgres-supplynexus-local 工具
-2. **备选方案** Docker容器访问
-3. **最后选择** Python脚本（避免创建临时测试文件）
-
-### 数据库结构修改流程
-**绝对禁止直接执行 SQL DDL 命令**
-
-1. **修改模型文件** - 在 `app/models/` 目录下修改相应的 SQLAlchemy 模型
-2. **生成 Alembic 迁移文件** - 执行 `alembic revision --autogenerate -m "描述"`
-3. **执行迁移** - 执行 `alembic upgrade head`
-
-### 迁移文件管理
-- 迁移文件位于 `migrations/versions/` 目录
-- 每次修改数据库结构都必须生成新的迁移文件
-- 迁移文件一旦提交到版本控制，不得修改
-- 如果需要修改，创建新的迁移文件
-
-## 4. 开发规范
-
-### 错误处理
-- 发现错误时立即修复，不要重复错误
-- 优先使用三个终端分别启动的方式，便于监控和调试
-
-### 临时文件管理
-- **临时测试文件必须放入 `temp/` 目录**，方便事后统一删除
+- **404**：检查路由路径是否匹配
+- **405**：检查 HTTP 方法是否正确
+- **400**：检查请求参数格式
+- **401**：检查签名和鉴权
+- **500**：检查异常处理和日志

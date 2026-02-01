@@ -1,5 +1,6 @@
 ---
-alwaysApply: true
+description: Git workflow, branch strategy, pull request, commit, 分支, PR
+globs: [".git/**/*", ".github/**/*"]
 ---
 ## Git 工作流规则
 
