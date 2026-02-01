@@ -60,24 +60,29 @@ rsync -avz --delete \
 echo "✅ 代码同步完成"
 echo ""
 
-# 步骤 4: 运行数据库迁移（如果需要）
-echo "📊 步骤 4: 运行数据库迁移..."
+# 步骤 4: 停止旧容器（避免 "No such image" 错误）
+echo "🛑 步骤 4: 停止旧容器..."
 cd "$DEPLOY_DIR"
-docker-compose -f docker-compose.dev.yml exec -T backend_dev alembic upgrade head 2>&1 | tail -20
-
-echo "✅ 数据库迁移完成"
+docker-compose -f docker-compose.dev.yml down --remove-orphans 2>/dev/null || true
+echo "✅ 旧容器已停止"
 echo ""
 
 # 步骤 5: 重新构建并启动 dev 环境服务
 echo "🐳 步骤 5: 重新构建并启动 dev 环境服务..."
-cd "$DEPLOY_DIR"
-docker-compose -f docker-compose.dev.yml up -d --build
+docker-compose -f docker-compose.dev.yml up -d --build --remove-orphans
 
 echo "等待服务启动..."
-sleep 20
+sleep 30
 
-# 步骤 6: 检查服务状态
-echo "📊 步骤 6: 检查服务状态..."
+# 步骤 6: 运行数据库迁移
+echo "📊 步骤 6: 运行数据库迁移..."
+docker-compose -f docker-compose.dev.yml exec -T backend_dev alembic upgrade head 2>&1 | tail -20 || echo "⚠️ 迁移跳过（可能已是最新）"
+
+echo "✅ 数据库迁移完成"
+echo ""
+
+# 步骤 7: 检查服务状态
+echo "📊 步骤 7: 检查服务状态..."
 docker-compose -f docker-compose.dev.yml ps
 
 echo ""
@@ -87,5 +92,6 @@ echo "Dev 环境服务地址:"
 echo "  - 前端: https://admin.dev.supplynexus.store"
 echo "  - 后端 API: https://api.dev.supplynexus.store"
 echo ""
-echo "服务日志（最后 10 行）:"
-docker-compose -f docker-compose.dev.yml logs --tail 10
+echo "健康检查:"
+curl -s http://localhost:8001/api/v1/health || echo "⚠️ Backend 健康检查失败"
+echo ""

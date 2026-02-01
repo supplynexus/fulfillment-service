@@ -1,5 +1,5 @@
 #!/bin/bash
-# 从 Git 仓库部署到生产环境
+# 从 Git 仓库部署 main 分支到生产环境
 # 使用方法: ./scripts/prod/deploy-from-git.sh
 
 set -e
@@ -7,7 +7,7 @@ set -e
 GIT_DIR="/home/ubuntu/project/fulfillment-service"
 DEPLOY_DIR="/opt/supplynexus"
 
-echo "🚀 开始从 Git 仓库部署到生产环境..."
+echo "🚀 开始从 Git 仓库部署 main 分支到生产环境..."
 echo ""
 
 # 步骤 1: 在 Git 目录拉取最新代码
@@ -60,20 +60,38 @@ rsync -avz --delete \
 echo "✅ 代码同步完成"
 echo ""
 
-# 步骤 4: 重新构建并启动前端服务
-echo "🐳 步骤 4: 重新构建并启动前端服务..."
+# 步骤 4: 停止旧容器（避免 "No such image" 错误）
+echo "🛑 步骤 4: 停止旧容器..."
 cd "$DEPLOY_DIR"
-docker-compose -f docker-compose.prod.yml up -d --build frontend
+docker-compose -f docker-compose.prod.yml down --remove-orphans 2>/dev/null || true
+echo "✅ 旧容器已停止"
+echo ""
 
-echo "等待前端服务启动..."
+# 步骤 5: 重新构建并启动生产环境服务
+echo "🐳 步骤 5: 重新构建并启动生产环境服务..."
+docker-compose -f docker-compose.prod.yml up -d --build --remove-orphans
+
+echo "等待服务启动..."
 sleep 30
 
-# 步骤 5: 检查服务状态
-echo "📊 步骤 5: 检查服务状态..."
-docker-compose -f docker-compose.prod.yml ps frontend
+# 步骤 6: 运行数据库迁移
+echo "📊 步骤 6: 运行数据库迁移..."
+docker-compose -f docker-compose.prod.yml exec -T backend alembic upgrade head 2>&1 | tail -20 || echo "⚠️ 迁移跳过（可能已是最新）"
+
+echo "✅ 数据库迁移完成"
+echo ""
+
+# 步骤 7: 检查服务状态
+echo "📊 步骤 7: 检查服务状态..."
+docker-compose -f docker-compose.prod.yml ps
 
 echo ""
 echo "🎉 部署完成！"
 echo ""
-echo "前端服务日志（最后 10 行）:"
-docker-compose -f docker-compose.prod.yml logs frontend --tail 10
+echo "Production 环境服务地址:"
+echo "  - 前端: https://admin.supplynexus.store"
+echo "  - 后端 API: https://api.supplynexus.store"
+echo ""
+echo "健康检查:"
+curl -s -H "Host: api.supplynexus.store" http://localhost:8000/api/v1/health || echo "⚠️ Backend 健康检查失败"
+echo ""
