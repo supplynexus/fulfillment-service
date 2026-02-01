@@ -267,6 +267,8 @@ fulfillment_backup_*
 # Shopify and Printify API logs/cache
 shopify_*.json
 printify_*.json
+green_store_products.json
+product_mapping.json
 webhook_logs/
 
 # Environment-specific overrides
