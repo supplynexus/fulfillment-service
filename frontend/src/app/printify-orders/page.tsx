@@ -471,13 +471,15 @@ function PrintifyOrdersPage() {
     });
   };
 
-  // 格式化价格
+  // 格式化价格（Printify API 返回分为单位，显示时除以 100 转为元）
   const formatPrice = (price: string | undefined, currency: string = 'USD') => {
-    if (!price) return 'N/A';
+    if (price === undefined || price === null || price === '') return 'N/A';
+    const num = parseFloat(String(price));
+    if (Number.isNaN(num)) return 'N/A';
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: currency,
-    }).format(parseFloat(price));
+    }).format(num / 100);
   };
 
   if (loading) {

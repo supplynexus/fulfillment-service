@@ -126,6 +126,30 @@ cd deployment/docker/frontend
 ./scripts/verify-deployment.sh
 ```
 
+### 新服务器设置（Redis 和 PostgreSQL）
+
+如果您需要在新服务器上建立 Redis 和 PostgreSQL 服务，请参考：
+
+- **快速设置指南**: [deployment/docker/QUICK_SETUP.md](deployment/docker/QUICK_SETUP.md)
+- **完整部署指南**: [deployment/docker/SETUP_NEW_SERVER.md](deployment/docker/SETUP_NEW_SERVER.md)
+
+**快速开始：**
+
+```bash
+# 使用快速设置脚本
+cd deployment/docker
+chmod +x setup_infrastructure.sh
+./setup_infrastructure.sh
+
+# 编辑配置文件（必须修改密码！）
+nano ~/supplynexus/infrastructure/postgresql/.env
+nano ~/supplynexus/infrastructure/redis/.env
+
+# 启动服务
+cd ~/supplynexus/infrastructure/postgresql && ./deploy.sh prod up
+cd ~/supplynexus/infrastructure/redis && ./deploy.sh prod up
+```
+
 ## 🔐 认证系统
 
 ### 认证架构

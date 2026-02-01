@@ -49,3 +49,14 @@ echo.
 REM 启动 Celery Beat
 celery -A app.tasks.celery_app beat --loglevel=info
 
+
+
+
+
+
+
+
+
+
+
+

@@ -358,7 +358,7 @@ class PrintifyService:
                     "first_name": first_name,
                     "last_name": last_name,
                     "email": customer.get("email", ""),
-                    "phone": shipping_address.get("phone", ""),
+                    "phone": shipping_address.get("phone") or customer.get("phone") or "+10000000000",  # Printify API 要求 phone 字段必须有值
                     "country": shipping_address.get("country_code", "").upper(),
                     "region": shipping_address.get("province", ""),
                     "city": shipping_address.get("city", ""),

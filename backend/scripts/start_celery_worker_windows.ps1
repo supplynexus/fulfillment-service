@@ -44,3 +44,14 @@ celery -A app.tasks.celery_app worker `
     --concurrency=$Concurrency `
     -Q $Queues
 
+
+
+
+
+
+
+
+
+
+
+

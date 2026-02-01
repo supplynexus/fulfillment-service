@@ -358,13 +358,14 @@ function PrintifySyncedOrdersPage() {
     });
   };
 
-  // 格式化价格
+  // 格式化价格（Printify 订单总价为分，显示时除以 100 转为元）
   const formatPrice = (price: string, currency: string) => {
     const numPrice = parseFloat(price);
+    if (Number.isNaN(numPrice)) return 'N/A';
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: currency,
-    }).format(numPrice);
+    }).format(numPrice / 100);
   };
 
   // 过滤订单

@@ -32,14 +32,20 @@ export async function GET(request: NextRequest) {
 
     // 构建后端 API 路径
     const backendPath = `/api/v1/printify-products/`;
-    const backendUrl = `${process.env.NEXT_PUBLIC_API_URL}${backendPath}`;
-
+    
     // 生成后端签名
     const timestamp = Math.floor(Date.now() / 1000);
     const nonce = Math.random().toString(36).substring(2, 15);
     const queryString = `external_system_id=${external_system_id}&limit=${limit}&offset=${offset}&visible_only=${visible_only}`;
-    // GET 请求的 body 为空字符串
-    const signatureString = `GET${backendPath}${timestamp}${nonce}${tenantName}`;
+    
+    // 构建签名字符串 - 必须包含查询参数以匹配后端签名验证逻辑
+    const fullPath = queryString
+      ? `${backendPath}?${queryString}`
+      : backendPath;
+    const bodyString = ''; // GET 请求的 body 为空字符串
+    const signatureString = `GET${fullPath}${timestamp}${nonce}${tenantName}${bodyString}`;
+    
+    const backendUrl = `${process.env.NEXT_PUBLIC_API_URL}${fullPath}`;
 
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
     const signature = generateBackendSignature(
@@ -50,8 +56,8 @@ export async function GET(request: NextRequest) {
       tenantName
     );
 
-    // 调用后端 API
-    const backendResponse = await fetch(`${backendUrl}?${queryString}`, {
+    // 调用后端 API - fullPath 已经包含查询参数
+    const backendResponse = await fetch(backendUrl, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',

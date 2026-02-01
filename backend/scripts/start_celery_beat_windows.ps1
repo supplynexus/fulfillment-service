@@ -55,3 +55,14 @@ Write-Host ""
 # 但为了确保，我们显式设置环境变量
 celery -A app.tasks.celery_app beat --loglevel=$LogLevel
 
+
+
+
+
+
+
+
+
+
+
+
