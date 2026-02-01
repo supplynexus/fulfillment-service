@@ -6,6 +6,7 @@ import { AppRouterCacheProvider } from '@mui/material-nextjs/v15-appRouter';
 import { ClientThemeProvider } from '@/components/providers/ClientThemeProvider';
 import { QueryProvider } from '@/lib/query-client';
 import { AuthProvider } from '@/lib/auth-context';
+import { EnvironmentBadge } from '@/components/EnvironmentBadge';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -34,7 +35,10 @@ export default function RootLayout({
           <CssBaseline />
           <ClientThemeProvider>
             <QueryProvider>
-              <AuthProvider>{children}</AuthProvider>
+              <AuthProvider>
+                <EnvironmentBadge />
+                {children}
+              </AuthProvider>
             </QueryProvider>
           </ClientThemeProvider>
         </AppRouterCacheProvider>
