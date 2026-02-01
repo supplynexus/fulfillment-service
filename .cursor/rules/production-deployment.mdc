@@ -1,0 +1,154 @@
+---
+description: Production deployment, deploy to server, docker-compose, SSH, server configuration, 部署, 生产环境
+globs: ["docker-compose*.yml", "deployment/**/*", "scripts/prod/**/*", "Dockerfile*"]
+---
+# 生产环境部署规范
+
+## 部署流程概览
+
+1. **在服务器上拉取代码**（git pull from main）
+2. **上传环境配置文件**（env.prod, frontend/env.prod, docker-compose.prod.yml）
+3. **配置防火墙**（UFW）
+4. **确保数据持久化**（Docker volumes 已配置）
+5. **运行数据库迁移**（Alembic）
+6. **启动 Docker 服务**（docker-compose.prod.yml）
+7. **验证部署状态**
+
+## 服务器信息
+
+- **服务器地址**: ubuntu@133.242.179.110
+- **部署路径**: /opt/supplynexus
+- **Git 目录**: /home/ubuntu/project/fulfillment-service
+
+## 部署步骤
+
+### 步骤 1: 在服务器上拉取代码
+
+```bash
+ssh ubuntu@133.242.179.110
+cd /opt/supplynexus
+
+# 如果目录不存在，克隆仓库
+if [ ! -d ".git" ]; then
+    git clone https://github.com/supplynexus/fulfillment-service.git .
+fi
+
+# 切换到 main 分支并拉取最新代码
+git checkout main
+git pull origin main
+```
+
+### 步骤 2: 上传环境配置文件
+
+从本地执行：
+
+```bash
+# 上传后端环境配置
+scp deployment/environments/env.prod ubuntu@133.242.179.110:/opt/supplynexus/deployment/environments/
+
+# 上传前端环境配置
+scp deployment/environments/frontend/env.prod ubuntu@133.242.179.110:/opt/supplynexus/deployment/environments/frontend/
+
+# 上传 Docker Compose 配置
+scp docker-compose.prod.yml ubuntu@133.242.179.110:/opt/supplynexus/
+```
+
+### 步骤 3: 配置防火墙
+
+在服务器上执行：
+
+```bash
+cd /opt/supplynexus
+sudo ./scripts/prod/setup-ufw.sh
+```
+
+### 步骤 4: 运行数据库迁移
+
+在服务器上执行：
+
+```bash
+cd /opt/supplynexus
+./scripts/db/alembic.sh prod upgrade
+```
+
+### 步骤 5: 启动 Docker 服务
+
+在服务器上执行：
+
+```bash
+cd /opt/supplynexus
+docker-compose -f docker-compose.prod.yml up -d
+```
+
+### 步骤 6: 验证部署状态
+
+```bash
+# 检查容器状态
+docker-compose -f docker-compose.prod.yml ps
+
+# 查看日志
+docker-compose -f docker-compose.prod.yml logs -f
+
+# 检查服务健康状态
+curl http://localhost:8000/api/v1/health
+curl http://localhost:3000/api/health
+```
+
+## 安全规范
+
+### 敏感文件管理
+
+以下文件包含敏感信息，**绝对不要提交到 Git**：
+
+- `deployment/environments/env.prod` - 后端环境配置
+- `deployment/environments/frontend/env.prod` - 前端环境配置
+- `docker-compose.prod.yml` - 生产环境 Docker Compose 配置
+
+### 文件权限
+
+```bash
+chmod 600 deployment/environments/env.prod
+chmod 600 deployment/environments/frontend/env.prod
+```
+
+### 验证配置
+
+```bash
+# 检查文件是否被忽略
+git check-ignore -v deployment/environments/env.prod
+git check-ignore -v docker-compose.prod.yml
+
+# 检查是否有未跟踪的敏感文件
+git status | grep -E "(env\.prod|docker-compose\.prod)"
+```
+
+### 密钥轮换
+
+如果发现密钥已泄露：
+1. 立即轮换所有密钥（数据库密码、Redis 密码、API 密钥等）
+2. 更新服务器上的配置文件
+3. 重启相关服务
+
+## 部署脚本
+
+### 完整部署脚本
+```bash
+./scripts/prod/deploy-production.sh
+```
+
+### 从 Git 部署脚本
+```bash
+./scripts/prod/deploy-from-git.sh
+```
+
+### 配置文件上传脚本
+```bash
+./scripts/prod/deploy-to-server.sh
+```
+
+## 重要提醒
+
+- ✅ **正确做法**: 配置文件只存在于服务器上，通过安全方式传输（如 `scp`、`rsync`）
+- ❌ **错误做法**: 将配置文件提交到 Git 仓库
+- 🔄 **定期轮换**: 密钥到期前需要重新生成
+- 🔒 **访问控制**: 只有必要的用户才能访问这些文件

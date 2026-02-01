@@ -1,0 +1,75 @@
+---
+description: API security, authentication, hashids, encryption, 鉴权, 签名, 加密
+globs: ["frontend/src/app/api/**/*", "app/api/**/*.py"]
+---
+
+# API 安全规范
+
+## 前后端鉴权机制
+
+Frontend Server API 调用 Backend API 时使用租户密钥对签名验证。
+
+### 签名生成流程
+
+1. 获取租户私钥：`await keyLoader.getTenantPrivateKey(tenantName)`
+2. 构建签名字符串：`{METHOD}{PATH}{timestamp}{nonce}{tenantName}{body}`
+3. 生成签名：`generateBackendSignature(...)`
+4. 添加请求头：`X-Tenant-Name`, `X-Timestamp`, `X-Nonce`, `X-Signature`, `X-User-ID`
+
+### 鉴权模板
+
+```typescript
+import { keyLoader } from '@/lib/key-loader';
+import { generateBackendSignature } from '@/lib/signature';
+
+const timestamp = Math.floor(Date.now() / 1000);
+const nonce = Math.random().toString(36).substring(2, 15);
+const signatureString = `POST${path}${timestamp}${nonce}${tenantName}${bodyString}`;
+
+const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
+const signature = generateBackendSignature(privateKey, signatureString, timestamp, nonce, tenantName);
+
+const response = await fetch(backendUrl, {
+  headers: {
+    'X-Tenant-Name': tenantName,
+    'X-User-ID': userId,
+    'X-Timestamp': timestamp.toString(),
+    'X-Nonce': nonce,
+    'X-Signature': signature,
+  },
+});
+```
+
+### 注意事项
+- 签名字符串严格按顺序构建
+- 时间戳使用 Unix 秒
+- GET 请求 body 为空字符串
+- 签名失败返回 401
+
+## 加密数据处理
+
+- 敏感凭据必须加密存储（`encrypt_data()` / `decrypt_data()`）
+- 前端获取的数据是加密的
+- 后端使用前必须解密
+- 日志中禁止记录敏感数据
+
+## Hashids 架构
+
+- 后端数据库主键必须编码为 hashids 后传输
+- 前端使用 `id_hashid` 字段，不显示给用户
+- 前端 API 调用直接传回 hashids
+- 后端接收后解码为主键 ID
+
+## 数据库主键安全
+
+**绝对禁止暴露数据库主键 ID 到前端**
+
+- ❌ `"id": 4`
+- ❌ `"tenant_id": 1`
+- ✅ `"id_hashid": "abc123"`
+
+### 检查清单
+1. 后端返回不含主键字段
+2. 前端接口不定义主键字段
+3. 日志不记录主键信息
+4. API 调用使用 hashids

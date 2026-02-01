@@ -1,0 +1,77 @@
+---
+description: Tenant configuration, credentials management, API tokens, 租户配置, 凭据管理
+globs: ["tenants/**/*", "scripts/**/*tenant*", "app/**/tenant*"]
+---
+
+# Tenant 配置管理规范
+
+## Tenant 目录结构
+
+所有 tenant 特定的配置和凭据存储在 `tenants/` 目录下：
+
+```
+tenants/
+└── {tenant_name}/
+    └── {service_name}/          # 例如: printify, shopify
+        ├── api_token.token      # API token（敏感，不提交）
+        ├── login_info.json      # 登录信息和配置（敏感，不提交）
+        └── credentials.json     # 其他凭据（敏感，不提交）
+```
+
+## 安全规则
+
+### Git 忽略规则
+- `tenants/**/*.token` - 所有 token 文件
+- `tenants/**/login_info.json` - 登录信息
+- `tenants/**/credentials.json` - 其他凭据
+- `tenants/**/*.key` - 密钥文件
+- `tenants/**/*.pem` - PEM 格式密钥
+
+### 文件权限
+所有敏感文件必须设置权限 `600`：
+```bash
+chmod 600 tenants/**/*.token
+chmod 600 tenants/**/login_info.json
+```
+
+## 在代码中读取配置
+
+```python
+import json
+from pathlib import Path
+
+def get_tenant_config(tenant_name: str, service: str):
+    """获取指定 tenant 的配置"""
+    tenant_dir = Path("tenants") / tenant_name / service
+    
+    config = {}
+    
+    # 读取 API token
+    token_file = tenant_dir / "api_token.token"
+    if token_file.exists():
+        with open(token_file, "r") as f:
+            config["api_token"] = f.read().strip()
+    
+    # 读取登录信息
+    login_info_file = tenant_dir / "login_info.json"
+    if login_info_file.exists():
+        with open(login_info_file, "r") as f:
+            config["login_info"] = json.load(f)
+    
+    return config
+```
+
+## 在脚本中使用
+
+```bash
+# 使用 tenant 配置
+python scripts/example_script.py --tenant {tenant_name}
+```
+
+## 重要提醒
+
+- ✅ **正确做法**: 敏感文件只存在于本地，通过安全方式传输
+- ❌ **错误做法**: 将敏感文件提交到 Git 仓库
+- ❌ **错误做法**: 在规则文件或代码中硬编码凭据
+- 🔄 **定期轮换**: API tokens 到期前需要重新生成
+- 🔒 **访问控制**: 只有必要的用户才能访问这些文件

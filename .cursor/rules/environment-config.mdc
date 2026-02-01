@@ -1,0 +1,112 @@
+---
+description: Environment configuration, env files, DATABASE_URL, REDIS_URL, 环境配置
+globs: ["deployment/environments/**/*", ".env*", "docker-compose*.yml"]
+---
+# 环境配置管理规范
+
+## 配置文件位置
+
+所有环境配置文件位于 `deployment/environments/` 目录：
+
+```
+deployment/environments/
+├── env.example          # 配置模板
+├── env.local            # 本地环境
+├── env.dev              # 开发环境
+├── env.stg              # 测试环境
+└── env.prod             # 生产环境（敏感，不提交）
+```
+
+## 环境文件读取机制
+
+### Backend 配置加载
+- 通过 `ENV_FILE` 环境变量指定配置文件
+- 默认查找顺序：
+  1. `.env.local` (本地开发)
+  2. `../deployment/environments/env.local` (统一配置)
+  3. `.env` (默认)
+
+### 使用方式
+```bash
+# 指定环境文件
+export ENV_FILE=../deployment/environments/env.local
+python -m uvicorn app.main:app --reload
+
+# 或使用脚本
+ENV_FILE=../deployment/environments/env.dev python scripts/db.py upgrade
+```
+
+## 必需的环境变量
+
+### 数据库配置
+```bash
+DATABASE_URL=postgresql+asyncpg://username:password@localhost:5433/supplynexus
+DATABASE_URL_SYNC=postgresql://username:password@localhost:5433/supplynexus
+```
+
+### Redis 配置
+```bash
+REDIS_URL=redis://:password@localhost:6379/0
+CELERY_BROKER_URL=redis://:password@localhost:6379/1
+CELERY_RESULT_BACKEND=redis://:password@localhost:6379/2
+```
+
+### 安全配置
+```bash
+SECRET_KEY=your-secret-key-change-in-prod
+HEALTH_CHECK_API_KEY=your-health-check-api-key
+HASHIDS_SALT=your-hashids-salt
+```
+
+### 应用配置
+```bash
+ENVIRONMENT=local  # local, dev, stg, prod
+ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001
+ALLOWED_HOSTS=localhost,127.0.0.1
+```
+
+## 环境差异
+
+### Local 环境
+- **端口**: PostgreSQL 5433, Redis 6379
+- **特点**: 有 Python 虚拟环境，可直接执行命令
+- **脚本**: `./scripts/db/alembic.sh local <command>`
+
+### Dev 环境
+- **端口**: PostgreSQL 5433, Redis 6380
+- **特点**: 只有 Docker 环境，使用容器化脚本
+- **脚本**: `./deployment/scripts/db-docker.sh dev <command>`
+
+### Prod 环境
+- **特点**: 生产级配置，安全要求高
+- **脚本**: `./deployment/scripts/db-docker.sh prod <command>`
+- **⚠️ 敏感文件不提交到 Git**
+
+## 安全规则
+
+### 生产环境配置
+- `deployment/environments/env.prod` - **不提交到 Git**
+- `deployment/environments/frontend/env.prod` - **不提交到 Git**
+- `docker-compose.prod.yml` - **不提交到 Git**
+
+### 文件权限
+```bash
+chmod 600 deployment/environments/env.prod
+chmod 600 deployment/environments/frontend/env.prod
+```
+
+### 验证配置
+```bash
+# 检查文件是否被忽略
+git check-ignore -v deployment/environments/env.prod
+
+# 检查是否有未跟踪的敏感文件
+git status | grep -E "(env\.prod|docker-compose\.prod)"
+```
+
+## 重要提醒
+
+- ✅ **正确做法**: 生产环境配置文件只存在于服务器上，通过安全方式传输
+- ❌ **错误做法**: 将生产环境配置文件提交到 Git 仓库
+- 🔄 **定期轮换**: 密钥到期前需要重新生成
+- 🔒 **访问控制**: 只有必要的用户才能访问这些文件

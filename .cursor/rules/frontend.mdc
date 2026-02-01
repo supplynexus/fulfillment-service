@@ -1,0 +1,96 @@
+---
+description: Frontend React/Next.js development rules
+globs: ["frontend/**/*"]
+---
+
+# Frontend 开发规则
+
+## 技术栈
+- **Next.js 15** + **React 19** + **TypeScript 5**
+- **MUI 7** + **Zustand** + **TanStack React Query**
+- **React Hook Form** + **Zod** + **Axios**
+
+## 代码风格
+- **2 空格缩进**，**单引号**，**使用分号**
+- **PascalCase**: 组件、类型、接口
+- **camelCase**: 变量、函数、Hooks
+- **kebab-case**: 目录、文件名
+- **handle** 前缀: 事件处理函数
+- **is/has** 前缀: 布尔变量
+- **use** 前缀: 自定义 Hooks
+
+## 项目结构
+```
+frontend/src/
+├── app/           # Next.js App Router
+├── components/    # 可复用组件
+├── hooks/         # 自定义 Hooks
+├── lib/           # 工具库配置
+├── types/         # TypeScript 类型
+└── utils/         # 工具函数
+```
+
+## 组件开发
+```typescript
+interface UserCardProps {
+  user: User;
+  onEdit?: (user: User) => void;
+}
+
+export function UserCard({ user, onEdit }: UserCardProps) {
+  const handleEdit = useCallback(() => onEdit?.(user), [user, onEdit]);
+  return <Box><Typography>{user.name}</Typography></Box>;
+}
+```
+
+## 状态管理
+```typescript
+// Zustand Store
+export const useUserStore = create<UserState>()(
+  devtools((set) => ({
+    user: null,
+    setUser: (user) => set({ user }),
+  }))
+);
+
+// React Query
+export function useUsers() {
+  return useQuery({ queryKey: ['users'], queryFn: userService.getUsers });
+}
+```
+
+## 日志记录
+
+```typescript
+// API 路由
+import { createLogger } from '@/lib/logger';
+const logger = createLogger('api.module-name');
+logger.requestStart(request.method, request.url);
+
+// 组件
+import { frontendLogger } from '@/lib/frontend-logger';
+frontendLogger.info('🚀 开始操作', { action: 'submit' });
+frontendLogger.error('❌ 操作失败', { error: error.message });
+```
+
+## 性能优化
+- **useCallback** 记忆化回调
+- **useMemo** 昂贵计算
+- **React.memo** 纯展示组件
+- **动态导入** 代码分割
+
+## 安全规范
+- 输入验证 (客户端+服务器)
+- JWT 令牌安全存储
+- RSA 签名 API 认证
+
+## 服务启动
+
+```bash
+cd frontend && npm run dev
+```
+
+### 启动前检查
+- 确保已安装依赖：`npm install`
+- 确保环境变量配置正确（.env.local）
+- 确保后端服务已启动（http://localhost:8000）
