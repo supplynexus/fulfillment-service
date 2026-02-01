@@ -222,12 +222,17 @@ export async function GET(
     const timestamp = Math.floor(Date.now() / 1000);
     const nonce = Math.random().toString(36).substring(2, 15);
 
-    // 构建签名字符串
-    const signatureString = `GET/api/v1/products/${product_hashid}${timestamp}${nonce}${tenantName}${bodyString}`;
+    // 构建签名字符串 - 必须包含查询参数以匹配后端签名验证逻辑
+    const queryString = backendParams.toString();
+    const backendPath = queryString
+      ? `/api/v1/products/${product_hashid}?${queryString}`
+      : `/api/v1/products/${product_hashid}`;
+    const signatureString = `GET${backendPath}${timestamp}${nonce}${tenantName}${bodyString}`;
 
     logger.info('🔍 前端签名生成调试信息', {
       method: 'GET',
-      path: `/api/v1/products/${product_hashid}`,
+      path: backendPath,
+      queryString,
       timestamp,
       nonce,
       tenantName,
@@ -255,8 +260,8 @@ export async function GET(
       tenantName,
     });
 
-    // 构建后端请求 URL
-    const backendUrl = `${process.env.BACKEND_API_URL}/api/v1/products/${product_hashid}?${backendParams.toString()}`;
+    // 构建后端请求 URL - backendPath 已经包含查询参数
+    const backendUrl = `${process.env.BACKEND_API_URL}${backendPath}`;
 
     logger.info('Forwarding request to backend', {
       backendEndpoint: backendUrl,

@@ -276,14 +276,14 @@ function PrintifyProductsPage() {
     );
   };
 
-  // 获取商品价格范围
+  // 获取商品价格范围（Printify API 返回分为单位，显示时除以 100 转为元）
   const getProductPriceRange = (product: PrintifyProduct) => {
-    const prices = product.variants.map(v => v.price).filter(p => p > 0);
+    const prices = product.variants.map(v => v.price / 100).filter(p => p > 0);
     if (prices.length === 0) return 'N/A';
-    if (prices.length === 1) return `$${prices[0]}`;
+    if (prices.length === 1) return `$${prices[0].toFixed(2)}`;
     const min = Math.min(...prices);
     const max = Math.max(...prices);
-    return min === max ? `$${min}` : `$${min} - $${max}`;
+    return min === max ? `$${min.toFixed(2)}` : `$${min.toFixed(2)} - $${max.toFixed(2)}`;
   };
 
   // 获取商品变体数量
@@ -696,7 +696,7 @@ function PrintifyProductsPage() {
                               .map(variant => (
                                 <TableRow key={variant.id}>
                                   <TableCell>{variant.sku}</TableCell>
-                                  <TableCell>${variant.price}</TableCell>
+                                  <TableCell>${(variant.price / 100).toFixed(2)}</TableCell>
                                   <TableCell>
                                     <Chip
                                       label='启用'

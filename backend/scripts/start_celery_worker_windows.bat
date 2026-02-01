@@ -35,3 +35,14 @@ REM 启动 Celery Worker
 REM 使用 --pool=solo 避免 Windows 上的权限问题
 celery -A app.tasks.celery_app worker --loglevel=info --pool=solo --concurrency=4 -Q default,shopify,orders,order_automation
 
+
+
+
+
+
+
+
+
+
+
+

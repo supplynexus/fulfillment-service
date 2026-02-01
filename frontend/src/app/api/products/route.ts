@@ -82,13 +82,18 @@ export async function GET(request: NextRequest) {
     const timestamp = Math.floor(Date.now() / 1000);
     const nonce = Math.random().toString(36).substring(2, 15);
 
-    // 构建签名字符串 - 后端实际接收到的路径是 /api/v1/products/
-    const signatureString = `GET/api/v1/products/${timestamp}${nonce}${tenantName}${bodyString}`;
+    // 构建签名字符串 - 必须包含查询参数以匹配后端签名验证逻辑
+    const queryString = backendParams.toString();
+    const backendPath = queryString
+      ? `/api/v1/products/?${queryString}`
+      : `/api/v1/products/`;
+    const signatureString = `GET${backendPath}${timestamp}${nonce}${tenantName}${bodyString}`;
 
     // 🔍 调试：打印签名生成信息
     logger.info('🔍 前端签名生成调试信息', {
       method: 'GET',
-      path: '/api/v1/products/',
+      path: backendPath,
+      queryString,
       timestamp,
       nonce,
       tenantName,
@@ -116,8 +121,8 @@ export async function GET(request: NextRequest) {
       tenantName,
     });
 
-    // 构建后端请求 URL
-    const backendUrl = `${process.env.BACKEND_API_URL}/api/v1/products?${backendParams.toString()}`;
+    // 构建后端请求 URL - backendPath 已经包含查询参数
+    const backendUrl = `${process.env.BACKEND_API_URL}${backendPath}`;
 
     logger.info('Forwarding request to backend', {
       backendEndpoint: backendUrl,

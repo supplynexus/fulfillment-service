@@ -106,6 +106,8 @@ keys/
 frontend/keys/
 backend/keys/
 scripts/printify-keys/*.token
+scripts/shopify-keys/*.token
+scripts/shopify-keys/*.json
 *.pem
 *.key
 *.crt
@@ -269,6 +271,8 @@ shopify_*.json
 printify_*.json
 green_store_products.json
 product_mapping.json
+product_mapping.csv
+variant_mapping.csv
 webhook_logs/
 
 # Environment-specific overrides

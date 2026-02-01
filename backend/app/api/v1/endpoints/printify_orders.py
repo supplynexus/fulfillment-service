@@ -59,7 +59,7 @@ async def get_printify_config(db: AsyncSession, tenant_id: int) -> Dict[str, Any
             # 返回默认配置用于测试
             return {
                 "api_base_url": PRINTIFY_API_BASE,
-                "shop_id": "21704929",  # 硬编码的测试商店ID
+                "shop_id": "24981565",  # 硬编码的测试商店ID
                 "access_token": None,  # 需要配置
                 # 暂时使用硬编码的测试商品参数
                 "default_product_id": "67f4a8963b41671184062a1e",
@@ -94,7 +94,7 @@ async def get_printify_config(db: AsyncSession, tenant_id: int) -> Dict[str, Any
             "api_base_url": printify_system.base_url or PRINTIFY_API_BASE,
             "shop_id": shop_id
             or printify_system.external_system_id
-            or "21704929",  # 使用解密后的shop_id，或fallback到external_system_id，最后fallback到测试ID
+            or "24981565",  # 使用解密后的shop_id，或fallback到external_system_id，最后fallback到测试ID
             "access_token": access_token,
             # 暂时使用硬编码的测试商品参数，等后续有商品映射数据后再从数据库获取
             "default_product_id": "67f4a8963b41671184062a1e",
@@ -113,7 +113,7 @@ async def get_printify_config(db: AsyncSession, tenant_id: int) -> Dict[str, Any
                     shops = await printify_service.get_shops()
                     if shops and len(shops) > 0:
                         # 使用第一个商店的ID
-                        config["shop_id"] = str(shops[0].get("id", "21704929"))
+                        config["shop_id"] = str(shops[0].get("id", "24981565"))
                         logger.info(
                             f"✅ 从Printify API获取到真实商店ID: {config['shop_id']}"
                         )
@@ -133,7 +133,7 @@ async def get_printify_config(db: AsyncSession, tenant_id: int) -> Dict[str, Any
         # 返回默认配置
         return {
             "api_base_url": PRINTIFY_API_BASE,
-            "shop_id": "21704929",  # 默认测试ID，实际使用时需要配置真实的商店ID
+            "shop_id": "24981565",  # 默认测试ID，实际使用时需要配置真实的商店ID
             "access_token": None,
             # 暂时使用硬编码的测试商品参数
             "default_product_id": "67f4a8963b41671184062a1e",
