@@ -105,9 +105,17 @@ pids
 keys/
 frontend/keys/
 backend/keys/
+scripts/printify-keys/*.token
 *.pem
 *.key
 *.crt
+
+# Tenant-specific credentials (never commit to git)
+tenants/**/*.token
+tenants/**/login_info.json
+tenants/**/credentials.json
+tenants/**/*.key
+tenants/**/*.pem
 
 *.seed
 *.pid.lock
