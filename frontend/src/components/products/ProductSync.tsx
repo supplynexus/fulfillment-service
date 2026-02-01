@@ -228,6 +228,7 @@ export function ProductSync() {
                             />
                           </Box>
                         }
+                        primaryTypographyProps={{ component: 'div' }}
                         secondary={
                           <Box>
                             <Typography
@@ -243,6 +244,7 @@ export function ProductSync() {
                             )}
                           </Box>
                         }
+                        secondaryTypographyProps={{ component: 'div' }}
                       />
                     </ListItem>
                     {index < syncResults.length - 1 && <Divider />}
