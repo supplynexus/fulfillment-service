@@ -20,6 +20,56 @@ globs: ["docker-compose*.yml", "deployment/**/*", "scripts/prod/**/*", "scripts/
 
 ---
 
+# ⚠️ 重要：环境隔离规范
+
+## Dev 与 Prod 完全隔离
+
+**两个环境使用独立的服务名、容器名和 Volume，可同时运行互不影响。**
+
+### 服务名对照表
+
+| 服务 | Dev 服务名 | Prod 服务名 |
+|------|-----------|-------------|
+| PostgreSQL | `postgres_dev` | `postgres_prod` |
+| Redis | `redis_dev` | `redis_prod` |
+| Backend | `backend_dev` | `backend` |
+| Celery Worker | `celery_worker_dev` | `celery_worker` |
+| Frontend | `frontend_dev` | `frontend` |
+
+### 容器名对照表
+
+| 服务 | Dev 容器名 | Prod 容器名 |
+|------|-----------|-------------|
+| PostgreSQL | `supplynexus_postgres_dev` | `supplynexus_postgres_prod` |
+| Redis | `supplynexus_redis_dev` | `supplynexus_redis_prod` |
+| Backend | `supplynexus_backend_dev` | `supplynexus_backend_prod` |
+
+### 端口分配
+
+| 服务 | Dev 端口 | Prod 端口 |
+|------|---------|----------|
+| Backend | 8001 | 8000 (127.0.0.1 only) |
+| Frontend | 3001 | 3000 (127.0.0.1 only) |
+| PostgreSQL | 5433 | 不暴露 |
+| Redis | 6380 | 不暴露 |
+| Flower | 5555 | - |
+
+### Volume（数据持久化）
+
+| 环境 | PostgreSQL Volume | Redis Volume |
+|------|-------------------|--------------|
+| Dev | `supplynexus_postgres_dev_data` | `supplynexus_redis_dev_data` |
+| Prod | `supplynexus_postgres_prod_data` | `supplynexus_redis_prod_data` |
+
+**⚠️ 重要**: Volume 使用 `name:` 指定外部名称，确保 `docker-compose down` 不会删除数据。
+
+### 网络隔离
+
+- Dev: `supplynexus_dev_network`
+- Prod: `supplynexus_prod_network`
+
+---
+
 # Dev 环境部署（develop 分支）
 
 ## 快速部署
@@ -72,8 +122,8 @@ docker-compose -f docker-compose.dev.yml up -d --build --remove-orphans
 ### 步骤 4: 验证部署
 
 ```bash
-# 检查容器状态
-docker-compose -f docker-compose.dev.yml ps
+# 检查容器状态（应该看到 supplynexus_*_dev 容器）
+docker ps --format 'table {{.Names}}\t{{.Status}}' | grep dev
 
 # 检查健康状态
 curl http://localhost:8001/api/v1/health
@@ -162,11 +212,11 @@ docker-compose -f docker-compose.prod.yml up -d --build --remove-orphans
 ### 步骤 6: 验证部署状态
 
 ```bash
-# 检查容器状态
-docker-compose -f docker-compose.prod.yml ps
+# 检查容器状态（应该看到 supplynexus_*_prod 容器）
+docker ps --format 'table {{.Names}}\t{{.Status}}' | grep prod
 
 # 检查服务健康状态
-curl http://localhost:8000/api/v1/health
+curl -H "Host: api.supplynexus.store" http://localhost:8000/api/v1/health
 curl http://localhost:3000/api/health
 ```
 
@@ -222,19 +272,70 @@ git check-ignore -v docker-compose.prod.yml
 
 # 故障排除
 
-## Redis 容器损坏
+## ContainerConfig 错误
 
-如果出现 `KeyError: 'ContainerConfig'` 错误：
+如果出现 `KeyError: 'ContainerConfig'` 错误（docker-compose 1.29.2 bug）：
 
 ```bash
 cd /opt/supplynexus
-docker-compose -f docker-compose.dev.yml down
-docker rm -f $(docker ps -aq --filter name=redis) 2>/dev/null || true
+
+# Dev 环境
+docker rm -f $(docker ps -aq --filter 'name=supplynexus.*dev') 2>/dev/null || true
 docker-compose -f docker-compose.dev.yml up -d --remove-orphans
+
+# Prod 环境
+docker rm -f $(docker ps -aq --filter 'name=supplynexus.*prod') 2>/dev/null || true
+docker-compose -f docker-compose.prod.yml up -d --remove-orphans
 ```
 
 ## 清理 Orphan 容器
 
 ```bash
 docker-compose -f docker-compose.dev.yml up -d --remove-orphans
+docker-compose -f docker-compose.prod.yml up -d --remove-orphans
 ```
+
+## 检查两个环境是否正常运行
+
+```bash
+# 应该看到 12 个容器（6 dev + 6 prod）
+docker ps --format 'table {{.Names}}\t{{.Status}}' | grep supplynexus
+
+# 检查 Volume（数据持久化）
+docker volume ls | grep supplynexus
+# 应该看到:
+# supplynexus_postgres_dev_data
+# supplynexus_postgres_prod_data
+# supplynexus_redis_dev_data
+# supplynexus_redis_prod_data
+```
+
+## 数据库连接
+
+```bash
+# 连接 Dev 数据库
+docker exec -it supplynexus_postgres_dev psql -U supplynexus_admin -d supplynexus
+
+# 连接 Prod 数据库
+docker exec -it supplynexus_postgres_prod psql -U supplynexus_admin -d supplynexus
+```
+
+---
+
+# 常见错误
+
+## ❌ 错误：服务名冲突
+
+**问题**: Dev 和 Prod 使用相同的服务名（如 `postgres`），导致容器互相覆盖。
+
+**现象**: 重启一个环境后，另一个环境的数据库连接失败或数据丢失。
+
+**解决**: 已修复。Dev 使用 `postgres_dev`/`redis_dev`，Prod 使用 `postgres_prod`/`redis_prod`。
+
+## ❌ 错误：数据丢失
+
+**问题**: `docker-compose down -v` 会删除 Volume。
+
+**解决**: 
+- 永远不要使用 `docker-compose down -v`（除非确定要删除数据）
+- Volume 使用 `name:` 指定外部名称，即使重建容器也不会丢失数据
