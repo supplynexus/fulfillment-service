@@ -1,9 +1,10 @@
 version: '3.8'
 
 services:
-  # PostgreSQL Database
-  postgres:
+  # PostgreSQL Database (Dev) - 使用独立服务名避免与 prod 冲突
+  postgres_dev:
     image: postgres:15-alpine
+    container_name: supplynexus_postgres_dev
     environment:
       POSTGRES_DB: supplynexus
       POSTGRES_USER: supplynexus_admin
@@ -14,46 +15,69 @@ services:
       - "5433:5432"
     networks:
       - fulfillment_dev_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U supplynexus_admin -d supplynexus"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
 
-  # Redis Cache and Message Broker
-  redis:
+  # Redis Cache and Message Broker (Dev) - 使用独立服务名避免与 prod 冲突
+  redis_dev:
     image: redis:7-alpine
+    container_name: supplynexus_redis_dev
     command: redis-server --appendonly yes
     volumes:
       - redis_dev_data:/data
     ports:
-      - "6379:6379"
+      - "6380:6379"  # 使用 6380 避免与 prod 的 6379 冲突
     networks:
       - fulfillment_dev_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
 
   # Backend API (Dev)
   backend_dev:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    container_name: supplynexus_backend_dev
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     environment:
-      DATABASE_URL: postgresql+asyncpg://supplynexus_admin:aabbccdd@postgres:5432/supplynexus
-      REDIS_URL: redis://redis:6379/0
-      CELERY_BROKER_URL: redis://redis:6379/1
-      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      DATABASE_URL: postgresql+asyncpg://supplynexus_admin:aabbccdd@postgres_dev:5432/supplynexus
+      DATABASE_URL_SYNC: postgresql://supplynexus_admin:aabbccdd@postgres_dev:5432/supplynexus
+      REDIS_URL: redis://redis_dev:6379/0
+      CELERY_BROKER_URL: redis://redis_dev:6379/1
+      CELERY_RESULT_BACKEND: redis://redis_dev:6379/2
       SECRET_KEY: dev-secret-key-not-for-prod
       SHOPIFY_API_KEY: dev-shopify-api-key
       SHOPIFY_API_SECRET: dev-shopify-api-secret
       PRINTIFY_API_TOKEN: dev-printify-api-token
       WEBHOOK_SECRET: dev-webhook-secret
       ENVIRONMENT: dev
-      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001
-      ALLOWED_HOSTS: localhost,127.0.0.1,backend_dev
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,https://admin.dev.supplynexus.store
+      ALLOWED_HOSTS: localhost,127.0.0.1,backend_dev,api.dev.supplynexus.store
     volumes:
       - ./backend:/app
     ports:
       - "8001:8000"  # Dev 环境使用 8001，避免与 prod 的 8000 冲突
     depends_on:
-      - postgres
-      - redis
+      postgres_dev:
+        condition: service_healthy
+      redis_dev:
+        condition: service_healthy
     networks:
       - fulfillment_dev_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
     restart: unless-stopped
 
   # Celery Worker (Dev)
@@ -61,12 +85,14 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    container_name: supplynexus_celery_worker_dev
     command: celery -A app.tasks.celery_app worker --loglevel=debug
     environment:
-      DATABASE_URL: postgresql+asyncpg://supplynexus_admin:aabbccdd@postgres:5432/supplynexus
-      REDIS_URL: redis://redis:6379/0
-      CELERY_BROKER_URL: redis://redis:6379/1
-      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      DATABASE_URL: postgresql+asyncpg://supplynexus_admin:aabbccdd@postgres_dev:5432/supplynexus
+      DATABASE_URL_SYNC: postgresql://supplynexus_admin:aabbccdd@postgres_dev:5432/supplynexus
+      REDIS_URL: redis://redis_dev:6379/0
+      CELERY_BROKER_URL: redis://redis_dev:6379/1
+      CELERY_RESULT_BACKEND: redis://redis_dev:6379/2
       SECRET_KEY: dev-secret-key-not-for-prod
       SHOPIFY_API_KEY: dev-shopify-api-key
       SHOPIFY_API_SECRET: dev-shopify-api-secret
@@ -75,10 +101,18 @@ services:
     volumes:
       - ./backend:/app
     depends_on:
-      - postgres
-      - redis
+      postgres_dev:
+        condition: service_healthy
+      redis_dev:
+        condition: service_healthy
     networks:
       - fulfillment_dev_network
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.tasks.celery_app inspect ping -d celery@$$HOSTNAME || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
     restart: unless-stopped
 
   # Flower (Celery Monitoring)
@@ -86,16 +120,24 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    container_name: supplynexus_flower_dev
     command: celery -A app.tasks.celery_app flower --port=5555
     environment:
-      CELERY_BROKER_URL: redis://redis:6379/1
-      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      CELERY_BROKER_URL: redis://redis_dev:6379/1
+      CELERY_RESULT_BACKEND: redis://redis_dev:6379/2
     ports:
       - "5555:5555"
     depends_on:
-      - redis
+      redis_dev:
+        condition: service_healthy
     networks:
       - fulfillment_dev_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5555/healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
     restart: unless-stopped
 
   # Frontend (Dev)
@@ -104,11 +146,12 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       target: deps
+    container_name: supplynexus_frontend_dev
     command: npm run dev
     environment:
       NEXT_PUBLIC_API_URL: http://backend_dev:8000
       BACKEND_API_URL: http://backend_dev:8000
-      NODE_ENV: dev
+      NODE_ENV: development
       NEXT_PUBLIC_ENVIRONMENT: dev
       NEXT_PUBLIC_VERSION: 1.0.0
     volumes:
@@ -118,15 +161,20 @@ services:
     ports:
       - "3001:3000"  # Dev 环境使用 3001，避免与 prod 的 3000 冲突
     depends_on:
-      - backend_dev
+      backend_dev:
+        condition: service_healthy
     networks:
       - fulfillment_dev_network
     restart: unless-stopped
 
+# 使用命名 volume 确保数据持久化
 volumes:
   postgres_dev_data:
+    name: supplynexus_postgres_dev_data  # 指定外部名称，确保重建容器后数据不丢失
   redis_dev_data:
+    name: supplynexus_redis_dev_data
 
 networks:
   fulfillment_dev_network:
     driver: bridge
+    name: supplynexus_dev_network  # 指定外部名称，便于识别
