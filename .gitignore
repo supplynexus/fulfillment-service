@@ -269,6 +269,8 @@ fulfillment_backup_*
 # Shopify and Printify API logs/cache
 shopify_*.json
 printify_*.json
+green_store_products.json
+product_mapping.json
 product_mapping.csv
 variant_mapping.csv
 webhook_logs/
