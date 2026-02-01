@@ -1,8 +1,32 @@
 ---
 description: Git workflow, branch strategy, pull request, commit, 分支, PR
 globs: [".git/**/*", ".github/**/*"]
+alwaysApply: true
 ---
-## Git 工作流规则
+# Git 工作流规则
+
+## 快捷指令
+
+| 用户说 | AI 执行 |
+|-------|--------|
+| **PR** / **提PR** / **创建PR** | 从 develop 创建分支 → 提交变更 → 创建 PR 到 develop |
+| **部署 dev** / **deploy dev** | SSH 到服务器执行 `./scripts/dev/deploy-from-git.sh` |
+| **部署 prod** | SSH 到服务器执行 Production 部署流程 |
+
+### PR 快捷指令详细流程
+
+当用户说 "PR" 或 "提PR"，执行以下步骤：
+
+1. `git status` 检查当前变更
+2. `git diff develop` 查看与 develop 的差异
+3. 根据变更内容自动生成分支名（`feature/xxx` 或 `fix/xxx`）
+4. `git checkout develop && git pull origin develop`
+5. `git checkout -b <分支名>`
+6. `git add . && git commit -m "<提交信息>"`
+7. `git push -u origin <分支名>`
+8. `gh pr create --base develop`
+
+---
 
 ### 禁止直接提交到保护分支
 - 禁止直接提交到 `develop` 分支
