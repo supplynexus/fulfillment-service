@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, Query, R
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, delete
 from sqlalchemy.orm import selectinload
-from typing import List, Optional
+from typing import Any, List, Optional
 from pydantic import BaseModel
 
 from app.core.database import get_async_db
@@ -1158,72 +1158,67 @@ async def create_product_from_external(
             if not core_product:
                 raise HTTPException(status_code=404, detail="Core product not found")
             
-            # 检查是否需要同步变体
-            if external_product.variants and len(external_product.variants) > 0:
-                logger.info(f"🔍 开始同步变体数据: 发现 {len(external_product.variants)} 个变体")
-                
-                # 获取现有的变体映射
-                existing_variant_mappings = await db.execute(
-                    select(ProductMapping).where(
-                        ProductMapping.core_product_id == core_product.id,
-                        ProductMapping.mapping_type == "variant",
-                        ProductMapping.tenant_id == tenant.id
+                # 检查是否需要同步变体
+                variant_list = _normalize_variant_list(external_product.variants)
+                if variant_list:
+                    logger.info(f"🔍 开始同步变体数据: 发现 {len(variant_list)} 个变体")
+
+                    # 获取现有的变体映射
+                    existing_variant_mappings = await db.execute(
+                        select(ProductMapping).where(
+                            ProductMapping.core_product_id == core_product.id,
+                            ProductMapping.mapping_type == "variant",
+                            ProductMapping.tenant_id == tenant.id
+                        )
                     )
-                )
-                existing_variant_mappings = existing_variant_mappings.scalars().all()
-                existing_variant_ids = {m.external_variant_id for m in existing_variant_mappings}
-                
-                for variant_data in external_product.variants:
-                    external_variant_id = variant_data.get('external_variant_id')
-                    
-                    # 检查变体是否已存在
-                    if external_variant_id in existing_variant_ids:
-                        logger.info(f"ℹ️ 变体已存在，跳过: {variant_data.get('sku')}")
-                        continue
-                    
-                    try:
-                        # 创建新的核心变体
-                        core_variant = ProductVariant(
-                            tenant_id=tenant.id,
-                            product_id=core_product.id,
-                            sku=variant_data.get('sku'),
-                            barcode=variant_data.get('barcode'),
-                            attributes=_extract_variant_attributes(variant_data),
-                            price=variant_data.get('price'),
-                            compare_at_price=variant_data.get('compare_at_price'),
-                            cost_price=variant_data.get('cost_price'),
-                            inventory_quantity=variant_data.get('inventory_quantity', 0),
-                            inventory_policy=variant_data.get('inventory_policy', 'DENY'),
-                            tracks_inventory=True,
-                            is_active=True,
-                            is_available=variant_data.get('inventory_quantity', 0) > 0,
-                            weight=variant_data.get('weight', 0),
-                            external_variant_id=external_variant_id
-                        )
-                        
-                        db.add(core_variant)
-                        await db.flush()  # 获取变体ID
-                        
-                        # 创建变体映射关系
-                        variant_mapping = ProductMapping(
-                            tenant_id=tenant.id,
-                            core_product_id=core_product.id,
-                            core_variant_id=core_variant.id,
-                            external_system_id=external_product.external_system_id,
-                            external_product_id=external_product.external_product_id,
-                            external_variant_id=external_variant_id,
-                            mapping_type="variant",
-                            sync_direction="bidirectional",
-                            sync_status="active"
-                        )
-                        
-                        db.add(variant_mapping)
-                        
-                        logger.info(f"✅ 新变体创建成功: SKU={core_variant.sku}, 外部变体ID={external_variant_id}")
-                        
-                    except Exception as e:
-                        logger.error(f"❌ 创建变体失败: {variant_data.get('sku')}, 错误: {str(e)}")
-                        # 继续处理其他变体，不中断整个流程
+                    existing_variant_mappings = existing_variant_mappings.scalars().all()
+                    existing_variant_ids = {m.external_variant_id for m in existing_variant_mappings}
+
+                    for variant_data in variant_list:
+                        external_variant_id = variant_data.get("id") or variant_data.get("external_variant_id")
+                        if external_variant_id in existing_variant_ids:
+                            logger.info(f"ℹ️ 变体已存在，跳过: {variant_data.get('sku')}")
+                            continue
+
+                        sku = _get_variant_sku(variant_data, external_product.external_product_id)
+                        try:
+                            core_variant = ProductVariant(
+                                tenant_id=tenant.id,
+                                product_id=core_product.id,
+                                sku=sku,
+                                barcode=variant_data.get("barcode"),
+                                attributes=_extract_variant_attributes(variant_data),
+                                price=variant_data.get("price"),
+                                compare_at_price=variant_data.get("compare_at_price") or variant_data.get("compareAtPrice"),
+                                cost_price=variant_data.get("cost_price"),
+                                inventory_quantity=variant_data.get("inventory_quantity") or variant_data.get("inventoryQuantity", 0),
+                                inventory_policy=variant_data.get("inventory_policy") or variant_data.get("inventoryPolicy", "DENY"),
+                                tracks_inventory=True,
+                                is_active=True,
+                                is_available=(variant_data.get("inventory_quantity") or variant_data.get("inventoryQuantity", 0)) > 0,
+                                weight=variant_data.get("weight", 0),
+                                external_variant_id=external_variant_id,
+                            )
+                            db.add(core_variant)
+                            await db.flush()
+
+                            variant_mapping = ProductMapping(
+                                tenant_id=tenant.id,
+                                core_product_id=core_product.id,
+                                core_variant_id=core_variant.id,
+                                external_system_id=external_product.external_system_id,
+                                external_product_id=external_product.external_product_id,
+                                external_variant_id=external_variant_id,
+                                mapping_type="variant",
+                                sync_direction="bidirectional",
+                                sync_status="active",
+                            )
+                            db.add(variant_mapping)
+                            logger.info(f"✅ 新变体创建成功: SKU={core_variant.sku}, 外部变体ID={external_variant_id}")
+                        except Exception as e:
+                            logger.error(f"❌ 创建变体失败: {variant_data.get('sku')}, 错误: {str(e)}")
+                            await db.rollback()
+                            raise HTTPException(status_code=400, detail=f"创建变体失败（如 SKU 重复）: {str(e)}")
             
             await db.commit()
             await db.refresh(core_product)
@@ -1345,53 +1340,51 @@ async def create_product_from_external(
         logger.info(f"✅ 映射关系创建成功: core_product_id={core_product.id}, external_product_id={external_product.external_product_id}")
         
         # 处理外部商品的变体数据
-        if external_product.variants and len(external_product.variants) > 0:
-            logger.info(f"🔍 开始同步变体数据: 发现 {len(external_product.variants)} 个变体")
-            
-            for variant_data in external_product.variants:
+        variant_list = _normalize_variant_list(external_product.variants)
+        if variant_list:
+            logger.info(f"🔍 开始同步变体数据: 发现 {len(variant_list)} 个变体")
+
+            for variant_data in variant_list:
+                external_variant_id = variant_data.get("id") or variant_data.get("external_variant_id")
+                sku = _get_variant_sku(variant_data, external_product.external_product_id)
                 try:
-                    # 创建核心变体
                     core_variant = ProductVariant(
                         tenant_id=tenant.id,
                         product_id=core_product.id,
-                        sku=variant_data.get('sku'),
-                        barcode=variant_data.get('barcode'),
+                        sku=sku,
+                        barcode=variant_data.get("barcode"),
                         attributes=_extract_variant_attributes(variant_data),
-                        price=variant_data.get('price'),
-                        compare_at_price=variant_data.get('compare_at_price'),
-                        cost_price=variant_data.get('cost_price'),
-                        inventory_quantity=variant_data.get('inventory_quantity', 0),
-                        inventory_policy=variant_data.get('inventory_policy', 'DENY'),
+                        price=variant_data.get("price"),
+                        compare_at_price=variant_data.get("compare_at_price") or variant_data.get("compareAtPrice"),
+                        cost_price=variant_data.get("cost_price"),
+                        inventory_quantity=variant_data.get("inventory_quantity") or variant_data.get("inventoryQuantity", 0),
+                        inventory_policy=variant_data.get("inventory_policy") or variant_data.get("inventoryPolicy", "DENY"),
                         tracks_inventory=True,
                         is_active=True,
-                        is_available=variant_data.get('inventory_quantity', 0) > 0,
-                        weight=variant_data.get('weight', 0),
-                        external_variant_id=variant_data.get('external_variant_id')
+                        is_available=(variant_data.get("inventory_quantity") or variant_data.get("inventoryQuantity", 0)) > 0,
+                        weight=variant_data.get("weight", 0),
+                        external_variant_id=external_variant_id,
                     )
-                    
                     db.add(core_variant)
-                    await db.flush()  # 获取变体ID
-                    
-                    # 创建变体映射关系
+                    await db.flush()
+
                     variant_mapping = ProductMapping(
                         tenant_id=tenant.id,
                         core_product_id=core_product.id,
                         core_variant_id=core_variant.id,
                         external_system_id=external_product.external_system_id,
                         external_product_id=external_product.external_product_id,
-                        external_variant_id=variant_data.get('external_variant_id'),
+                        external_variant_id=external_variant_id,
                         mapping_type="variant",
                         sync_direction="bidirectional",
-                        sync_status="active"
+                        sync_status="active",
                     )
-                    
                     db.add(variant_mapping)
-                    
-                    logger.info(f"✅ 变体创建成功: SKU={core_variant.sku}, 外部变体ID={variant_data.get('external_variant_id')}")
-                    
+                    logger.info(f"✅ 变体创建成功: SKU={core_variant.sku}, 外部变体ID={external_variant_id}")
                 except Exception as e:
                     logger.error(f"❌ 创建变体失败: {variant_data.get('sku')}, 错误: {str(e)}")
-                    # 继续处理其他变体，不中断整个流程
+                    await db.rollback()
+                    raise HTTPException(status_code=400, detail=f"创建变体失败（如 SKU 重复）: {str(e)}")
         
         # 提交事务
         await db.commit()
@@ -1490,22 +1483,52 @@ async def create_product_from_external(
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to create product from external: {str(e)}")
 
+def _normalize_variant_list(variants: Any) -> list:
+    """
+    将外部变体数据归一化为变体字典列表。
+    支持 GraphQL edges/node 格式和已平铺的列表格式。
+    """
+    if not variants:
+        return []
+    if isinstance(variants, dict) and "edges" in variants:
+        return [e.get("node", e) for e in variants.get("edges", [])]
+    if isinstance(variants, list):
+        return [v.get("node", v) if isinstance(v, dict) else v for v in variants]
+    return []
+
+
+def _get_variant_sku(variant_data: dict, external_product_id: str = "") -> Optional[str]:
+    """
+    获取变体 SKU，空时用 external_variant_id 占位，避免 (tenant_id, '') 唯一约束冲突。
+    """
+    raw = (variant_data.get("sku") or "").strip()
+    if raw:
+        return raw
+    vid = variant_data.get("id") or variant_data.get("external_variant_id") or ""
+    if vid:
+        vid = str(vid).replace("gid://shopify/ProductVariant/", "").strip()
+    pid = (external_product_id or "").replace("gid://shopify/Product/", "").strip()
+    if vid:
+        return f"VAR-{pid}-{vid}" if pid else vid
+    return None
+
+
 def _extract_variant_attributes(variant_data: dict) -> dict:
     """
     从外部变体数据中提取属性信息
     """
     attributes = {}
-    
-    # 处理 selected_options (Shopify 格式)
-    if 'selected_options' in variant_data:
-        for option in variant_data['selected_options']:
-            if isinstance(option, dict) and 'name' in option and 'value' in option:
-                attributes[option['name']] = option['value']
-    
+
+    # 处理 selected_options (蛇形) 或 selectedOptions (GraphQL 驼峰)
+    opts = variant_data.get("selected_options") or variant_data.get("selectedOptions") or []
+    for option in opts:
+        if isinstance(option, dict) and option.get("name") is not None and option.get("value") is not None:
+            attributes[option["name"]] = option["value"]
+
     # 处理其他可能的属性字段
-    if 'title' in variant_data:
-        attributes['title'] = variant_data['title']
-    
+    if variant_data.get("title"):
+        attributes["title"] = variant_data["title"]
+
     return attributes
 
 

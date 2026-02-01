@@ -229,6 +229,26 @@ class PrintifyFulfillmentService:
         
         return ""
     
+    def _get_phone_number(self, scm_order) -> str:
+        """获取电话号码，优先使用 customer_phone，其次从 shipping_address 获取，都没有则返回默认值"""
+        # 优先使用 customer_phone
+        if scm_order.customer_phone:
+            phone = str(scm_order.customer_phone).strip()
+            if phone:
+                return phone
+        
+        # 其次从 shipping_address 获取
+        if scm_order.shipping_address and isinstance(scm_order.shipping_address, dict):
+            phone = scm_order.shipping_address.get("phone")
+            if phone:
+                phone = str(phone).strip()
+                if phone:
+                    return phone
+        
+        # 如果都没有，返回默认值（Printify API 要求 phone 字段必须有值）
+        # 使用一个合理的默认值，格式为 +1XXXXXXXXXX（美国格式）
+        return "+10000000000"
+    
     async def create_fulfillment_order(
         self, 
         scm_order, 
@@ -477,7 +497,7 @@ class PrintifyFulfillmentService:
                     "first_name": self._extract_first_name(scm_order.shipping_address),
                     "last_name": self._extract_last_name(scm_order.shipping_address),
                     "email": scm_order.customer_email,
-                    "phone": scm_order.customer_phone or "",
+                    "phone": self._get_phone_number(scm_order),
                     "country": self._normalize_country_code(scm_order.shipping_address.get("country", "US")),
                     "region": scm_order.shipping_address.get("province", ""),
                     "city": scm_order.shipping_address.get("city", ""),

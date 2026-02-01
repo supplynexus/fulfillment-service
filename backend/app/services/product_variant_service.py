@@ -409,10 +409,9 @@ class ProductVariantService:
             if 'price_max' in filters:
                 query = query.where(ProductVariant.price <= filters['price_max'])
         
-        # 获取总数
-        count_query = select(func.count(ProductVariant.id)).select_from(
-            query.subquery()
-        )
+        # 获取总数 - 使用子查询并正确计数，避免笛卡尔积
+        subquery = query.subquery()
+        count_query = select(func.count()).select_from(subquery)
         count_result = await self.db.execute(count_query)
         total = count_result.scalar()
         

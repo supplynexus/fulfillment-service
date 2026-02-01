@@ -43,12 +43,38 @@ export async function POST(request: NextRequest) {
 
     // 获取请求体
     const requestBody = await request.json();
-    const bodyString = JSON.stringify(requestBody);
+    
+    // 根据 sync_type 转换为后端期望的查询参数
+    // sync_type: "full" -> sync_recent_only=false, max_products=null (不限制)
+    // sync_type: "incremental" (默认) -> sync_recent_only=true, max_products=100
+    const syncType = requestBody.sync_type || 'incremental';
+    const syncRecentOnly = syncType !== 'full';
+    const maxProducts = syncType === 'full' ? '' : '100';
+    
+    // 构建查询参数
+    const queryParams = new URLSearchParams();
+    queryParams.set('sync_recent_only', syncRecentOnly.toString());
+    if (maxProducts) {
+      queryParams.set('max_products', maxProducts);
+    }
+    const queryString = queryParams.toString();
+    
     const timestamp = Math.floor(Date.now() / 1000);
     const nonce = Math.random().toString(36).substring(2, 15);
 
-    // 构建签名字符串
-    const signatureString = `POST/api/v1/products/sync${timestamp}${nonce}${tenantName}${bodyString}`;
+    // 构建后端路径（包含查询参数）
+    const backendPath = `/api/v1/products/sync?${queryString}`;
+    
+    // 构建签名字符串 - POST 请求没有 body 时用空字符串
+    const bodyString = '';
+    const signatureString = `POST${backendPath}${timestamp}${nonce}${tenantName}${bodyString}`;
+
+    logger.info('Sync request parameters', {
+      syncType,
+      syncRecentOnly,
+      maxProducts: maxProducts || 'unlimited',
+      backendPath,
+    });
 
     // 获取租户私钥
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
@@ -68,13 +94,13 @@ export async function POST(request: NextRequest) {
     });
 
     // 构建后端请求 URL
-    const backendUrl = `${process.env.BACKEND_API_URL}/api/v1/products/sync`;
+    const backendUrl = `${process.env.BACKEND_API_URL}${backendPath}`;
 
     logger.info('Forwarding request to backend', {
       backendEndpoint: backendUrl,
     });
 
-    // 发送请求到后端
+    // 发送请求到后端 - 使用查询参数而不是 body
     const backendResponse = await fetch(backendUrl, {
       method: 'POST',
       headers: {
@@ -85,7 +111,6 @@ export async function POST(request: NextRequest) {
         'X-Signature': signature,
         'X-User-ID': userId.toString(),
       },
-      body: bodyString,
     });
 
     const responseTime = Date.now() - startTime;

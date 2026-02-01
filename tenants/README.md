@@ -29,6 +29,11 @@ tenants/
   - API Token: `api_token.token`
   - 登录信息: `login_info.json`
   - 当前使用的店铺: ID 24981565（已连接到 Shopify）
+- **Shopify 配置**: `tenants/impeach/shopify/`
+  - 登录信息: `login_info.json`
+  - 店铺 ID: x0ri77-4v
+  - 店铺名称: IMPEACH
+  - 商品总数: 42 个
 
 ## 使用方式
 

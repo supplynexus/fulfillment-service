@@ -1,0 +1,240 @@
+---
+description: Deployment to server, docker-compose, SSH, server configuration, 部署, 生产环境, 开发环境
+globs: ["docker-compose*.yml", "deployment/**/*", "scripts/prod/**/*", "scripts/dev/**/*", "Dockerfile*"]
+---
+# 服务器部署规范
+
+## 服务器信息
+
+- **服务器地址**: ubuntu@133.242.179.110
+- **Git 目录**: /home/ubuntu/project/fulfillment-service（代码仓库）
+- **部署目录**: /opt/supplynexus（运行目录，无 .git）
+
+## 目录说明
+
+```
+/home/ubuntu/project/fulfillment-service/  <- Git 仓库，执行 git pull
+        ↓ rsync 同步（排除 .git, node_modules 等）
+/opt/supplynexus/                          <- 部署目录，执行 docker-compose
+```
+
+---
+
+# Dev 环境部署（develop 分支）
+
+## 快速部署
+
+```bash
+ssh ubuntu@133.242.179.110
+cd /home/ubuntu/project/fulfillment-service
+./scripts/dev/deploy-from-git.sh
+```
+
+## 手动部署步骤
+
+### 步骤 1: 拉取最新代码
+
+```bash
+ssh ubuntu@133.242.179.110
+cd /home/ubuntu/project/fulfillment-service
+
+# 保存本地修改（如有）
+git stash
+
+# 切换到 develop 分支并拉取
+git checkout develop
+git pull origin develop
+```
+
+### 步骤 2: 同步代码到部署目录
+
+```bash
+rsync -avz --delete \
+    --exclude '.git' \
+    --exclude 'node_modules' \
+    --exclude '.next' \
+    --exclude 'backend/.venv' \
+    --exclude 'backend/logs' \
+    --exclude 'deployment/environments/env.prod' \
+    --exclude 'deployment/environments/frontend/env.prod' \
+    --exclude 'docker-compose.prod.yml' \
+    /home/ubuntu/project/fulfillment-service/ /opt/supplynexus/
+```
+
+### 步骤 3: 重启 Dev 服务
+
+```bash
+cd /opt/supplynexus
+docker-compose -f docker-compose.dev.yml down
+docker-compose -f docker-compose.dev.yml up -d --build --remove-orphans
+```
+
+### 步骤 4: 验证部署
+
+```bash
+# 检查容器状态
+docker-compose -f docker-compose.dev.yml ps
+
+# 检查健康状态
+curl http://localhost:8001/api/v1/health
+curl http://localhost:3001/api/health
+```
+
+## Dev 环境服务地址
+
+- 前端: https://admin.dev.supplynexus.store
+- 后端 API: https://api.dev.supplynexus.store
+
+---
+
+# Production 环境部署（main 分支）
+
+## 部署流程概览
+
+1. **在 Git 目录拉取代码**（git pull from main）
+2. **同步代码到部署目录**（rsync）
+3. **上传环境配置文件**（env.prod, docker-compose.prod.yml）
+4. **运行数据库迁移**（Alembic）
+5. **启动 Docker 服务**（docker-compose.prod.yml）
+6. **验证部署状态**
+
+## 部署步骤
+
+### 步骤 1: 拉取最新代码
+
+```bash
+ssh ubuntu@133.242.179.110
+cd /home/ubuntu/project/fulfillment-service
+
+# 保存本地修改（如有）
+git stash
+
+# 切换到 main 分支并拉取
+git checkout main
+git pull origin main
+```
+
+### 步骤 2: 同步代码到部署目录
+
+```bash
+rsync -avz --delete \
+    --exclude '.git' \
+    --exclude 'node_modules' \
+    --exclude '.next' \
+    --exclude 'backend/.venv' \
+    --exclude 'backend/logs' \
+    --exclude 'deployment/environments/env.prod' \
+    --exclude 'deployment/environments/frontend/env.prod' \
+    --exclude 'docker-compose.prod.yml' \
+    /home/ubuntu/project/fulfillment-service/ /opt/supplynexus/
+```
+
+### 步骤 3: 上传环境配置文件（仅首次或配置变更时）
+
+从本地执行：
+
+```bash
+# 上传后端环境配置
+scp deployment/environments/env.prod ubuntu@133.242.179.110:/opt/supplynexus/deployment/environments/
+
+# 上传前端环境配置
+scp deployment/environments/frontend/env.prod ubuntu@133.242.179.110:/opt/supplynexus/deployment/environments/frontend/
+
+# 上传 Docker Compose 配置
+scp docker-compose.prod.yml ubuntu@133.242.179.110:/opt/supplynexus/
+```
+
+### 步骤 4: 运行数据库迁移
+
+```bash
+cd /opt/supplynexus
+./scripts/db/alembic.sh prod upgrade
+```
+
+### 步骤 5: 启动 Docker 服务
+
+```bash
+cd /opt/supplynexus
+docker-compose -f docker-compose.prod.yml down
+docker-compose -f docker-compose.prod.yml up -d --build --remove-orphans
+```
+
+### 步骤 6: 验证部署状态
+
+```bash
+# 检查容器状态
+docker-compose -f docker-compose.prod.yml ps
+
+# 检查服务健康状态
+curl http://localhost:8000/api/v1/health
+curl http://localhost:3000/api/health
+```
+
+## Production 环境服务地址
+
+- 前端: https://admin.supplynexus.store
+- 后端 API: https://api.supplynexus.store
+
+---
+
+# 安全规范
+
+## 敏感文件管理
+
+以下文件包含敏感信息，**绝对不要提交到 Git**：
+
+- `deployment/environments/env.prod` - 后端环境配置
+- `deployment/environments/frontend/env.prod` - 前端环境配置
+- `docker-compose.prod.yml` - 生产环境 Docker Compose 配置
+
+## 文件权限
+
+```bash
+chmod 600 deployment/environments/env.prod
+chmod 600 deployment/environments/frontend/env.prod
+```
+
+## 验证配置
+
+```bash
+# 检查文件是否被忽略
+git check-ignore -v deployment/environments/env.prod
+git check-ignore -v docker-compose.prod.yml
+```
+
+---
+
+# 部署脚本
+
+## Dev 环境
+```bash
+./scripts/dev/deploy-from-git.sh
+```
+
+## Production 环境
+```bash
+./scripts/prod/deploy-from-git.sh
+./scripts/prod/deploy-production.sh
+./scripts/prod/deploy-to-server.sh
+```
+
+---
+
+# 故障排除
+
+## Redis 容器损坏
+
+如果出现 `KeyError: 'ContainerConfig'` 错误：
+
+```bash
+cd /opt/supplynexus
+docker-compose -f docker-compose.dev.yml down
+docker rm -f $(docker ps -aq --filter name=redis) 2>/dev/null || true
+docker-compose -f docker-compose.dev.yml up -d --remove-orphans
+```
+
+## 清理 Orphan 容器
+
+```bash
+docker-compose -f docker-compose.dev.yml up -d --remove-orphans
+```

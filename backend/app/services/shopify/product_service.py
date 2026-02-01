@@ -268,16 +268,21 @@ class ShopifyProductService:
                     )
                     existing_product = existing_product.scalar_one_or_none()
                     
+                    # 新 Product 模型只包含以下字段，排除不存在的字段
+                    # (tags, variants 现在是关系; price, compare_at_price 不存在)
+                    excluded_fields = {'external_data', 'tags', 'variants', 'price', 'compare_at_price'}
+                    
                     if existing_product:
                         # 更新现有商品
-                        for field, value in product_create.dict(exclude_unset=True).items():
-                            setattr(existing_product, field, value)
+                        for field, value in product_create.dict(exclude_unset=True, exclude=excluded_fields).items():
+                            if hasattr(existing_product, field):
+                                setattr(existing_product, field, value)
                         existing_product.updated_at = datetime.utcnow()
                         products_updated += 1
                         logger.debug(f"更新商品: {product_create.external_product_id}")
                     else:
-                        # 创建新商品
-                        product_data_dict = product_create.dict(exclude={'external_data'})
+                        # 创建新商品 - 只传递 Product 模型支持的字段
+                        product_data_dict = product_create.dict(exclude=excluded_fields)
                         new_product = Product(
                             tenant_id=tenant_id,
                             **product_data_dict
