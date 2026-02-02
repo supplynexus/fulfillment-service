@@ -80,16 +80,55 @@ class PrintifyService:
             logger.error(f"❌ 获取Printify店铺列表失败: {str(e)}")
             return []
 
-    async def get_products(self, shop_id: str) -> List[Dict[str, Any]]:
-        """Get products from a Printify shop"""
+    async def get_products(self, shop_id: str, limit: int = 0) -> List[Dict[str, Any]]:
+        """
+        Get products from a Printify shop with pagination support.
+        
+        Args:
+            shop_id: The Printify shop ID
+            limit: Maximum number of products to fetch. 0 = all products (default)
+        
+        Returns:
+            List of product dictionaries
+        """
         try:
+            all_products = []
+            page = 1
+            page_size = 100  # Printify API max per page
+            
             async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    f"{self.base_url}/shops/{shop_id}/products.json",
-                    headers=self.headers,
-                )
-                response.raise_for_status()
-                return response.json().get("data", [])
+                while True:
+                    response = await client.get(
+                        f"{self.base_url}/shops/{shop_id}/products.json",
+                        headers=self.headers,
+                        params={"page": page, "limit": page_size},
+                        timeout=30.0,
+                    )
+                    response.raise_for_status()
+                    
+                    data = response.json()
+                    products = data.get("data", [])
+                    
+                    if not products:
+                        break
+                    
+                    all_products.extend(products)
+                    logger.info(f"✅ 获取 Printify 商品页 {page}: {len(products)} 个商品")
+                    
+                    # Check if we've reached the requested limit
+                    if limit > 0 and len(all_products) >= limit:
+                        all_products = all_products[:limit]
+                        break
+                    
+                    # Check if there are more pages
+                    # Printify returns fewer items than page_size when on last page
+                    if len(products) < page_size:
+                        break
+                    
+                    page += 1
+            
+            logger.info(f"✅ 总共获取 {len(all_products)} 个 Printify 商品")
+            return all_products
         except Exception as e:
             logger.error(f"Failed to get Printify products: {e}")
             return []
