@@ -94,7 +94,7 @@ class PrintifyService:
         try:
             all_products = []
             page = 1
-            page_size = 100  # Printify API max per page
+            page_size = 50  # Printify API max per page
             
             async with httpx.AsyncClient() as client:
                 while True:
