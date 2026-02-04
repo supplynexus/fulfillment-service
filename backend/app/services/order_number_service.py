@@ -170,15 +170,14 @@ class OrderNumberService:
             prefix_pattern = f"{order_type}-{current_year}-%"
             
             # 查询该租户当年该类型订单的最大编号
-            max_order_number_result = db.query(Order.order_number).filter(
+            # 使用 scalar() 直接返回标量值（字符串），first() 会返回 Row 对象导致 .split() 失败
+            max_order_number = db.query(Order.order_number).filter(
                 Order.tenant_id == tenant_id,
                 Order.order_number.like(prefix_pattern)
-            ).order_by(Order.order_number.desc()).first()
+            ).order_by(Order.order_number.desc()).scalar()
             
             # 生成新编号
-            if max_order_number_result:
-                # max_order_number_result 是一个标量值（字符串），不是元组
-                max_order_number = max_order_number_result
+            if max_order_number:
                 # 提取编号中的数字部分
                 try:
                     # 格式: ORD-2025-001 -> 提取 001
