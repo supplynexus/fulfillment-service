@@ -88,7 +88,7 @@
 
 ### 统一调度
 - 所有步骤默认每30分钟执行一次
-- 可以通过 `tenant_automation_config` 表自定义调度时间
+- 可以通过 `tenant_automation_configs` 表自定义调度时间
 
 ---
 
@@ -120,7 +120,8 @@ shopify_orders 表 (更新发货信息)
 
 ## 任务文件位置
 
-所有任务都在 `backend/app/tasks/order_automation_tasks.py` 中定义。
+- 订单自动化主流程任务：`backend/app/tasks/order_automation_tasks.py`
+- Shopify订单同步（步骤1）：`backend/app/tasks/shopify_tasks.py`
 
 ---
 
@@ -129,7 +130,24 @@ shopify_orders 表 (更新发货信息)
 - **自动化步骤定义**: `backend/scripts/init_automation_steps.py`
 - **任务映射**: `backend/app/services/automation_scheduler_service.py`
 - **API端点映射**: `backend/app/api/v1/endpoints/automation.py`
-- **租户配置**: `tenant_automation_config` 表
+- **租户配置**: `tenant_automation_configs` 表
+
+---
+
+## 自动化相关访问表清单
+
+**自动化任务与调度会直接读写的表：**
+
+- `shopify_orders`（Shopify订单本地表）
+- `orders`（核心订单表）
+- `order_items`（核心订单明细，随订单关系加载）
+- `scm_orders`（SCM订单表）
+- `scm_order_sources`（SCM订单来源关联表）
+- `printify_orders`（Printify订单本地表）
+- `external_systems`（外部系统凭据与同步状态）
+- `tenants`（租户列表）
+- `automation_steps`（自动化步骤定义）
+- `tenant_automation_configs`（租户自动化配置）
 
 ---
 
