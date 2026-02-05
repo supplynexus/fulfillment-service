@@ -231,15 +231,17 @@ class PrintifyFulfillmentService:
     
     def _get_phone_number(self, scm_order) -> str:
         """获取电话号码，优先使用 customer_phone，其次从 shipping_address 获取，都没有则返回默认值"""
-        # 优先使用 customer_phone
-        if scm_order.customer_phone:
-            phone = str(scm_order.customer_phone).strip()
+        # 优先使用 customer_phone（兼容 SimpleNamespace 等可能无该属性的对象）
+        customer_phone = getattr(scm_order, "customer_phone", None)
+        if customer_phone:
+            phone = str(customer_phone).strip()
             if phone:
                 return phone
         
         # 其次从 shipping_address 获取
-        if scm_order.shipping_address and isinstance(scm_order.shipping_address, dict):
-            phone = scm_order.shipping_address.get("phone")
+        shipping_address = getattr(scm_order, "shipping_address", None)
+        if shipping_address and isinstance(shipping_address, dict):
+            phone = shipping_address.get("phone")
             if phone:
                 phone = str(phone).strip()
                 if phone:
@@ -486,7 +488,10 @@ class PrintifyFulfillmentService:
                     external_id = f"scm_{scm_order.id}"
                 logger.info(f"ℹ️ 使用新的 external_id: {external_id}")
             
-            # 从 SCM 订单构建 Printify 订单数据
+            # 从 SCM 订单构建 Printify 订单数据（兼容 SCMOrder 与 SimpleNamespace，防御 shipping_address 为空）
+            shipping_address = getattr(scm_order, "shipping_address", None) or {}
+            if not isinstance(shipping_address, dict):
+                shipping_address = {}
             fulfillment_data = {
                 "external_id": external_id,
                 "line_items": [],
@@ -494,16 +499,16 @@ class PrintifyFulfillmentService:
                 "send_shipping_notification": True,
                 "status": "onhold",  # 添加状态字段
                 "address_to": {
-                    "first_name": self._extract_first_name(scm_order.shipping_address),
-                    "last_name": self._extract_last_name(scm_order.shipping_address),
-                    "email": scm_order.customer_email,
+                    "first_name": self._extract_first_name(shipping_address),
+                    "last_name": self._extract_last_name(shipping_address),
+                    "email": getattr(scm_order, "customer_email", "") or "",
                     "phone": self._get_phone_number(scm_order),
-                    "country": self._normalize_country_code(scm_order.shipping_address.get("country", "US")),
-                    "region": scm_order.shipping_address.get("province", ""),
-                    "city": scm_order.shipping_address.get("city", ""),
-                    "address1": scm_order.shipping_address.get("address1", ""),
-                    "address2": scm_order.shipping_address.get("address2") or "",  # 确保 None 转换为空字符串
-                    "zip": scm_order.shipping_address.get("zip", "")
+                    "country": self._normalize_country_code(shipping_address.get("country", "US")),
+                    "region": shipping_address.get("province", ""),
+                    "city": shipping_address.get("city", ""),
+                    "address1": shipping_address.get("address1", ""),
+                    "address2": shipping_address.get("address2") or "",  # 确保 None 转换为空字符串
+                    "zip": shipping_address.get("zip", "")
                 }
             }
             

@@ -292,6 +292,7 @@ async def _create_printify_order_for_scm(db, scm_order: SCMOrder, tenant_id: int
             db,
             tenant_id,
         )
+        # 与手动 generate-printify 流程一致：传递 _build_fulfillment_data 所需的全部字段
         scm_order_for_fulfillment = SimpleNamespace(
             id=scm_order.id,
             tenant_id=scm_order.tenant_id,
@@ -299,6 +300,8 @@ async def _create_printify_order_for_scm(db, scm_order: SCMOrder, tenant_id: int
             line_items=enriched_line_items,
             shipping_address=scm_order.shipping_address,
             customer_email=scm_order.customer_email,
+            customer_name=getattr(scm_order, "customer_name", None),
+            customer_phone=getattr(scm_order, "customer_phone", None),
         )
 
         # 调用 create_fulfillment_order 方法（与手动流程完全一致）
