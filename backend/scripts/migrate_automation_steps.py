@@ -186,6 +186,17 @@ def migrate_automation_steps():
             print(f"   ✅ 已更新 {len(buttons_to_update)} 个按钮")
         else:
             print(f"   ℹ️  没有需要更新的按钮")
+
+        # 更新 create_printify_orders_from_scm 的 button_action：从旧 create-printify-order 改为 generate-printify
+        printify_buttons = db.query(AutomationManualButton).filter(
+            AutomationManualButton.step_key == "create_printify_orders_from_scm",
+            AutomationManualButton.button_action.like("%create-printify-order%"),
+        ).all()
+        if printify_buttons:
+            for btn in printify_buttons:
+                btn.button_action = "/api/v1/scm-orders/{hashid}/generate-printify"
+                print(f"   🔧 更新按钮 action: {btn.button_key} -> generate-printify")
+            print(f"   ✅ 已更新 {len(printify_buttons)} 个 Printify 按钮的 action")
         
         db.commit()
         print()
