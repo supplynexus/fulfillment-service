@@ -241,11 +241,13 @@ class OrderRoutingService:
         self, line_items: List[Dict[str, Any]], tenant_id: int, order_id: int = None
     ) -> List[Dict[str, Any]]:
         """规范化 line_items 用于 SCM 订单存储"""
-        from app.models.product import Product, ProductVariant
+        from app.models.product import Product, ProductVariant, ProductMapping
         from app.models.order import OrderItem
+        from app.models.external_system import ExternalSystem, ExternalSystemType
+        from sqlalchemy import or_
         
         # 如果有关联的核心订单，从 OrderItem 中获取 core_variant_id 和 sku
-        order_items_map = {}  # key: external_variant_id or sku, value: OrderItem
+        order_items_map = {}  # key: OrderItem.id, external_variant_id or sku, value: OrderItem
         if order_id:
             logger.info(f"🔍 从核心订单获取 OrderItem 信息: order_id={order_id}")
             order_items_result = await self.db.execute(
@@ -258,6 +260,9 @@ class OrderRoutingService:
             )
             order_items = order_items_result.scalars().all()
             for order_item in order_items:
+                # 必须用 OrderItem.id 作为 key：line_items 的 item.get("id") 来自 line_items_dict 的 item.id（即 OrderItem.id）
+                order_items_map[order_item.id] = order_item
+                order_items_map[str(order_item.id)] = order_item
                 # 使用 external_variant_id 作为 key（如果存在）
                 if order_item.external_variant_id:
                     order_items_map[str(order_item.external_variant_id)] = order_item
@@ -282,23 +287,56 @@ class OrderRoutingService:
                 core_variant_id = None
                 
                 # 如果有关联的核心订单，优先从 OrderItem 中获取
+                order_item = None
                 if order_id and order_items_map:
-                    external_variant_id = item.get("id")  # Shopify line item ID
-                    # 优先通过 external_variant_id 匹配
-                    if external_variant_id and str(external_variant_id) in order_items_map:
-                        order_item = order_items_map[str(external_variant_id)]
-                        if order_item.core_variant_id:
-                            core_variant_id = order_item.core_variant_id
-                            core_product_id = order_item.core_product_id
-                            sku = order_item.sku or sku  # 使用 OrderItem 的 SKU
-                            logger.info(f"✅ 从 OrderItem 获取 core_variant_id: {core_variant_id} (通过 external_variant_id={external_variant_id})")
-                    # 如果还没找到，通过 SKU 匹配
+                    match_key = item.get("id")  # line_items_dict 的 id 即 OrderItem.id
+                    if match_key is not None and str(match_key) in order_items_map:
+                        order_item = order_items_map[str(match_key)]
+                    elif match_key is not None and match_key in order_items_map:
+                        order_item = order_items_map[match_key]
                     elif sku and sku in order_items_map:
                         order_item = order_items_map[sku]
+                    if order_item:
                         if order_item.core_variant_id:
                             core_variant_id = order_item.core_variant_id
                             core_product_id = order_item.core_product_id
-                            logger.info(f"✅ 从 OrderItem 获取 core_variant_id: {core_variant_id} (通过 SKU={sku})")
+                            sku = order_item.sku or sku
+                            logger.info(f"✅ 从 OrderItem 获取 core_variant_id: {core_variant_id} (order_item_id={order_item.id})")
+                        elif order_item.external_variant_id:
+                            # OrderItem.core_variant_id 为空时，通过 Shopify ProductMapping 反查（Shopify 同步可能只做了 SKU 匹配，SKU 空则丢失）
+                            shopify_result = await self.db.execute(
+                                select(ExternalSystem).where(
+                                    and_(
+                                        ExternalSystem.tenant_id == tenant_id,
+                                        ExternalSystem.system_type == ExternalSystemType.SHOPIFY,
+                                        ExternalSystem.is_active == True
+                                    )
+                                )
+                            )
+                            shopify_system = shopify_result.scalar_one_or_none()
+                            if shopify_system:
+                                ev_id = str(order_item.external_variant_id).strip()
+                                if "ProductVariant/" in ev_id:
+                                    ev_id = ev_id.split("ProductVariant/")[-1].split("?")[0]
+                                pm_result = await self.db.execute(
+                                    select(ProductMapping).where(
+                                        and_(
+                                            ProductMapping.tenant_id == tenant_id,
+                                            ProductMapping.external_system_id == shopify_system.id,
+                                            ProductMapping.core_variant_id.isnot(None),
+                                            or_(
+                                                ProductMapping.external_variant_id == ev_id,
+                                                ProductMapping.external_variant_id.like(f"%{ev_id}%")
+                                            )
+                                        )
+                                    ).limit(1)
+                                )
+                                pm = pm_result.scalar_one_or_none()
+                                if pm and pm.core_variant_id:
+                                    core_variant_id = pm.core_variant_id
+                                    core_product_id = pm.core_product_id
+                                    sku = order_item.sku or sku
+                                    logger.info(f"✅ 从 Shopify ProductMapping 解析 core_variant_id: external_variant_id={order_item.external_variant_id} -> core_variant_id={core_variant_id}")
                 
                 # 如果还没找到，通过 SKU 查找变体
                 if not core_variant_id and sku:

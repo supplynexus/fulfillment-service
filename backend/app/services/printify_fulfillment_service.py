@@ -690,7 +690,7 @@ class PrintifyFulfillmentService:
         from app.models.product import ProductVariant, ProductMapping
         from app.models.order import OrderItem
         from app.models.external_system import ExternalSystem, ExternalSystemType
-        from sqlalchemy import select, and_
+        from sqlalchemy import select, and_, or_
 
         if not line_items:
             return []
@@ -775,6 +775,43 @@ class PrintifyFulfillmentService:
                                 meta["sku"] = oi.sku
                                 item_copy["metadata"] = meta
                             logger.info(f"✅ 从 OrderItem 解析: source_line_item_id={source_line_item_id} -> core_variant_id={oi.core_variant_id}, sku={oi.sku}")
+                        elif oi.external_variant_id:
+                            # OrderItem.core_variant_id 为空时，尝试通过 Shopify ProductMapping 的 external_variant_id 反查
+                            shopify_result = await db.execute(
+                                select(ExternalSystem).where(
+                                    and_(
+                                        ExternalSystem.tenant_id == tenant_id,
+                                        ExternalSystem.system_type == ExternalSystemType.SHOPIFY,
+                                        ExternalSystem.is_active == True
+                                    )
+                                )
+                            )
+                            shopify_system = shopify_result.scalar_one_or_none()
+                            if shopify_system:
+                                ev_id = str(oi.external_variant_id).strip()
+                                if "ProductVariant/" in ev_id:
+                                    ev_id = ev_id.split("ProductVariant/")[-1].split("?")[0]
+                                pm_result = await db.execute(
+                                    select(ProductMapping).where(
+                                        and_(
+                                            ProductMapping.tenant_id == tenant_id,
+                                            ProductMapping.external_system_id == shopify_system.id,
+                                            ProductMapping.core_variant_id.isnot(None),
+                                            or_(
+                                                ProductMapping.external_variant_id == ev_id,
+                                                ProductMapping.external_variant_id.like(f"%{ev_id}%")
+                                            )
+                                        )
+                                    ).limit(1)
+                                )
+                                pm = pm_result.scalar_one_or_none()
+                                if pm and pm.core_variant_id:
+                                    item_copy["core_variant_id"] = pm.core_variant_id
+                                    item_copy["core_product_id"] = pm.core_product_id
+                                    if oi.sku and (not meta.get("sku") or not str(meta.get("sku", "")).strip()):
+                                        meta["sku"] = oi.sku
+                                        item_copy["metadata"] = meta
+                                    logger.info(f"✅ 从 Shopify ProductMapping 解析: external_variant_id={oi.external_variant_id} -> core_variant_id={pm.core_variant_id}")
                         break
 
             # 若通过 OrderItem 解析到了 core_variant_id，再查 ProductVariant 获取 core_variant
