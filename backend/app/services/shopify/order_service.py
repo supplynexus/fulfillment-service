@@ -864,12 +864,14 @@ class ShopifyOrderService:
             shipping_address = order_data.get("shippingAddress", {})
             billing_address = order_data.get("billingAddress", {})
             
-            # 提取商品信息
+            # 提取商品信息（含 variant_id 用于 ProductMapping 反查核心变体）
             line_items = []
             for item in order_data.get("lineItems", {}).get("edges", []):
                 node = item.get("node", {})
+                variant_node = node.get("variant") or {}
                 line_items.append({
                     "id": node.get("id"),
+                    "variant_id": variant_node.get("id"),  # Shopify ProductVariant GID，用于 ProductMapping 反查 core_variant_id
                     "title": node.get("title"),
                     "quantity": node.get("quantity"),
                     "variant_title": node.get("variantTitle"),
