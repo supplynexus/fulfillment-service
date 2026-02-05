@@ -6,7 +6,7 @@ Shopify订单同步服务
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, or_
 
 from app.core.logging import get_logger
 from app.models.shopify_order import ShopifyOrder
@@ -264,9 +264,10 @@ def sync_shopify_order_to_core_sync(
                     try:
                         logger.info(f"🔍 处理 line_item: {line_item}")
                         
-                        # 尝试匹配核心 SKU
+                        # 尝试匹配核心变体
                         core_variant_id = None
                         core_product_id = None
+                        core_variant = None
 
                         # 方法1: 通过 SKU 查找核心变体
                         if line_item.get("sku"):
@@ -283,6 +284,47 @@ def sync_shopify_order_to_core_sync(
                                 logger.info(
                                     f"✅ 通过SKU匹配到核心变体: SKU={line_item['sku']}, variant_id={core_variant_id}"
                                 )
+
+                        # 方法2: SKU 为空时通过 ProductMapping (Shopify external_variant_id) 反查
+                        if not core_variant_id and (line_item.get("variant_id") or line_item.get("id")):
+                            from app.models.product import ProductMapping
+                            from app.models.external_system import ExternalSystem, ExternalSystemType
+                            variant_id_raw = line_item.get("variant_id") or line_item.get("id")
+                            variant_id_str = str(variant_id_raw).strip()
+                            if "ProductVariant/" in variant_id_str:
+                                variant_id_str = variant_id_str.split("ProductVariant/")[-1].split("?")[0]
+                            shopify_system = db.query(ExternalSystem).filter(
+                                and_(
+                                    ExternalSystem.tenant_id == tenant.id,
+                                    ExternalSystem.system_type == ExternalSystemType.SHOPIFY,
+                                    ExternalSystem.is_active == True
+                                )
+                            ).first()
+                            if shopify_system:
+                                pm = db.query(ProductMapping).filter(
+                                    and_(
+                                        ProductMapping.tenant_id == tenant.id,
+                                        ProductMapping.external_system_id == shopify_system.id,
+                                        ProductMapping.core_variant_id.isnot(None),
+                                        or_(
+                                            ProductMapping.external_variant_id == variant_id_str,
+                                            ProductMapping.external_variant_id.like(f"%{variant_id_str}%")
+                                        )
+                                    )
+                                ).first()
+                                if pm and pm.core_variant_id:
+                                    core_variant = db.query(ProductVariant).filter(
+                                        and_(
+                                            ProductVariant.id == pm.core_variant_id,
+                                            ProductVariant.tenant_id == tenant.id
+                                        )
+                                    ).first()
+                                    if core_variant:
+                                        core_variant_id = core_variant.id
+                                        core_product_id = core_variant.product_id
+                                        logger.info(
+                                            f"✅ 通过 ProductMapping 匹配到核心变体: external_variant_id={variant_id_raw} -> core_variant_id={core_variant_id}, sku={core_variant.sku}"
+                                        )
 
                         # 提取价格信息（支持多种格式）
                         price_value = 0.0
@@ -306,13 +348,16 @@ def sync_shopify_order_to_core_sync(
                         
                         logger.info(f"🔍 价格提取: price_value={price_value}, quantity={quantity}, total_price={total_price}")
 
+                        # 优先使用核心变体 SKU，避免 Shopify 侧 sku 为空时丢失核心商品 SKU
+                        display_sku = (core_variant.sku if core_variant else None) or line_item.get("sku") or ""
+
                         # 创建订单行项目
                         order_item = OrderItem(
                             tenant_id=tenant.id,
                             order_id=core_order.id,
                             core_product_id=core_product_id,
                             core_variant_id=core_variant_id,
-                            sku=line_item.get("sku") or "",
+                            sku=display_sku,
                             title=line_item.get("title", "") or "",
                             variant_title=(line_item.get("variant_title") or line_item.get("variantTitle") or ""),
                             quantity=quantity,
@@ -326,7 +371,7 @@ def sync_shopify_order_to_core_sync(
                         db.flush()  # 立即刷新，确保数据写入
                         items_created += 1
                         logger.info(
-                            f"✅ 订单行项目创建成功: order_item_id={order_item.id}, SKU={line_item.get('sku')}, title={line_item.get('title')}, 数量={quantity}, 价格={price_value}"
+                            f"✅ 订单行项目创建成功: order_item_id={order_item.id}, SKU={display_sku}, title={line_item.get('title')}, 数量={quantity}, 价格={price_value}"
                         )
 
                     except Exception as e:
