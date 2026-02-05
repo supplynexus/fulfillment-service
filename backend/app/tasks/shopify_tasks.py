@@ -116,12 +116,13 @@ def sync_shopify_orders_task(
 
 
 @celery_app.task(bind=True, name="sync_shopify_orders_1min")
-def sync_shopify_orders_1min_task(self, tenant_id: int = None):
+def sync_shopify_orders_1min_task(self, tenant_id: int = None, ignore_flags: bool = False):
     """
     每分钟同步 Shopify 订单的定时任务
     
     Args:
         tenant_id: 可选的租户ID。如果提供，只同步该租户的订单；否则同步所有活跃租户
+        ignore_flags: 是否忽略处理标志（自动化调度传入，本任务暂未使用）
     """
     try:
         logger.info("开始执行每分钟订单同步任务")
