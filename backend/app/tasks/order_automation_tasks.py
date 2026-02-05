@@ -286,11 +286,12 @@ async def _create_printify_order_for_scm(db, scm_order: SCMOrder, tenant_id: int
 
         fulfillment_service = PrintifyFulfillmentService()
 
-        # 预增强 line_items：通过 core_variant_id 或 SKU 查找 Printify 映射并填充 external_product_id / external_variant_id
+        # 预增强 line_items：通过 core_variant_id 或 SKU 查找 Printify 映射；无时通过 source_order_id + source_line_item_id 从 OrderItem 解析（与手动创建逻辑一致）
         enriched_line_items = await fulfillment_service.enrich_line_items_with_printify_mapping(
             scm_order.line_items or [],
             db,
             tenant_id,
+            source_order_id=getattr(scm_order, "source_order_id", None),
         )
         # 与手动 generate-printify 流程一致：传递 _build_fulfillment_data 所需的全部字段
         scm_order_for_fulfillment = SimpleNamespace(

@@ -680,13 +680,15 @@ class PrintifyFulfillmentService:
             return None
 
     async def enrich_line_items_with_printify_mapping(
-        self, line_items: list, db, tenant_id: int
+        self, line_items: list, db, tenant_id: int, source_order_id: Optional[int] = None
     ) -> list:
         """
         为 line_items 预填充 external_product_id 和 external_variant_id（与 generate-printify 逻辑一致）
-        用于自动化流程，在调用 create_fulfillment_order 前增强行项目
+        用于自动化流程，在调用 create_fulfillment_order 前增强行项目。
+        当 core_variant_id 和 sku 为空时，可选通过 source_order_id + source_line_item_id 从 OrderItem 解析（与手动创建时 SCM API 的规范化逻辑一致）。
         """
         from app.models.product import ProductVariant, ProductMapping
+        from app.models.order import OrderItem
         from app.models.external_system import ExternalSystem, ExternalSystemType
         from sqlalchemy import select, and_
 
@@ -730,18 +732,74 @@ class PrintifyFulfillmentService:
                     )
                 )
                 core_variant = variant_result.scalar_one_or_none()
-            # 否则通过 SKU 查找
+            # 其次通过 metadata.sku 查找
             elif item_copy.get("metadata", {}).get("sku"):
                 sku = item_copy["metadata"]["sku"]
+                if isinstance(sku, str) and sku.strip():
+                    variant_result = await db.execute(
+                        select(ProductVariant).where(
+                            and_(
+                                ProductVariant.tenant_id == tenant_id,
+                                ProductVariant.sku == sku
+                            )
+                        )
+                    )
+                    core_variant = variant_result.scalar_one_or_none()
+            # 回退：通过 source_line_item_id 从 OrderItem 解析（source_line_item_id 即 OrderItem.id；有 source_order_id 时限定订单范围）
+            meta = dict(item_copy.get("metadata") or {})
+            source_line_item_id = meta.get("source_line_item_id")
+            if not core_variant and source_line_item_id is not None:
+                if source_order_id:
+                    order_item_result = await db.execute(
+                        select(OrderItem).where(
+                            and_(
+                                OrderItem.order_id == source_order_id,
+                                OrderItem.tenant_id == tenant_id
+                            )
+                        )
+                    )
+                    order_items = order_item_result.scalars().all()
+                else:
+                    order_item_result = await db.execute(
+                        select(OrderItem).where(
+                            and_(OrderItem.tenant_id == tenant_id, OrderItem.id == source_line_item_id)
+                        )
+                    )
+                    order_items = order_item_result.scalars().all()
+                for oi in order_items:
+                    if oi.id == source_line_item_id or str(oi.id) == str(source_line_item_id):
+                        if oi.core_variant_id:
+                            item_copy["core_variant_id"] = oi.core_variant_id
+                            item_copy["core_product_id"] = oi.core_product_id
+                            if oi.sku and (not meta.get("sku") or not str(meta.get("sku", "")).strip()):
+                                meta["sku"] = oi.sku
+                                item_copy["metadata"] = meta
+                            logger.info(f"✅ 从 OrderItem 解析: source_line_item_id={source_line_item_id} -> core_variant_id={oi.core_variant_id}, sku={oi.sku}")
+                        break
+
+            # 若通过 OrderItem 解析到了 core_variant_id，再查 ProductVariant 获取 core_variant
+            if not core_variant and item_copy.get("core_variant_id"):
                 variant_result = await db.execute(
                     select(ProductVariant).where(
                         and_(
-                            ProductVariant.tenant_id == tenant_id,
-                            ProductVariant.sku == sku
+                            ProductVariant.id == item_copy["core_variant_id"],
+                            ProductVariant.tenant_id == tenant_id
                         )
                     )
                 )
                 core_variant = variant_result.scalar_one_or_none()
+            elif not core_variant and item_copy.get("metadata", {}).get("sku"):
+                sku = item_copy["metadata"]["sku"]
+                if isinstance(sku, str) and sku.strip():
+                    variant_result = await db.execute(
+                        select(ProductVariant).where(
+                            and_(
+                                ProductVariant.tenant_id == tenant_id,
+                                ProductVariant.sku == sku
+                            )
+                        )
+                    )
+                    core_variant = variant_result.scalar_one_or_none()
 
             if core_variant:
                 mapping_result = await db.execute(
