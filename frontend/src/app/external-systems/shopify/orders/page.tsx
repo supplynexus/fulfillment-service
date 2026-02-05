@@ -167,11 +167,11 @@ const ShopifyOrdersPage: React.FC = () => {
 
       try {
         frontendLogger.info('🔄 获取 Shopify 订单列表', {
-          storeId: store.external_system_id,
+          storeId: store.id_hashid,
           page: pageNum,
         });
         const response = await frontendApi.get(
-          `/api/external-systems/shopify/${store.external_system_id}/orders`,
+          `/api/external-systems/shopify/${store.id_hashid}/orders`,
           {
             params: {
               page: pageNum,

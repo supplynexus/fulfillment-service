@@ -118,6 +118,7 @@ export function OrdersList() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [updateFeedback, setUpdateFeedback] = useState<{ message: string; severity: 'success' | 'info' | 'error' } | null>(null);
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
   const [sortBy, setSortBy] = useState<'created_at' | 'order_date'>(
@@ -207,6 +208,7 @@ export function OrdersList() {
     try {
       setBulkUpdating(true);
       setError(null);
+      setUpdateFeedback(null);
 
       const response = await frontendApi.post('/api/orders/batch-update-shopify-status', {
         order_ids: Array.from(selectedOrders)
@@ -214,28 +216,27 @@ export function OrdersList() {
 
       console.log('✅ 批量更新 Shopify 订单状态成功:', response.data);
 
-      // 显示成功消息
-      const results = response.data.results;
-      const successCount = results.success.length;
-      const failedCount = results.failed.length;
+      const results = response.data.results || { success: [], failed: [] };
+      const successCount = results.success?.length || 0;
+      const failedCount = results.failed?.length || 0;
 
-      let message = `更新完成: ${successCount} 个成功`;
+      let message = `Shopify 订单状态更新: ${successCount} 个成功`;
       if (failedCount > 0) {
         message += `, ${failedCount} 个失败`;
+        const failedReasons = (results.failed || [])
+          .map((f: { order_id?: number; error?: string }) => `${f.order_id || ''}: ${f.error || '未知错误'}`)
+          .join('；');
+        if (failedReasons) message += `。失败原因: ${failedReasons}`;
       }
 
-      if (failedCount > 0) {
-        setError(message);
-      } else {
-        setError(null);
-      }
-
+      const severity = failedCount > 0 ? 'error' : 'success';
+      setUpdateFeedback({ message, severity });
       setSelectedOrders(new Set());
       setUpdateDialogOpen(false);
       await fetchOrders();
-
     } catch (error: any) {
       console.error('❌ 批量更新 Shopify 订单状态失败:', error);
+      setUpdateFeedback(null);
       setError(error.response?.data?.detail || '批量更新失败');
     } finally {
       setBulkUpdating(false);
@@ -511,8 +512,18 @@ export function OrdersList() {
       </Box>
 
       {error && (
-        <Alert severity='error' sx={{ mb: 2 }}>
+        <Alert severity='error' sx={{ mb: 2 }} onClose={() => setError(null)}>
           {error}
+        </Alert>
+      )}
+
+      {updateFeedback && (
+        <Alert
+          severity={updateFeedback.severity}
+          sx={{ mb: 2 }}
+          onClose={() => setUpdateFeedback(null)}
+        >
+          {updateFeedback.message}
         </Alert>
       )}
 

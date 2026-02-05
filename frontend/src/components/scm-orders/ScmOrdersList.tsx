@@ -89,6 +89,7 @@ export function ScmOrdersList() {
   // 批量更新 Shopify fulfillment 相关状态
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
+  const [updateFeedback, setUpdateFeedback] = useState<{ message: string; severity: 'success' | 'info' | 'error' } | null>(null);
 
   console.log('🔍 ScmOrdersList 组件渲染，当前状态:', {
     orders: orders.length,
@@ -209,6 +210,7 @@ export function ScmOrdersList() {
     try {
       setBulkUpdating(true);
       setError(null);
+      setUpdateFeedback(null);
       
       const response = await frontendApi.post('/api/scm-orders/batch-update-shopify-fulfillment', {
         scm_order_hashids: Array.from(selectedOrders)
@@ -225,6 +227,10 @@ export function ScmOrdersList() {
       let message = `更新完成: ${successCount} 个成功`;
       if (failedCount > 0) {
         message += `, ${failedCount} 个失败`;
+        const failedReasons = (results.failed || [])
+          .map((f: { scm_order_number?: string; error?: string }) => `${f.scm_order_number || ''}: ${f.error || '未知错误'}`)
+          .join('；');
+        if (failedReasons) message += `。失败原因: ${failedReasons}`;
       }
       if (skippedCount > 0) {
         message += `, ${skippedCount} 个跳过（缺少跟踪号）`;
@@ -242,8 +248,7 @@ export function ScmOrdersList() {
       
     } catch (error: any) {
       console.error('❌ 批量更新 Shopify fulfillment 失败:', error);
-      
-      // 处理特定的业务逻辑错误
+      setUpdateFeedback(null);
       const errorMessage = error.response?.data?.detail || '批量更新失败';
       if (errorMessage.includes('Shopify fulfillment order 已关闭')) {
         setError('该Shopify订单已经完全履行，无法再创建新的发货信息。这是正常的业务状态。');
@@ -357,8 +362,18 @@ export function ScmOrdersList() {
       )}
 
       {error && (
-        <Alert severity='error' sx={{ mb: 2 }}>
+        <Alert severity='error' sx={{ mb: 2 }} onClose={() => setError(null)}>
           {error}
+        </Alert>
+      )}
+
+      {updateFeedback && (
+        <Alert
+          severity={updateFeedback.severity}
+          sx={{ mb: 2 }}
+          onClose={() => setUpdateFeedback(null)}
+        >
+          {updateFeedback.message}
         </Alert>
       )}
 

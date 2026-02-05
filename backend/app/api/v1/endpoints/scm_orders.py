@@ -1661,6 +1661,7 @@ async def batch_update_shopify_fulfillment(
     from app.services.shopify_fulfillment_service import ShopifyFulfillmentService
     
     logger = RequestLogger("scm_orders.batch_update_shopify_fulfillment")
+    logger.info("📥 收到批量更新 Shopify fulfillment 请求")
     tenant, user = auth
     
     try:

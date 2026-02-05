@@ -728,8 +728,7 @@ async def batch_update_shopify_status(
     from app.core.logging import RequestLogger
     from app.core.hashids_utils import decode_id
     from app.models.order import Order
-    from app.models.external_system import ExternalSystem, ExternalSystemType
-    from app.core.security import decrypt_data
+    from app.models.external_system import ExternalSystemType
     from sqlalchemy import select, and_
     import httpx
     import asyncio
@@ -773,36 +772,44 @@ async def batch_update_shopify_status(
 
         logger.info(f"✅ 找到 {len(orders)} 个订单")
 
-        # 获取 Shopify 外部系统配置
-        shopify_query = select(ExternalSystem).where(
-            and_(
-                ExternalSystem.tenant_id == tenant.id,
-                ExternalSystem.system_type == ExternalSystemType.SHOPIFY,
-                ExternalSystem.is_active == True
+        # 获取 Shopify 凭据（与订单页面使用相同的 ExternalSystemService.get_decrypted_credentials）
+        from app.services.external_system_service import ExternalSystemService
+
+        service = ExternalSystemService(db)
+        # 优先使用第一个订单的 external_system_id（若有多店铺）
+        external_system_id = next((o.external_system_id for o in orders if o.external_system_id), None)
+        if external_system_id:
+            shopify_system = await service.get_external_system(external_system_id, tenant.id)
+        else:
+            shopify_systems = await service.get_external_systems_by_tenant(
+                tenant.id, ExternalSystemType.SHOPIFY, active_only=True
             )
-        )
-        shopify_result = await db.execute(shopify_query)
-        shopify_system = shopify_result.scalar_one_or_none()
+            shopify_system = shopify_systems[0] if shopify_systems else None
 
         if not shopify_system:
             raise HTTPException(status_code=404, detail="Shopify system not configured")
 
-        # 解密 Shopify 凭据
-        try:
-            access_token = decrypt_data(shopify_system.credentials.get('access_token'))
-            store_url = decrypt_data(shopify_system.credentials.get('store_url'))
-        except Exception:
-            access_token = shopify_system.credentials.get('access_token')
-            store_url = shopify_system.credentials.get('store_url')
+        decrypted_credentials = await service.get_decrypted_credentials(
+            shopify_system.id, tenant.id
+        )
+        if not decrypted_credentials:
+            raise HTTPException(status_code=400, detail="Failed to get decrypted credentials")
 
-        if store_url.startswith('https://'):
-            shop_domain = store_url[8:]
-        elif store_url.startswith('http://'):
-            shop_domain = store_url[7:]
+        access_token = decrypted_credentials.get("access_token") or decrypted_credentials.get("api_key")
+        if not access_token:
+            raise HTTPException(status_code=400, detail="Access Token not configured for this store")
+
+        store_url = decrypted_credentials.get("store_url") or shopify_system.base_url or ""
+        if store_url:
+            shop_domain = store_url.replace("https://", "").replace("http://", "").rstrip("/")
         else:
-            shop_domain = store_url
+            sub = shopify_system.external_system_id or ""
+            shop_domain = f"{sub}.myshopify.com" if sub and ".myshopify.com" not in sub else sub
 
-        logger.info(f"✅ Shopify 配置获取成功: shop_domain={shop_domain}")
+        if not shop_domain:
+            raise HTTPException(status_code=400, detail="Cannot determine Shopify shop domain")
+
+        logger.info(f"✅ Shopify 配置获取成功（与订单页面相同凭据来源）: shop_domain={shop_domain}")
 
         # 批量更新订单状态
         success_orders = []

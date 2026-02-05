@@ -20,61 +20,108 @@ class ShopifyFulfillmentService:
     def __init__(self):
         self.timeout = 30
         
-    async def _get_shopify_credentials(self, tenant, db: AsyncSession) -> Optional[Dict[str, Any]]:
-        """获取租户的 Shopify 凭据"""
+    async def _get_shopify_external_system_id(self, scm_order, db: AsyncSession) -> Optional[int]:
+        """从 SCM 订单的源订单获取 Shopify 外部系统 ID，确保使用与订单页面相同的店铺"""
         try:
-            from app.models.external_system import ExternalSystem, ExternalSystemType
-            
-            # 查询 Shopify 外部系统
-            result = await db.execute(
-                select(ExternalSystem).where(
-                    ExternalSystem.tenant_id == tenant.id,
-                    ExternalSystem.system_type == ExternalSystemType.SHOPIFY,
-                    ExternalSystem.is_active == True
+            from app.models.order import Order
+            from app.models.scm_order import ScmOrderSource
+
+            # 从 ScmOrderSource 获取源订单 ID
+            source_result = await db.execute(
+                select(ScmOrderSource.source_order_id).where(
+                    ScmOrderSource.scm_order_id == scm_order.id,
+                    ScmOrderSource.tenant_id == scm_order.tenant_id
                 )
             )
-            shopify_system = result.scalar_one_or_none()
-            
+            rows = source_result.fetchall()
+            if not rows:
+                return None
+            source_order_id = rows[0][0]
+
+            # 从 Order 获取 external_system_id
+            order_result = await db.execute(
+                select(Order.external_system_id).where(
+                    Order.id == source_order_id,
+                    Order.tenant_id == scm_order.tenant_id
+                )
+            )
+            row = order_result.fetchone()
+            return row[0] if row and row[0] else None
+        except Exception as e:
+            logger.warning(f"⚠️ 无法获取 SCM 订单的 external_system_id: {e}")
+            return None
+
+    async def _get_shopify_credentials(
+        self, tenant, db: AsyncSession, external_system_id: Optional[int] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        获取租户的 Shopify 凭据。
+        与 Shopify 订单页面使用相同的 ExternalSystemService.get_decrypted_credentials，
+        确保 access_token 等凭据完全一致。
+        """
+        try:
+            from app.models.external_system import ExternalSystem, ExternalSystemType
+            from app.services.external_system_service import ExternalSystemService
+
+            # 确定要使用的 external_system
+            if external_system_id:
+                # 使用 SCM 订单对应的具体店铺
+                service = ExternalSystemService(db)
+                shopify_system = await service.get_external_system(external_system_id, tenant.id)
+            else:
+                # 回退：取租户下第一个活跃的 Shopify 店铺
+                result = await db.execute(
+                    select(ExternalSystem).where(
+                        ExternalSystem.tenant_id == tenant.id,
+                        ExternalSystem.system_type == ExternalSystemType.SHOPIFY,
+                        ExternalSystem.is_active == True
+                    )
+                )
+                shopify_system = result.scalar_one_or_none()
+
             if not shopify_system:
                 logger.error(f"❌ 未找到 Shopify 外部系统: tenant_id={tenant.id}")
                 return None
-                
-            # 获取凭据（支持加密和明文两种格式）
-            from app.core.security import decrypt_data
-            try:
-                # 尝试解密凭据
-                access_token = decrypt_data(shopify_system.credentials.get('access_token'))
-                store_url = decrypt_data(shopify_system.credentials.get('store_url'))
-                logger.info("✅ Shopify 凭据解密成功")
-            except Exception as e:
-                # 解密失败，尝试使用明文凭据
-                logger.info(f"ℹ️ 凭据解密失败，尝试使用明文凭据: {str(e)}")
-                access_token = shopify_system.credentials.get('access_token')
-                store_url = shopify_system.credentials.get('store_url')
-                
-                if not access_token or not store_url:
-                    logger.error(f"❌ 无法获取 Shopify 凭据")
-                    return None
-                
-                logger.info("✅ 使用明文 Shopify 凭据")
-            
-            # 从 store_url 中提取 shop_domain
-            # 例如: https://x0ri77-4v.myshopify.com -> x0ri77-4v.myshopify.com
-            if store_url.startswith('https://'):
-                shop_domain = store_url[8:]  # 移除 'https://'
-            elif store_url.startswith('http://'):
-                shop_domain = store_url[7:]   # 移除 'http://'
+
+            # 使用与订单页面相同的凭据获取逻辑
+            service = ExternalSystemService(db)
+            decrypted_credentials = await service.get_decrypted_credentials(
+                shopify_system.id, tenant.id
+            )
+            if not decrypted_credentials:
+                logger.error(f"❌ 无法获取解密后的凭据: external_system_id={shopify_system.id}")
+                return None
+
+            access_token = decrypted_credentials.get("access_token") or decrypted_credentials.get("api_key")
+            if not access_token:
+                logger.error(f"❌ 凭据中缺少 access_token: external_system_id={shopify_system.id}")
+                return None
+
+            # 构建 shop_domain：优先 base_url，其次 store_url
+            store_url = decrypted_credentials.get("store_url") or shopify_system.base_url or ""
+            if store_url:
+                if store_url.startswith("https://"):
+                    shop_domain = store_url[8:].rstrip("/")
+                elif store_url.startswith("http://"):
+                    shop_domain = store_url[7:].rstrip("/")
+                else:
+                    shop_domain = store_url.rstrip("/")
             else:
-                shop_domain = store_url
-            
-            logger.info(f"✅ Shopify 凭据获取成功: shop_domain={shop_domain}")
-            
+                # 从 external_system_id 构建，例如 x0ri77-4v -> x0ri77-4v.myshopify.com
+                subdomain = shopify_system.external_system_id or ""
+                shop_domain = f"{subdomain}.myshopify.com" if subdomain and ".myshopify.com" not in subdomain else subdomain
+
+            if not shop_domain:
+                logger.error(f"❌ 无法确定 shop_domain: external_system_id={shopify_system.id}")
+                return None
+
+            logger.info(f"✅ Shopify 凭据获取成功（与订单页面相同来源）: shop_domain={shop_domain}")
+
             return {
-                'access_token': access_token,
-                'shop_domain': shop_domain,
-                'api_version': '2024-01'
+                "access_token": access_token,
+                "shop_domain": shop_domain,
+                "api_version": shopify_system.settings.get("api_version", "2024-01") if shopify_system.settings else "2024-01",
             }
-                
         except Exception as e:
             logger.error(f"❌ 获取 Shopify 凭据失败: {str(e)}")
             return None
@@ -172,9 +219,10 @@ class ShopifyFulfillmentService:
         """
         try:
             logger.info(f"🚀 开始创建 Shopify fulfillment: scm_order_id={scm_order.id}")
-            
-            # 获取 Shopify 凭据
-            credentials = await self._get_shopify_credentials(tenant, db)
+
+            # 获取该 SCM 订单对应的 Shopify 店铺 ID，确保与订单页面使用同一套凭据
+            external_system_id = await self._get_shopify_external_system_id(scm_order, db)
+            credentials = await self._get_shopify_credentials(tenant, db, external_system_id)
             if not credentials:
                 raise Exception("Shopify credentials not found for tenant")
             
@@ -331,6 +379,9 @@ class ShopifyFulfillmentService:
                                                 lineItem {
                                                     id
                                                     sku
+                                                    variant {
+                                                        id
+                                                    }
                                                 }
                                             }
                                         }
@@ -378,19 +429,24 @@ class ShopifyFulfillmentService:
                 raise Exception(f"Shopify fulfillment order 已关闭 (状态: {fulfillment_status})，无法创建新的 fulfillment")
             
             # 匹配 SCM 商品和 Shopify fulfillment order line items
+            # 支持按 SKU 或 variant ID 匹配（Shopify 有时返回 sku: null）
             matched_line_items = []
             for shopify_variant in shopify_variants:
                 for item_edge in line_items:
                     item_node = item_edge['node']
                     remaining_quantity = item_node.get('remainingQuantity', 0)
-                    
-                    # 检查剩余数量
+                    line_item = item_node.get('lineItem', {}) or {}
+                    item_sku = line_item.get('sku')
+                    item_variant_id = (line_item.get('variant') or {}).get('id')
+
                     if remaining_quantity <= 0:
-                        logger.warning(f"⚠️ SKU {item_node['lineItem']['sku']} 剩余数量为 0，跳过")
+                        logger.warning(f"⚠️ lineItem sku={item_sku} variant={item_variant_id} 剩余数量为 0，跳过")
                         continue
-                    
-                    if (item_node['lineItem']['sku'] == shopify_variant['sku'] and 
-                        remaining_quantity >= shopify_variant['quantity']):
+
+                    # 优先 SKU 匹配，其次 variant ID 匹配
+                    sku_match = item_sku and item_sku == shopify_variant.get('sku')
+                    variant_match = item_variant_id and item_variant_id == shopify_variant.get('shopify_variant_id')
+                    if (sku_match or variant_match) and remaining_quantity >= shopify_variant['quantity']:
                         matched_line_items.append({
                             "id": item_node['id'],
                             "quantity": shopify_variant['quantity']

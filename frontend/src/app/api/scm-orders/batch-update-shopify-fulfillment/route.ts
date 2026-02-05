@@ -52,6 +52,7 @@ export async function POST(request: NextRequest) {
 
     // 4. 调用后端 API
     const backendUrl = `${process.env.BACKEND_API_URL || 'http://localhost:8000'}${backendPath}`;
+    logger.info('📤 转发到后端', { backendUrl });
     
     const backendResponse = await fetch(backendUrl, {
       method: 'POST',
