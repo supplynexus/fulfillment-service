@@ -280,6 +280,7 @@ class PrintifyFulfillmentService:
             
             # 验证产品是否存在于 Printify 店铺中（在创建订单前验证）
             shop_id = printify_credentials.get('store_url')  # store_url 实际上是 shop_id
+            shop_id = await self._resolve_printify_shop_id(db, tenant, fulfillment_data.get('line_items', []), shop_id)
             validation_result = await self._validate_printify_products_strict(printify_credentials, shop_id, fulfillment_data.get('line_items', []), db, tenant)
             if not validation_result["valid"]:
                 error_msg = "产品验证失败"
@@ -867,12 +868,28 @@ class PrintifyFulfillmentService:
     async def get_printify_products(self, credentials: Dict[str, str], shop_id: str) -> List[Dict[str, Any]]:
         """获取 Printify 店铺中的产品列表"""
         try:
-            endpoint = f"/v1/shops/{shop_id}/products.json"
-            logger.info(f"🔍 调用 Printify API 获取产品列表: endpoint={endpoint}, shop_id={shop_id}")
-            products_data = await self._call_printify_api(credentials, endpoint, "GET")
-            products_list = products_data.get("data", [])
-            logger.info(f"✅ 获取到 {len(products_list)} 个 Printify 产品")
-            return products_list
+            all_products: List[Dict[str, Any]] = []
+            page = 1
+            page_size = 50  # Printify API 单页上限
+
+            while True:
+                endpoint = f"/v1/shops/{shop_id}/products.json?page={page}&limit={page_size}"
+                logger.info(f"🔍 调用 Printify API 获取产品列表: endpoint={endpoint}, shop_id={shop_id}")
+                products_data = await self._call_printify_api(credentials, endpoint, "GET")
+                products_list = products_data.get("data", [])
+                if not products_list:
+                    break
+
+                all_products.extend(products_list)
+                logger.info(f"✅ 获取到 Printify 产品页 {page}: {len(products_list)} 个")
+
+                if len(products_list) < page_size:
+                    break
+
+                page += 1
+
+            logger.info(f"✅ 获取到 {len(all_products)} 个 Printify 产品")
+            return all_products
         except Exception as e:
             logger.error(f"❌ 获取 Printify 产品列表失败: {str(e)}")
             import traceback
@@ -1089,6 +1106,61 @@ class PrintifyFulfillmentService:
                 "errors": [f"验证过程出错: {str(e)}"],
                 "missing_products": []
             }
+
+    async def _resolve_printify_shop_id(self, db, tenant, line_items: List[Dict], fallback_shop_id: str) -> str:
+        """基于数据库中的 PrintifyProduct.shop_id 选择更准确的 shop_id"""
+        try:
+            from app.models.printify_product import PrintifyProduct
+            from app.models.external_system import ExternalSystem, ExternalSystemType
+            from sqlalchemy import select, and_
+
+            if not line_items:
+                return fallback_shop_id
+
+            external_system_result = await db.execute(
+                select(ExternalSystem).where(
+                    and_(
+                        ExternalSystem.tenant_id == tenant.id,
+                        ExternalSystem.system_type == ExternalSystemType.PRINTIFY
+                    )
+                )
+            )
+            external_system = external_system_result.scalar_one_or_none()
+            if not external_system:
+                return fallback_shop_id
+
+            shop_ids = set()
+            for item in line_items:
+                product_id = item.get('product_id')
+                if not product_id:
+                    continue
+                printify_product_result = await db.execute(
+                    select(PrintifyProduct).where(
+                        and_(
+                            PrintifyProduct.tenant_id == tenant.id,
+                            PrintifyProduct.external_system_id == external_system.id,
+                            PrintifyProduct.printify_product_id == product_id
+                        )
+                    )
+                )
+                printify_product = printify_product_result.scalar_one_or_none()
+                if printify_product and printify_product.printify_shop_id:
+                    shop_ids.add(str(printify_product.printify_shop_id))
+
+            if not shop_ids:
+                return fallback_shop_id
+
+            if len(shop_ids) > 1:
+                logger.error(f"❌ Printify 产品属于多个店铺: shop_ids={list(shop_ids)}")
+                raise ValueError("Printify 产品属于多个店铺，无法确定 shop_id")
+
+            resolved_shop_id = shop_ids.pop()
+            if fallback_shop_id and str(fallback_shop_id) != str(resolved_shop_id):
+                logger.warning(f"⚠️ 使用数据库中的 shop_id 覆盖配置: {fallback_shop_id} -> {resolved_shop_id}")
+            return resolved_shop_id
+        except Exception as e:
+            logger.error(f"❌ 解析 Printify shop_id 失败: {str(e)}")
+            return fallback_shop_id
 
     async def _update_product_mapping_for_missing_product(self, missing_product_id: str, variant_id: int, actual_products: List[Dict], db, tenant) -> None:
         """当产品不存在时，尝试更新产品映射"""
