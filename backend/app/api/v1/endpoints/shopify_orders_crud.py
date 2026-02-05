@@ -865,8 +865,11 @@ async def sync_shopify_order_to_core(
                             # line_item.variant.id 是 ProductVariant ID，用于匹配 ProductMapping
                             # line_item.id 是 LineItem ID，用于存储到 OrderItem.external_variant_id
                             line_item_id = line_item.get("id")  # LineItem ID (用于存储)
+                            # 兼容新结构：优先使用 line_item.variant_id（ProductVariant GID）
+                            product_variant_id = line_item.get("variant_id")
                             variant_data = line_item.get("variant", {})
-                            product_variant_id = variant_data.get("id") if variant_data else None  # ProductVariant ID (用于匹配)
+                            if not product_variant_id and variant_data:
+                                product_variant_id = variant_data.get("id")  # ProductVariant ID (用于匹配)
                             
                             # 如果 line_item 中没有 variant，尝试从 raw_data 中获取
                             if not product_variant_id and shopify_order.raw_data:
@@ -881,7 +884,10 @@ async def sync_shopify_order_to_core(
                                             logger.info(f"🔍 从 raw_data 获取 ProductVariant ID: {product_variant_id}")
                                         break
                             
-                            external_product_id = line_item.get("product", {}).get("id") if line_item.get("product") else None
+                            # 兼容新结构：优先使用 line_item.product_id（Product GID）
+                            external_product_id = line_item.get("product_id")
+                            if not external_product_id and line_item.get("product"):
+                                external_product_id = line_item.get("product", {}).get("id")
                             
                             # 如果还是没有，尝试从 raw_data 中获取 product_id
                             if not external_product_id and shopify_order.raw_data:
