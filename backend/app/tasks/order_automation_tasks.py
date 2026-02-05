@@ -280,14 +280,31 @@ async def _create_printify_order_for_scm(db, scm_order: SCMOrder, tenant_id: int
             )
             return True
         
-        # 使用 PrintifyFulfillmentService（与手动流程保持一致）
+        # 使用 PrintifyFulfillmentService（与手动 generate-printify 流程保持一致）
         from app.services.printify_fulfillment_service import PrintifyFulfillmentService
+        from types import SimpleNamespace
+
         fulfillment_service = PrintifyFulfillmentService()
-        
+
+        # 预增强 line_items：通过 core_variant_id 或 SKU 查找 Printify 映射并填充 external_product_id / external_variant_id
+        enriched_line_items = await fulfillment_service.enrich_line_items_with_printify_mapping(
+            scm_order.line_items or [],
+            db,
+            tenant_id,
+        )
+        scm_order_for_fulfillment = SimpleNamespace(
+            id=scm_order.id,
+            tenant_id=scm_order.tenant_id,
+            scm_order_number=scm_order.scm_order_number,
+            line_items=enriched_line_items,
+            shipping_address=scm_order.shipping_address,
+            customer_email=scm_order.customer_email,
+        )
+
         # 调用 create_fulfillment_order 方法（与手动流程完全一致）
         try:
             printify_result = await fulfillment_service.create_fulfillment_order(
-                scm_order=scm_order,
+                scm_order=scm_order_for_fulfillment,
                 tenant=tenant,
                 db=db
             )

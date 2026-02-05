@@ -673,7 +673,97 @@ class PrintifyFulfillmentService:
             import traceback
             logger.error(f"   异常堆栈: {traceback.format_exc()}")
             return None
-    
+
+    async def enrich_line_items_with_printify_mapping(
+        self, line_items: list, db, tenant_id: int
+    ) -> list:
+        """
+        为 line_items 预填充 external_product_id 和 external_variant_id（与 generate-printify 逻辑一致）
+        用于自动化流程，在调用 create_fulfillment_order 前增强行项目
+        """
+        from app.models.product import ProductVariant, ProductMapping
+        from app.models.external_system import ExternalSystem, ExternalSystemType
+        from sqlalchemy import select, and_
+
+        if not line_items:
+            return []
+
+        # 获取 Printify 外部系统
+        external_system_result = await db.execute(
+            select(ExternalSystem).where(
+                and_(
+                    ExternalSystem.tenant_id == tenant_id,
+                    ExternalSystem.system_type == ExternalSystemType.PRINTIFY
+                )
+            )
+        )
+        external_system = external_system_result.scalar_one_or_none()
+        if not external_system:
+            logger.warning(f"⚠️ 未找到 Printify 外部系统: tenant_id={tenant_id}")
+            return list(line_items)
+
+        enhanced_items = []
+        for item in line_items:
+            item_copy = dict(item) if isinstance(item, dict) else item.copy()
+
+            # 已有映射则跳过
+            if item_copy.get("external_product_id") and item_copy.get("external_variant_id"):
+                enhanced_items.append(item_copy)
+                continue
+
+            core_variant = None
+            mapping = None
+
+            # 优先通过 core_variant_id 查找
+            if item_copy.get("core_variant_id"):
+                variant_result = await db.execute(
+                    select(ProductVariant).where(
+                        and_(
+                            ProductVariant.id == item_copy["core_variant_id"],
+                            ProductVariant.tenant_id == tenant_id
+                        )
+                    )
+                )
+                core_variant = variant_result.scalar_one_or_none()
+            # 否则通过 SKU 查找
+            elif item_copy.get("metadata", {}).get("sku"):
+                sku = item_copy["metadata"]["sku"]
+                variant_result = await db.execute(
+                    select(ProductVariant).where(
+                        and_(
+                            ProductVariant.tenant_id == tenant_id,
+                            ProductVariant.sku == sku
+                        )
+                    )
+                )
+                core_variant = variant_result.scalar_one_or_none()
+
+            if core_variant:
+                mapping_result = await db.execute(
+                    select(ProductMapping).where(
+                        and_(
+                            ProductMapping.core_variant_id == core_variant.id,
+                            ProductMapping.tenant_id == tenant_id,
+                            ProductMapping.external_system_id == external_system.id
+                        )
+                    )
+                )
+                mapping = mapping_result.scalar_one_or_none()
+
+            if mapping:
+                item_copy["core_product_id"] = core_variant.product_id
+                item_copy["core_variant_id"] = core_variant.id
+                item_copy["external_product_id"] = mapping.external_product_id
+                item_copy["external_variant_id"] = mapping.external_variant_id
+                logger.info(f"✅ 预增强行项目: sku={item_copy.get('metadata', {}).get('sku')}, external_variant_id={mapping.external_variant_id}")
+            else:
+                sku = item_copy.get("metadata", {}).get("sku")
+                logger.debug(f"⚠️ 行项目无 Printify 映射: sku={sku}, core_variant_id={item_copy.get('core_variant_id')}")
+
+            enhanced_items.append(item_copy)
+
+        return enhanced_items
+
     async def get_printify_products(self, credentials: Dict[str, str], shop_id: str) -> List[Dict[str, Any]]:
         """获取 Printify 店铺中的产品列表"""
         try:

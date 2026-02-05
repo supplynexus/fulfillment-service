@@ -173,7 +173,7 @@ MANUAL_BUTTONS_SEED = [
         "step_key": "create_printify_orders_from_scm",
         "button_key": "generate_printify_order",
         "button_label": "生成Printify订单",
-        "button_action": "/api/v1/scm-orders/{id}/create-printify-order",
+        "button_action": "/api/v1/scm-orders/{hashid}/generate-printify",
         "http_method": "POST",
         "is_recommended": True,
         "is_deprecated": False,
