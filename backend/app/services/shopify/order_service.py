@@ -864,18 +864,21 @@ class ShopifyOrderService:
             shipping_address = order_data.get("shippingAddress", {})
             billing_address = order_data.get("billingAddress", {})
             
-            # 提取商品信息（含 variant_id 用于 ProductMapping 反查核心变体）
+            # 提取商品信息（含 variant_id/product_id 用于 ProductMapping 反查核心变体）
             line_items = []
             for item in order_data.get("lineItems", {}).get("edges", []):
                 node = item.get("node", {})
                 variant_node = node.get("variant") or {}
+                product_node = variant_node.get("product") or {}
+                sku_value = node.get("sku") or variant_node.get("sku")
                 line_items.append({
                     "id": node.get("id"),
                     "variant_id": variant_node.get("id"),  # Shopify ProductVariant GID，用于 ProductMapping 反查 core_variant_id
+                    "product_id": product_node.get("id"),  # Shopify Product GID，用于产品级别映射兜底
                     "title": node.get("title"),
                     "quantity": node.get("quantity"),
                     "variant_title": node.get("variantTitle"),
-                    "sku": node.get("sku"),
+                    "sku": sku_value,
                     "vendor": node.get("vendor"),
                     "price": node.get("originalUnitPriceSet", {})
                     .get("shopMoney", {})

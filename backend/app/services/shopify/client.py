@@ -171,6 +171,10 @@ class ShopifyGraphQLClient:
                       fulfillmentStatus
                       variant {{
                         id
+                        sku
+                        product {{
+                          id
+                        }}
                       }}
                       originalUnitPriceSet {{
                         shopMoney {{

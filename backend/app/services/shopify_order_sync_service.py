@@ -326,6 +326,44 @@ def sync_shopify_order_to_core_sync(
                                             f"✅ 通过 ProductMapping 匹配到核心变体: external_variant_id={variant_id_raw} -> core_variant_id={core_variant_id}, sku={core_variant.sku}"
                                         )
 
+                        # 方法3: 通过 external_product_id 进行产品级别兜底匹配
+                        if not core_variant_id and line_item.get("product_id"):
+                            from app.models.product import ProductMapping
+                            from app.models.external_system import ExternalSystem, ExternalSystemType
+                            product_id_raw = line_item.get("product_id")
+                            product_id_str = str(product_id_raw).strip()
+                            if "Product/" in product_id_str:
+                                product_id_str = product_id_str.split("Product/")[-1].split("?")[0]
+                            shopify_system = db.query(ExternalSystem).filter(
+                                and_(
+                                    ExternalSystem.tenant_id == tenant.id,
+                                    ExternalSystem.system_type == ExternalSystemType.SHOPIFY,
+                                    ExternalSystem.is_active == True
+                                )
+                            ).first()
+                            if shopify_system:
+                                pm = db.query(ProductMapping).filter(
+                                    and_(
+                                        ProductMapping.tenant_id == tenant.id,
+                                        ProductMapping.external_system_id == shopify_system.id,
+                                        ProductMapping.external_product_id == product_id_str,
+                                        ProductMapping.core_variant_id.isnot(None)
+                                    )
+                                ).limit(1).first()
+                                if pm and pm.core_variant_id:
+                                    core_variant = db.query(ProductVariant).filter(
+                                        and_(
+                                            ProductVariant.id == pm.core_variant_id,
+                                            ProductVariant.tenant_id == tenant.id
+                                        )
+                                    ).first()
+                                    if core_variant:
+                                        core_variant_id = core_variant.id
+                                        core_product_id = core_variant.product_id
+                                        logger.info(
+                                            f"✅ 通过 ProductMapping(产品级别) 匹配到核心变体: external_product_id={product_id_raw} -> core_variant_id={core_variant_id}, sku={core_variant.sku}"
+                                        )
+
                         # 提取价格信息（支持多种格式）
                         price_value = 0.0
                         if "price" in line_item and line_item.get("price") is not None:
