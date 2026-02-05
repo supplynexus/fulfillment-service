@@ -86,7 +86,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: supplynexus_celery_worker_dev
-    command: celery -A app.tasks.celery_app worker --loglevel=debug
+    command: celery -A app.tasks.celery_app worker -Q default,shopify,orders --loglevel=debug
     environment:
       DATABASE_URL: postgresql+asyncpg://supplynexus_admin:aabbccdd@postgres_dev:5432/supplynexus
       DATABASE_URL_SYNC: postgresql://supplynexus_admin:aabbccdd@postgres_dev:5432/supplynexus
@@ -143,6 +143,9 @@ services:
     networks:
       - fulfillment_dev_network
     restart: unless-stopped
+    # Beat 无 HTTP 服务，禁用镜像默认的 curl:8000 健康检查
+    healthcheck:
+      disable: true
 
   # Flower (Celery Monitoring)
   flower_dev:
