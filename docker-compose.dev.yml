@@ -86,7 +86,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: supplynexus_celery_worker_dev
-    command: celery -A app.tasks.celery_app worker -Q default,shopify,orders --loglevel=debug
+    command: celery -A app.tasks.celery_app worker -Q default,shopify,orders,order_automation --loglevel=debug
     environment:
       DATABASE_URL: postgresql+asyncpg://supplynexus_admin:aabbccdd@postgres_dev:5432/supplynexus
       DATABASE_URL_SYNC: postgresql://supplynexus_admin:aabbccdd@postgres_dev:5432/supplynexus
