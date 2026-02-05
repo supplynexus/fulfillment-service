@@ -1863,8 +1863,30 @@ async def get_shopify_order_json_by_hashid(
 
         shopify_service = ShopifyService(db)
 
-        # Use external_id (shop_id) for Shopify API call
+        # Resolve shop_id: external_id 可能为空，从 base_url 或凭据 store_url 解析
         shop_id = external_system.external_id
+        if not shop_id and external_system.base_url:
+            base_url = (external_system.base_url or "").strip()
+            if base_url.startswith("https://"):
+                shop_id = base_url.replace("https://", "").split(".myshopify.com")[0].strip()
+            else:
+                shop_id = base_url.split(".myshopify.com")[0].strip() if ".myshopify.com" in base_url else None
+        if not shop_id and decrypted_credentials:
+            shop_id = (
+                decrypted_credentials.get("store_url")
+                or decrypted_credentials.get("shop_domain")
+                or decrypted_credentials.get("shop_id")
+            )
+            if shop_id and ".myshopify.com" in str(shop_id):
+                shop_id = str(shop_id).replace("https://", "").split(".myshopify.com")[0].strip()
+        if not shop_id:
+            logger.error(
+                f"❌ 无法解析 Shopify 店铺域名: external_id={external_system.external_id}, base_url={external_system.base_url}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Shop domain not configured. Set external_id or base_url (e.g. https://your-store.myshopify.com) for this Shopify store.",
+            )
         logger.info(
             f"🔍 开始获取 Shopify 订单 JSON: shop_id={shop_id}, order_id={order_id}"
         )
