@@ -26,7 +26,8 @@ export async function POST(
     const timestamp = Math.floor(Date.now() / 1000);
     const nonce = Math.random().toString(36).substring(2, 15);
     const backendPath = `/api/v1/orders/${orderHashid}/unbind-external`;
-    const signatureString = `POST${backendPath}${timestamp}${nonce}${tenantName}`;
+    const bodyString = '';
+    const signatureString = `POST${backendPath}${timestamp}${nonce}${tenantName}${bodyString}`;
 
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
     const signature = generateBackendSignature(
