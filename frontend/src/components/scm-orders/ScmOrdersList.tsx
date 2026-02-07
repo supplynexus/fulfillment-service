@@ -36,6 +36,7 @@ import {
   LocalShipping as ShippingIcon,
   Delete as DeleteIcon,
   Sync as SyncIcon,
+  LinkOff as LinkOffIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
 import { frontendApi } from '@/lib/api';
@@ -57,6 +58,7 @@ interface ScmOrder {
   shipping_address: any;
   billing_address?: any;
   routing_metadata?: any;
+  printify_order_id?: string;
   tracking_number?: string;
   tracking_url?: string;
   carrier?: string;
@@ -85,6 +87,7 @@ export function ScmOrdersList() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingOrders, setDeletingOrders] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [unbindingScmOrderId, setUnbindingScmOrderId] = useState<string | null>(null);
   
   // 批量更新 Shopify fulfillment 相关状态
   const [bulkUpdating, setBulkUpdating] = useState(false);
@@ -161,6 +164,23 @@ export function ScmOrdersList() {
       setSelectedOrders(new Set());
     } else {
       setSelectedOrders(new Set(orders.map(order => order.id_hashid)));
+    }
+  };
+
+  const hasPrintifyMapping = (order: ScmOrder) =>
+    !!(order.printify_order_id || order.routing_metadata?.printify_order_id);
+
+  const handleUnbindPrintify = async (orderHashid: string) => {
+    try {
+      setUnbindingScmOrderId(orderHashid);
+      setError(null);
+      await frontendApi.post(`/api/scm-orders/${orderHashid}/unbind-printify`);
+      await fetchScmOrders();
+    } catch (err: any) {
+      console.error('❌ 解除 SCM 与 Printify 映射失败:', err);
+      setError(err.response?.data?.detail || err.response?.data?.error || '解除映射失败');
+    } finally {
+      setUnbindingScmOrderId(null);
     }
   };
 
@@ -559,6 +579,22 @@ export function ScmOrdersList() {
                               <ViewIcon />
                             </IconButton>
                           </Tooltip>
+                          {hasPrintifyMapping(order) && (
+                            <Tooltip title='解除与 Printify 的映射后可删除'>
+                              <IconButton
+                                size='small'
+                                color='primary'
+                                onClick={() => handleUnbindPrintify(order.id_hashid)}
+                                disabled={unbindingScmOrderId === order.id_hashid}
+                              >
+                                {unbindingScmOrderId === order.id_hashid ? (
+                                  <CircularProgress size={16} />
+                                ) : (
+                                  <LinkOffIcon />
+                                )}
+                              </IconButton>
+                            </Tooltip>
+                          )}
                           <Tooltip title='删除订单'>
                             <IconButton
                               size='small'

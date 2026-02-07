@@ -58,15 +58,20 @@ export default function SkusPage() {
   const [selectedSku, setSelectedSku] = useState<any>(null);
   const [formMode, setFormMode] = useState<'create' | 'edit'>('create');
 
-  // 加载SKU数据
+  // 加载SKU数据（axios 响应在 response.data）
   const loadSkus = async () => {
     try {
       setLoading(true);
       setError(null);
       const { frontendApi } = await import('@/lib/api');
-      const response = await frontendApi.get('/api/product-variants');
-      // 后端返回 { variants: [...], total, page, page_size }
-      setSkus(response.variants || []);
+      const response = await frontendApi.get<{
+        variants: any[];
+        total: number;
+        page: number;
+        page_size: number;
+      }>('/api/product-variants');
+      const data = response.data ?? {};
+      setSkus(Array.isArray(data.variants) ? data.variants : []);
     } catch (err: any) {
       console.error('加载SKU列表失败:', err);
       setError(err.message || '加载SKU列表失败');
@@ -100,11 +105,32 @@ export default function SkusPage() {
     }
   };
 
+  // 规格列展示：优先 title，否则用 Size / Color 等属性拼成可读文案
+  const renderSpec = (value: unknown, row: any) => {
+    const attrs = row?.attributes as Record<string, string> | undefined;
+    if (!attrs || typeof attrs !== 'object') return '-';
+    if (attrs.title) return attrs.title;
+    const order = ['Size', 'size', 'Color', 'color', 'Style', 'Material'];
+    const parts: string[] = [];
+    for (const key of order) {
+      if (attrs[key] != null && attrs[key] !== '') parts.push(String(attrs[key]));
+    }
+    if (parts.length) return parts.join(' / ');
+    return Object.entries(attrs)
+      .map(([k, v]) => (v != null && v !== '' ? `${k}: ${v}` : null))
+      .filter(Boolean)
+      .join(', ') || '-';
+  };
+
   useEffect(() => {
     loadSkus();
-    
-    // 初始化列配置 - 匹配后端 VariantResponse 结构
+  }, []);
+
+  useEffect(() => {
+    // 列配置：优先展示商品名称、规格等人眼可读信息
     const initialColumns = [
+      { id: 'product_title', label: '商品名称', field: 'product_title', type: 'text', sortable: false, filterable: true },
+      { id: 'attributes', label: '规格', field: 'attributes', type: 'text', sortable: false, filterable: false, render: renderSpec },
       { id: 'sku', label: 'SKU', field: 'sku', type: 'text', sortable: true, filterable: true },
       { id: 'product_id', label: '产品ID', field: 'product_id', type: 'text', sortable: true, filterable: true },
       { id: 'price', label: '价格', field: 'price', type: 'number', sortable: true, filterable: true },

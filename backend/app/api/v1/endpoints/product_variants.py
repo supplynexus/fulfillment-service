@@ -60,6 +60,9 @@ class VariantResponse(BaseResponse):
     cost_price: Optional[float]
     weight: Optional[float]
     is_active: bool
+    # 列表展示用：商品名称、规格属性（title, color, size 等）
+    product_title: Optional[str] = None
+    attributes: Optional[Dict[str, Any]] = None
 
 
 class VariantSearchRequest(BaseModel):
@@ -304,8 +307,33 @@ async def search_variants(
                    found_count=len(variants),
                    total=total)
         
+        def to_response(v):
+            # Resolve product_title and attributes while session/relationship may be loaded;
+            # avoid lazy load or DetachedInstanceError if relationship is not available.
+            try:
+                product_title = v.product.title if v.product else None
+            except Exception:
+                product_title = None
+            try:
+                attrs = v.attributes
+            except Exception:
+                attrs = None
+            return VariantResponse(
+                id=v.id,
+                product_id=v.product_id,
+                sku=v.sku,
+                price=float(v.price) if v.price is not None else None,
+                cost_price=float(v.cost_price) if v.cost_price is not None else None,
+                weight=float(v.weight) if v.weight is not None else None,
+                is_active=v.is_active,
+                created_at=v.created_at,
+                updated_at=v.updated_at,
+                product_title=product_title,
+                attributes=attrs,
+            )
+
         return VariantSearchResponse(
-            variants=[VariantResponse.from_orm(v) for v in variants],
+            variants=[to_response(v) for v in variants],
             total=total,
             page=page,
             page_size=page_size

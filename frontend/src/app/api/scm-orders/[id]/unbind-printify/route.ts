@@ -6,9 +6,10 @@ import { frontendLogger } from '@/lib/frontend-logger';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> | { id: string } }
 ) {
   const startTime = Date.now();
+  const params = await Promise.resolve(context.params);
   const scmOrderId = params.id;
   
   try {
@@ -27,10 +28,11 @@ export async function POST(
 
     frontendLogger.info('✅ JWT验证成功', { tenantName, userId });
 
-    // 生成后端签名
+    // 生成后端签名（POST 无 body 时 bodyString 为空字符串，但必须参与签名字符串以与后端校验一致）
     const timestamp = Math.floor(Date.now() / 1000);
     const nonce = Math.random().toString(36).substring(2, 15);
-    const signatureString = `POST/api/v1/scm-orders/${scmOrderId}/unbind-printify-order${timestamp}${nonce}${tenantName}`;
+    const bodyString = '';
+    const signatureString = `POST/api/v1/scm-orders/${scmOrderId}/unbind-printify-order${timestamp}${nonce}${tenantName}${bodyString}`;
 
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
     const signature = generateBackendSignature(privateKey, signatureString, timestamp, nonce, tenantName);

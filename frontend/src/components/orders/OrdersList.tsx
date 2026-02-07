@@ -29,6 +29,7 @@ import {
   DialogActions,
   Checkbox,
   Collapse,
+  Autocomplete,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -41,12 +42,20 @@ import {
   Delete as DeleteIcon,
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
+  LinkOff as LinkOffIcon,
+  Clear as ClearIcon,
 } from '@mui/icons-material';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Order, OrderStatus } from '@/types/order';
 import { frontendApi } from '@/lib/api';
 
 const ITEMS_PER_PAGE = 20; // 每页显示20个订单
+
+/** 商品选项，用于订单列表「按商品筛选」下拉 */
+interface ProductOption {
+  id_hashid: string;
+  title: string;
+}
 
 const getAddressValidationDisplay = (
   status: Order['address_validation_status'],
@@ -103,10 +112,16 @@ const getAddressValidationDisplay = (
 
 export function OrdersList() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const productFromUrl = searchParams.get('product') ?? '';
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [productFilter, setProductFilter] = useState(productFromUrl);
+  const [productFilterLabel, setProductFilterLabel] = useState<string>('');
+  const [productOptions, setProductOptions] = useState<ProductOption[]>([]);
+  const [loadingProductOptions, setLoadingProductOptions] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
@@ -130,6 +145,7 @@ export function OrdersList() {
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
   const [scmOrdersMap, setScmOrdersMap] = useState<Map<string, any[]>>(new Map());
   const [loadingScmOrders, setLoadingScmOrders] = useState<Set<string>>(new Set());
+  const [unbindingOrderId, setUnbindingOrderId] = useState<string | null>(null);
 
   const fetchOrders = useCallback(async () => {
     try {
@@ -143,6 +159,7 @@ export function OrdersList() {
           search: searchTerm || undefined,
           sort_by: sortBy,
           sort_order: sortOrder,
+          ...(productFilter ? { product: productFilter } : {}),
         },
       });
 
@@ -163,7 +180,58 @@ export function OrdersList() {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, searchTerm, sortBy, sortOrder]);
+  }, [currentPage, searchTerm, sortBy, sortOrder, productFilter]);
+
+  // 从 URL 同步商品筛选（例如从商品管理「前往订单管理」跳转带入）
+  useEffect(() => {
+    const p = searchParams.get('product') ?? '';
+    if (p !== productFilter) {
+      setProductFilter(p);
+      if (!p) setProductFilterLabel('');
+    }
+  }, [searchParams]);
+
+  // 当 URL 带入商品 hashid 时，拉取该商品标题用于展示（人类可读）
+  useEffect(() => {
+    if (!productFilter) return;
+    const found = productOptions.find((o) => o.id_hashid === productFilter);
+    if (found) {
+      setProductFilterLabel(found.title);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await frontendApi.get<{ title?: string }>(
+          `/api/products/${productFilter}`
+        );
+        if (!cancelled && res.data?.title) setProductFilterLabel(res.data.title);
+      } catch {
+        if (!cancelled) setProductFilterLabel('');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [productFilter, productOptions]);
+
+  // 拉取商品列表，供「按商品筛选」下拉选择（只取 id_hashid + title）
+  const fetchProductOptions = useCallback(async () => {
+    setLoadingProductOptions(true);
+    try {
+      const res = await frontendApi.get<{
+        products?: { id_hashid: string; title: string }[];
+      }>('/api/products', { params: { limit: 200, page: 1 } });
+      const list = res.data?.products ?? [];
+      setProductOptions(
+        list.map((p) => ({ id_hashid: p.id_hashid, title: p.title || p.id_hashid }))
+      );
+    } catch (e) {
+      console.error('Failed to fetch product options for order filter:', e);
+    } finally {
+      setLoadingProductOptions(false);
+    }
+  }, []);
 
   useEffect(() => {
     fetchOrders();
@@ -172,6 +240,30 @@ export function OrdersList() {
   const handleSearch = (event: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(event.target.value);
     setCurrentPage(1); // 搜索时重置到第一页
+  };
+
+  const handleProductFilterChange = (
+    _event: React.SyntheticEvent,
+    value: ProductOption | null
+  ) => {
+    if (!value) {
+      setProductFilter('');
+      setProductFilterLabel('');
+      setCurrentPage(1);
+      router.replace('/orders');
+      return;
+    }
+    setProductFilter(value.id_hashid);
+    setProductFilterLabel(value.title);
+    setCurrentPage(1);
+    router.replace(`/orders?product=${encodeURIComponent(value.id_hashid)}`);
+  };
+
+  const handleClearProductFilter = () => {
+    setProductFilter('');
+    setProductFilterLabel('');
+    setCurrentPage(1);
+    router.replace('/orders');
   };
 
   const handleRefresh = () => {
@@ -268,6 +360,25 @@ export function OrdersList() {
     }
   };
 
+  const handleUnbindOrder = async (orderId: string) => {
+    try {
+      setUnbindingOrderId(orderId);
+      setError(null);
+      await frontendApi.post(`/api/orders/${orderId}/unbind-external`);
+      await fetchOrders();
+    } catch (err: any) {
+      console.error('❌ 解除订单外部映射失败:', err);
+      setError(
+        err.response?.data?.detail || err.message || '解除映射失败'
+      );
+    } finally {
+      setUnbindingOrderId(null);
+    }
+  };
+
+  const hasExternalMapping = (order: Order) =>
+    !!(order.shopify_order_id || order.external_order_id);
+
   const handleDeleteOrder = async (orderId: string) => {
     try {
       setDeletingOrders(prev => new Set(prev).add(orderId));
@@ -307,9 +418,13 @@ export function OrdersList() {
       const deletePromises = Array.from(selectedOrders).map(async orderId => {
         try {
           const response = await frontendApi.delete(`/api/orders/${orderId}`);
-          return { orderId, success: response.data.success };
+          return { orderId, success: response.data.success, error: undefined };
         } catch (error: any) {
-          return { orderId, success: false, error: error.message };
+          return {
+            orderId,
+            success: false,
+            error: error.response?.data?.detail || error.message,
+          };
         }
       });
 
@@ -318,14 +433,21 @@ export function OrdersList() {
       const failed = results.filter(r => !r.success).length;
 
       if (successful > 0) {
-        // 删除成功后刷新列表
         fetchOrders();
         setSelectedOrders(new Set());
         setDeleteDialogOpen(false);
       }
 
       if (failed > 0) {
-        setError(`批量删除完成：成功 ${successful} 个，失败 ${failed} 个`);
+        const failedReasons = results
+          .filter(r => !r.success && r.error)
+          .map(r => r.error)
+          .filter(Boolean);
+        const msg =
+          failedReasons.length > 0
+            ? `批量删除完成：成功 ${successful} 个，失败 ${failed} 个。失败原因：${failedReasons.slice(0, 3).join('；')}`
+            : `批量删除完成：成功 ${successful} 个，失败 ${failed} 个`;
+        setError(msg);
       }
     } catch (error: any) {
       console.error('❌ 批量删除失败:', error);
@@ -544,23 +666,69 @@ export function OrdersList() {
 
       <Card>
         <CardContent>
-          <Box display='flex' gap={2} mb={3}>
-            <TextField
-              fullWidth
-              placeholder='搜索订单ID、客户邮箱或订单号...'
-              value={searchTerm}
-              onChange={handleSearch}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position='start'>
-                    <SearchIcon />
-                  </InputAdornment>
-                ),
-              }}
-            />
-            <Button variant='outlined' startIcon={<FilterIcon />} disabled>
-              筛选
-            </Button>
+          <Box display='flex' flexDirection='column' gap={2} mb={3}>
+            <Box display='flex' gap={2} alignItems='center' flexWrap='wrap'>
+              <TextField
+                fullWidth
+                placeholder='搜索订单ID、客户邮箱或订单号...'
+                value={searchTerm}
+                onChange={handleSearch}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position='start'>
+                      <SearchIcon />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+              <Button variant='outlined' startIcon={<FilterIcon />} disabled>
+                筛选
+              </Button>
+            </Box>
+            {/* 筛选条件：可扩展，当前支持「按商品」等 */}
+            <Box display='flex' gap={2} alignItems='center' flexWrap='wrap'>
+              <Typography variant='body2' color='text.secondary' sx={{ minWidth: 56 }}>
+                筛选条件
+              </Typography>
+              <Autocomplete
+                size='small'
+                options={productOptions}
+                getOptionLabel={(opt) => opt.title}
+                value={
+                  productFilter
+                    ? productOptions.find((o) => o.id_hashid === productFilter) ?? {
+                        id_hashid: productFilter,
+                        title: productFilterLabel || productFilter,
+                      }
+                    : null
+                }
+                onChange={handleProductFilterChange}
+                onOpen={() => fetchProductOptions()}
+                loading={loadingProductOptions}
+                sx={{ minWidth: 280 }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    placeholder='按商品筛选（从列表选择）'
+                    label='商品'
+                  />
+                )}
+                isOptionEqualToValue={(opt, val) => opt.id_hashid === val.id_hashid}
+              />
+              {productFilter ? (
+                <Chip
+                  label={
+                    productFilterLabel
+                      ? `仅显示包含「${productFilterLabel}」的订单`
+                      : '仅显示包含该商品的订单'
+                  }
+                  size='small'
+                  onDelete={handleClearProductFilter}
+                  color='primary'
+                  variant='outlined'
+                />
+              ) : null}
+            </Box>
           </Box>
 
           {/* 批量操作区域 */}
@@ -651,7 +819,9 @@ export function OrdersList() {
                   <TableRow>
                     <TableCell colSpan={10} align='center'>
                       <Typography variant='body2' color='text.secondary'>
-                        {searchTerm ? '没有找到匹配的订单' : '暂无订单数据'}
+                        {searchTerm || productFilter
+                          ? '没有找到匹配的订单'
+                          : '暂无订单数据'}
                       </Typography>
                     </TableCell>
                   </TableRow>
@@ -764,6 +934,22 @@ export function OrdersList() {
                                   <ViewIcon />
                                 </IconButton>
                               </Tooltip>
+                              {hasExternalMapping(order) && (
+                                <Tooltip title='解除与外部订单的映射后可删除'>
+                                  <IconButton
+                                    size='small'
+                                    color='primary'
+                                    onClick={() => handleUnbindOrder(order.id_hashid)}
+                                    disabled={unbindingOrderId === order.id_hashid}
+                                  >
+                                    {unbindingOrderId === order.id_hashid ? (
+                                      <CircularProgress size={16} />
+                                    ) : (
+                                      <LinkOffIcon />
+                                    )}
+                                  </IconButton>
+                                </Tooltip>
+                              )}
                               <Tooltip title='删除订单'>
                                 <IconButton
                                   size='small'

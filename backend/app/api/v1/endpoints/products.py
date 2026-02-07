@@ -20,6 +20,7 @@ from app.models.product import (
     Product, ProductDimension, ProductVariant, VariantAttribute,
     ProductTag, Tag, ProductMapping, ExternalProduct
 )
+from app.models.order import OrderItem
 from app.schemas.product import (
     ProductResponse, ProductListResponse, ProductCreateRequest, 
     ProductUpdateRequest, ProductVariantCreateRequest, ProductVariantUpdateRequest,
@@ -674,6 +675,36 @@ async def delete_product(
         
         logger.info(f"✅ 找到商品: {product.title} (ID: {product.id})")
         
+        # 禁止删除：已映射到外部商品
+        mapping_check = await db.execute(
+            select(func.count(ProductMapping.id)).where(
+                ProductMapping.core_product_id == product_id,
+                ProductMapping.tenant_id == tenant.id
+            )
+        )
+        mapping_count = mapping_check.scalar() or 0
+        if mapping_count > 0:
+            logger.warning(f"⚠️ 商品已映射到外部商品，禁止删除: product_id={product_id}, mapping_count={mapping_count}")
+            raise HTTPException(
+                status_code=400,
+                detail="不能删除：该商品已映射到外部商品，请先解除映射"
+            )
+        
+        # 禁止删除：已有订单
+        order_item_check = await db.execute(
+            select(func.count(OrderItem.id)).where(
+                OrderItem.core_product_id == product_id,
+                OrderItem.tenant_id == tenant.id
+            )
+        )
+        order_item_count = order_item_check.scalar() or 0
+        if order_item_count > 0:
+            logger.warning(f"⚠️ 商品已有订单，禁止删除: product_id={product_id}, order_item_count={order_item_count}")
+            raise HTTPException(
+                status_code=400,
+                detail="不能删除：该商品已有订单记录"
+            )
+        
         # 硬删除：删除所有相关数据
         logger.info(f"🔍 开始删除商品相关数据...")
         
@@ -882,21 +913,18 @@ async def create_external_product(
             logger.info("🔄 更新现有外部商品", 
                        external_product_id=product_data.get('external_product_id'))
             
-            # 更新商品信息，处理字段映射
-            field_mappings = {
-                'product_name': 'title',
-                'raw_data': 'external_data'
+            field_mappings = {'product_name': 'title', 'raw_data': 'external_data'}
+            allowed_keys = {
+                'external_system_id', 'external_product_id', 'external_variant_id',
+                'title', 'description', 'handle', 'status', 'is_active', 'is_available',
+                'price', 'compare_at_price', 'cost_price', 'inventory_quantity', 'inventory_policy',
+                'product_type', 'vendor', 'tags', 'images', 'variants', 'external_data',
+                'last_synced_at', 'sync_status', 'sync_error',
             }
-            
             for key, value in product_data.items():
-                if key in field_mappings:
-                    # 映射字段
-                    db_field = field_mappings[key]
-                    if hasattr(existing, db_field):
-                        setattr(existing, db_field, value)
-                elif hasattr(existing, key) and key not in ['id', 'tenant_id', 'created_at']:
-                    setattr(existing, key, value)
-            
+                db_key = field_mappings.get(key, key)
+                if db_key in allowed_keys and hasattr(existing, db_key):
+                    setattr(existing, db_key, value)
             existing.updated_at = func.now()
             await db.commit()
             await db.refresh(existing)
@@ -917,20 +945,27 @@ async def create_external_product(
             
             # 处理字段映射
             mapped_data = product_data.copy()
-            
-            # 字段映射规则
             field_mappings = {
                 'product_name': 'title',
                 'raw_data': 'external_data'
             }
-            
             for frontend_field, db_field in field_mappings.items():
                 if frontend_field in mapped_data:
                     mapped_data[db_field] = mapped_data.pop(frontend_field)
-            
+
+            # 只保留 ExternalProduct 模型存在的列，避免传入 published_at 等前端字段导致报错
+            allowed_keys = {
+                'external_system_id', 'external_product_id', 'external_variant_id',
+                'title', 'description', 'handle', 'status', 'is_active', 'is_available',
+                'price', 'compare_at_price', 'cost_price', 'inventory_quantity', 'inventory_policy',
+                'product_type', 'vendor', 'tags', 'images', 'variants', 'external_data',
+                'last_synced_at', 'sync_status', 'sync_error',
+            }
+            filtered_data = {k: v for k, v in mapped_data.items() if k in allowed_keys}
+
             external_product = ExternalProduct(
                 tenant_id=tenant.id,
-                **mapped_data
+                **filtered_data
             )
             
             db.add(external_product)
@@ -959,16 +994,27 @@ async def create_external_product(
 @router.get("/external-products/", response_model=dict)
 async def get_external_products(
     skip: int = Query(0, ge=0, description="跳过的记录数"),
-    limit: int = Query(10, ge=1, le=100, description="每页记录数"),
-    external_system_id: Optional[int] = Query(None, description="外部系统ID过滤"),
+    limit: int = Query(10, ge=1, le=200, description="每页记录数（如从外部商品创建弹窗可请求 200）"),
+    external_system_id: Optional[str] = Query(None, description="外部系统ID过滤（支持 hashid 或数字 id）"),
     status: Optional[str] = Query(None, description="商品状态过滤"),
     db: AsyncSession = Depends(get_async_db),
     auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
 ):
     """
-    获取外部商品列表
+    获取外部商品列表。external_system_id 可为 hashid（前端常用）或数字 id。
     """
     tenant, user = auth
+
+    # 将 external_system_id 统一解码为数字 id（支持 hashid）
+    external_system_id_int: Optional[int] = None
+    if external_system_id:
+        try:
+            external_system_id_int = decode_id(external_system_id)
+        except Exception:
+            try:
+                external_system_id_int = int(external_system_id)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid external_system_id")
     
     try:
         logger.info("🔍 获取外部商品列表", 
@@ -980,16 +1026,16 @@ async def get_external_products(
         # 构建查询条件
         query = select(ExternalProduct).where(ExternalProduct.tenant_id == tenant.id)
         
-        if external_system_id:
-            query = query.where(ExternalProduct.external_system_id == external_system_id)
+        if external_system_id_int is not None:
+            query = query.where(ExternalProduct.external_system_id == external_system_id_int)
         
         if status:
             query = query.where(ExternalProduct.status == status)
         
         # 获取总数
         count_query = select(func.count(ExternalProduct.id)).where(ExternalProduct.tenant_id == tenant.id)
-        if external_system_id:
-            count_query = count_query.where(ExternalProduct.external_system_id == external_system_id)
+        if external_system_id_int is not None:
+            count_query = count_query.where(ExternalProduct.external_system_id == external_system_id_int)
         if status:
             count_query = count_query.where(ExternalProduct.status == status)
         

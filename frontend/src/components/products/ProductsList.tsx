@@ -35,10 +35,12 @@ import {
   DialogContent,
   DialogActions,
   List,
+  ListItem,
   ListItemText,
   ListItemButton,
   Divider,
   Snackbar,
+  Checkbox,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -93,9 +95,17 @@ export function ProductsList() {
   const [availableExternalProducts, setAvailableExternalProducts] = useState<
     any[]
   >([]);
-  const [selectedExternalProduct, setSelectedExternalProduct] =
-    useState<any>(null);
+  /** 多选：从外部商品创建时选中的外部商品 id 集合 */
+  const [selectedExternalProductIds, setSelectedExternalProductIds] = useState<
+    Set<string>
+  >(new Set());
   const [creatingFromExternal, setCreatingFromExternal] = useState(false);
+  /** 弹窗内筛选：外部系统/店铺列表及当前选中（用于按店铺拉取外部商品；后端列表只返回 id_hashid，无数字 id） */
+  const [externalSystemsList, setExternalSystemsList] = useState<
+    { id_hashid: string; name?: string; system_type?: string }[]
+  >([]);
+  const [selectedExternalSystemHashid, setSelectedExternalSystemHashid] =
+    useState<string>('');
 
   // Snackbar 状态
   const [snackbarOpen, setSnackbarOpen] = useState(false);
@@ -103,6 +113,9 @@ export function ProductsList() {
   const [snackbarSeverity, setSnackbarSeverity] = useState<
     'success' | 'error' | 'warning' | 'info'
   >('success');
+  const [snackbarAction, setSnackbarAction] = useState<
+    React.ReactNode
+  >(null);
 
   // 删除状态
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -112,18 +125,33 @@ export function ProductsList() {
   } | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // 批量选择（核心商品）
+  const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(
+    new Set()
+  );
+  const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
+  // 管理映射弹窗（当前选中的商品，用于查看/解除映射）
+  const [mappingDialogProduct, setMappingDialogProduct] =
+    useState<Product | null>(null);
+  const [unmappingId, setUnmappingId] = useState<string | null>(null);
+
   // 显示消息的函数
   const showMessage = (
     message: string,
-    severity: 'success' | 'error' | 'warning' | 'info' = 'success'
+    severity: 'success' | 'error' | 'warning' | 'info' = 'success',
+    action?: React.ReactNode
   ) => {
     setSnackbarMessage(message);
     setSnackbarSeverity(severity);
+    setSnackbarAction(action ?? null);
     setSnackbarOpen(true);
   };
 
   const handleSnackbarClose = () => {
     setSnackbarOpen(false);
+    setSnackbarAction(null);
   };
 
   const fetchProducts = async () => {
@@ -148,12 +176,15 @@ export function ProductsList() {
       const response = await frontendApi.get('/api/products', { params });
 
       const data: ProductListResponse = response.data;
-      setProducts(data.products || []);
+      const list = data.products || [];
+      setProducts(list);
       setTotalPages(Math.ceil((data.total || 0) / ITEMS_PER_PAGE));
       setHasMore(data.has_more || false);
+      return list;
     } catch (err: any) {
       console.error('Failed to fetch products:', err);
       setError(err.response?.data?.detail || 'Failed to fetch products');
+      return [];
     } finally {
       setLoading(false);
     }
@@ -183,53 +214,106 @@ export function ProductsList() {
     }
   };
 
-  const fetchAvailableExternalProducts = async () => {
+  const fetchExternalSystemsList = async () => {
     try {
-      const response = await frontendApi.get('/api/external-products', {
-        params: {
-          page: 1,
-          limit: 100, // 获取更多数据用于选择
-        },
-      });
+      const res = await frontendApi.get<{
+        external_systems?: { id_hashid: string; name?: string; system_type?: string }[];
+      }>('/api/external-systems', { params: { active_only: true } });
+      setExternalSystemsList(res.data?.external_systems || []);
+    } catch (err: any) {
+      console.error('Failed to fetch external systems list:', err);
+      setExternalSystemsList([]);
+    }
+  };
 
+  const fetchAvailableExternalProducts = async (externalSystemHashid?: string) => {
+    try {
+      const params: { page: number; limit: number; external_system_id?: string } = {
+        page: 1,
+        limit: 200,
+      };
+      if (externalSystemHashid) {
+        params.external_system_id = externalSystemHashid;
+      }
+      const response = await frontendApi.get('/api/external-products', {
+        params,
+      });
       setAvailableExternalProducts(response.data.products || []);
     } catch (err: any) {
       console.error('Failed to fetch available external products:', err);
+      setAvailableExternalProducts([]);
     }
   };
 
   const handleCreateFromExternal = async () => {
-    if (!selectedExternalProduct) return;
+    const selected = availableExternalProducts.filter((p) =>
+      selectedExternalProductIds.has(String(p.id))
+    );
+    if (selected.length === 0) return;
 
     try {
       setCreatingFromExternal(true);
+      const success: string[] = [];
+      const failed: { title: string; reason: string }[] = [];
 
-      const response = await frontendApi.post(
-        '/api/products/create-from-external',
-        {
-          external_product_id: selectedExternalProduct.id,
+      for (const product of selected) {
+        try {
+          await frontendApi.post('/api/products/create-from-external', {
+            external_product_id: product.id,
+          });
+          success.push(product.title || String(product.id));
+        } catch (err: any) {
+          failed.push({
+            title: product.title || String(product.id),
+            reason: err.response?.data?.detail || err.message || '创建失败',
+          });
         }
-      );
+      }
 
-      console.log('✅ 从外部商品创建核心商品成功:', response.data);
-
-      // 关闭对话框
       setCreateFromExternalDialogOpen(false);
-      setSelectedExternalProduct(null);
-
-      // 刷新核心商品列表
+      setSelectedExternalProductIds(new Set());
       await fetchProducts();
 
-      // 显示成功消息
-      showMessage('核心商品创建成功！', 'success');
+      if (success.length > 0) {
+        showMessage(
+          `已成功创建 ${success.length} 个核心商品${failed.length > 0 ? `，${failed.length} 个失败` : ''}`,
+          failed.length > 0 ? 'warning' : 'success'
+        );
+      }
+      if (failed.length > 0 && success.length === 0) {
+        showMessage(
+          `创建失败: ${failed.map((f) => `${f.title}: ${f.reason}`).join('；')}`,
+          'error'
+        );
+      }
     } catch (err: any) {
-      console.error('❌ 从外部商品创建核心商品失败:', err);
+      console.error('❌ 从外部商品批量创建失败:', err);
       showMessage(
         `创建失败: ${err.response?.data?.detail || err.message}`,
         'error'
       );
     } finally {
       setCreatingFromExternal(false);
+    }
+  };
+
+  const handleToggleExternalProductSelection = (productId: string | number) => {
+    const id = String(productId);
+    setSelectedExternalProductIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleSelectAllExternalProducts = (checked: boolean) => {
+    if (checked) {
+      setSelectedExternalProductIds(
+        new Set(availableExternalProducts.map((p) => String(p.id)))
+      );
+    } else {
+      setSelectedExternalProductIds(new Set());
     }
   };
 
@@ -264,6 +348,7 @@ export function ProductsList() {
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
     setCurrentPage(1);
+    if (newValue !== 0) setSelectedProductIds(new Set());
   };
 
   const handleViewProduct = (productHashId: string) => {
@@ -275,8 +360,24 @@ export function ProductsList() {
   };
 
   const handleCreateFromExternalClick = () => {
+    setSelectedExternalProductIds(new Set());
+    setSelectedExternalSystemHashid('');
+    setAvailableExternalProducts([]);
     setCreateFromExternalDialogOpen(true);
-    fetchAvailableExternalProducts();
+    fetchExternalSystemsList();
+  };
+
+  const handleExternalSystemFilterChange = (
+    event: { target: { value: unknown } }
+  ) => {
+    const v = (event.target.value as string) ?? '';
+    setSelectedExternalSystemHashid(v);
+    setSelectedExternalProductIds(new Set());
+    if (v) {
+      fetchAvailableExternalProducts(v);
+    } else {
+      setAvailableExternalProducts([]);
+    }
   };
 
   const handleEditProduct = (productHashId: string) => {
@@ -313,9 +414,29 @@ export function ProductsList() {
       showMessage('商品删除成功！', 'success');
     } catch (err: any) {
       console.error('❌ 删除商品失败:', err);
+      const productIdForOrders = productToDelete?.id ?? '';
+      setDeleteDialogOpen(false);
+      setProductToDelete(null);
+      const detail = err.response?.data?.detail || err.message || '删除失败';
+      const isOrderBlock =
+        typeof detail === 'string' && detail.includes('已有订单');
       showMessage(
-        `删除失败: ${err.response?.data?.detail || err.message}`,
-        'error'
+        isOrderBlock
+          ? `${detail} 请前往订单管理处理相关订单后再删除。`
+          : `删除失败: ${detail}`,
+        'error',
+        isOrderBlock ? (
+          <Button
+            size='small'
+            color='inherit'
+            onClick={() => {
+              handleSnackbarClose();
+              router.push(productIdForOrders ? `/orders?product=${encodeURIComponent(productIdForOrders)}` : '/orders');
+            }}
+          >
+            前往订单管理
+          </Button>
+        ) : undefined
       );
     } finally {
       setDeleting(false);
@@ -325,6 +446,123 @@ export function ProductsList() {
   const handleCancelDelete = () => {
     setDeleteDialogOpen(false);
     setProductToDelete(null);
+  };
+
+  const handleSelectAllProducts = (checked: boolean) => {
+    if (checked) {
+      setSelectedProductIds(new Set(products.map(p => p.id_hashid)));
+    } else {
+      setSelectedProductIds(new Set());
+    }
+  };
+
+  const handleToggleProductSelection = (idHashid: string) => {
+    setSelectedProductIds(prev => {
+      const next = new Set(prev);
+      if (next.has(idHashid)) next.delete(idHashid);
+      else next.add(idHashid);
+      return next;
+    });
+  };
+
+  const handleBulkDeleteClick = () => {
+    if (selectedProductIds.size === 0) return;
+    setBulkDeleteDialogOpen(true);
+  };
+
+  const handleConfirmBulkDelete = async () => {
+    const ids = Array.from(selectedProductIds);
+    setBulkDeleting(true);
+    const results: { success: string[]; failed: { id: string; title: string; reason: string }[] } = {
+      success: [],
+      failed: [],
+    };
+    for (const id of ids) {
+      const product = products.find(p => p.id_hashid === id);
+      const title = product?.title ?? id;
+      try {
+        await frontendApi.delete(`/api/products/${id}`);
+        results.success.push(title);
+      } catch (err: any) {
+        const reason =
+          err.response?.data?.detail ?? err.message ?? '删除失败';
+        results.failed.push({ id, title, reason });
+      }
+    }
+    setBulkDeleting(false);
+    setBulkDeleteDialogOpen(false);
+    setSelectedProductIds(new Set());
+    await fetchProducts();
+    if (results.success.length > 0) {
+      showMessage(`已删除 ${results.success.length} 个商品`, 'success');
+    }
+    if (results.failed.length > 0) {
+      const msg = results.failed
+        .map(f => `${f.title}: ${f.reason}`)
+        .join('；');
+      const hasOrderBlock = results.failed.some(f =>
+        String(f.reason).includes('已有订单')
+      );
+      const firstOrderBlock = results.failed.find(f =>
+        String(f.reason).includes('已有订单')
+      );
+      const productIdForOrders = firstOrderBlock?.id ?? '';
+      showMessage(
+        hasOrderBlock ? `${msg} 请前往订单管理处理相关订单后再删除。` : msg,
+        'error',
+        hasOrderBlock ? (
+          <Button
+            size='small'
+            color='inherit'
+            onClick={() => {
+              handleSnackbarClose();
+              router.push(productIdForOrders ? `/orders?product=${encodeURIComponent(productIdForOrders)}` : '/orders');
+            }}
+          >
+            前往订单管理
+          </Button>
+        ) : undefined
+      );
+    }
+  };
+
+  const handleCancelBulkDelete = () => {
+    setBulkDeleteDialogOpen(false);
+  };
+
+  const handleOpenMappingDialog = (product: Product) => {
+    setMappingDialogProduct(product);
+  };
+
+  const handleCloseMappingDialog = () => {
+    setMappingDialogProduct(null);
+    setUnmappingId(null);
+  };
+
+  const handleUnmapMapping = async (mappingIdHashid: string) => {
+    if (!mappingDialogProduct) return;
+    try {
+      setUnmappingId(mappingIdHashid);
+      await frontendApi.delete(`/api/products/mappings/${mappingIdHashid}`);
+      const list = await fetchProducts();
+      const updated = list.find(
+        p => p.id_hashid === mappingDialogProduct.id_hashid
+      );
+      if (updated) {
+        setMappingDialogProduct(updated);
+        if (!updated.mappings?.length) handleCloseMappingDialog();
+      } else {
+        handleCloseMappingDialog();
+      }
+      showMessage('已解除映射', 'success');
+    } catch (err: any) {
+      showMessage(
+        err.response?.data?.detail || err.message || '解除映射失败',
+        'error'
+      );
+    } finally {
+      setUnmappingId(null);
+    }
   };
 
   const handleToggleExpand = (productHashId: string) => {
@@ -428,6 +666,16 @@ export function ProductsList() {
           >
             从外部商品创建
           </Button>
+          {activeTab === 0 && selectedProductIds.size > 0 && (
+            <Button
+              variant='outlined'
+              color='error'
+              startIcon={<DeleteIcon />}
+              onClick={handleBulkDeleteClick}
+            >
+              删除选中 ({selectedProductIds.size})
+            </Button>
+          )}
           <Button
             variant='outlined'
             startIcon={<RefreshIcon />}
@@ -542,6 +790,26 @@ export function ProductsList() {
             <Table>
               <TableHead>
                 <TableRow>
+                  {activeTab === 0 && (
+                    <TableCell padding='checkbox'>
+                      <Checkbox
+                        indeterminate={
+                          selectedProductIds.size > 0 &&
+                          selectedProductIds.size < products.length
+                        }
+                        checked={
+                          products.length > 0 &&
+                          products.every(p =>
+                            selectedProductIds.has(p.id_hashid)
+                          )
+                        }
+                        onChange={e =>
+                          handleSelectAllProducts(e.target.checked)
+                        }
+                        aria-label='全选本页'
+                      />
+                    </TableCell>
+                  )}
                   <TableCell>商品</TableCell>
                   <TableCell>供应商</TableCell>
                   <TableCell>类型</TableCell>
@@ -558,7 +826,10 @@ export function ProductsList() {
                   // 核心商品标签页
                   products.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} align='center'>
+                      <TableCell
+                        colSpan={activeTab === 0 ? 10 : 9}
+                        align='center'
+                      >
                         <Typography variant='body2' color='text.secondary'>
                           {searchTerm ||
                           statusFilter ||
@@ -573,6 +844,18 @@ export function ProductsList() {
                     products.map(product => (
                       <React.Fragment key={product.id_hashid}>
                         <TableRow hover>
+                          <TableCell padding='checkbox'>
+                            <Checkbox
+                              checked={selectedProductIds.has(
+                                product.id_hashid
+                              )}
+                              onChange={() =>
+                                handleToggleProductSelection(product.id_hashid)
+                              }
+                              onClick={e => e.stopPropagation()}
+                              aria-label={`选择 ${product.title}`}
+                            />
+                          </TableCell>
                           <TableCell>
                             <Box display='flex' alignItems='center' gap={2}>
                               <Avatar
@@ -632,14 +915,34 @@ export function ProductsList() {
                             />
                           </TableCell>
                           <TableCell>
-                            <Badge
-                              badgeContent={product.variants.length}
-                              color='primary'
+                            <Box
+                              display='flex'
+                              alignItems='center'
+                              gap={1}
+                              flexWrap='wrap'
                             >
-                              <Typography variant='body2'>
-                                {product.variants.length}
-                              </Typography>
-                            </Badge>
+                              <Badge
+                                badgeContent={product.variants.length}
+                                color='primary'
+                              >
+                                <Typography variant='body2'>
+                                  {product.variants.length}
+                                </Typography>
+                              </Badge>
+                              {product.mappings?.length > 0 && (
+                                <Chip
+                                  icon={<LinkIcon sx={{ fontSize: 14 }} />}
+                                  label={`映射 ${product.mappings.length}`}
+                                  size='small'
+                                  color='primary'
+                                  variant='outlined'
+                                  onClick={() =>
+                                    handleOpenMappingDialog(product)
+                                  }
+                                  sx={{ cursor: 'pointer' }}
+                                />
+                              )}
+                            </Box>
                           </TableCell>
                           <TableCell>
                             <Box display='flex' gap={0.5} flexWrap='wrap'>
@@ -687,6 +990,19 @@ export function ProductsList() {
                                   <EditIcon />
                                 </IconButton>
                               </Tooltip>
+                              {product.mappings?.length > 0 && (
+                                <Tooltip title='管理映射'>
+                                  <IconButton
+                                    size='small'
+                                    color='primary'
+                                    onClick={() =>
+                                      handleOpenMappingDialog(product)
+                                    }
+                                  >
+                                    <LinkIcon />
+                                  </IconButton>
+                                </Tooltip>
+                              )}
                               <Tooltip title='删除'>
                                 <IconButton
                                   size='small'
@@ -728,7 +1044,7 @@ export function ProductsList() {
                         {/* 展开的变体信息 */}
                         {expandedProducts.has(product.id_hashid) && (
                           <TableRow>
-                            <TableCell colSpan={9} sx={{ py: 0 }}>
+                            <TableCell colSpan={10} sx={{ py: 0 }}>
                               <Box sx={{ pl: 4, pr: 2, pb: 2 }}>
                                 <Typography variant='subtitle2' gutterBottom>
                                   商品变体 ({product.variants.length})
@@ -936,30 +1252,85 @@ export function ProductsList() {
         </CardContent>
       </Card>
 
-      {/* 从外部商品创建对话框 */}
+      {/* 从外部商品创建对话框（多选，批量创建核心商品并绑定） */}
       <Dialog
         open={createFromExternalDialogOpen}
-        onClose={() => setCreateFromExternalDialogOpen(false)}
+        onClose={() => !creatingFromExternal && setCreateFromExternalDialogOpen(false)}
         maxWidth='md'
         fullWidth
       >
         <DialogTitle>从外部商品创建核心商品</DialogTitle>
         <DialogContent>
+          <Box sx={{ mb: 2 }}>
+            <FormControl fullWidth size='small' sx={{ minWidth: 280 }}>
+              <InputLabel id='create-from-external-system-label'>
+                外部系统 / 店铺
+              </InputLabel>
+              <Select
+                labelId='create-from-external-system-label'
+                value={selectedExternalSystemHashid}
+                label='外部系统 / 店铺'
+                onChange={handleExternalSystemFilterChange}
+              >
+                <MenuItem value=''>
+                  <em>请选择外部系统 / 店铺</em>
+                </MenuItem>
+                {externalSystemsList.map((sys) => (
+                  <MenuItem key={sys.id_hashid} value={sys.id_hashid}>
+                    {[sys.system_type, sys.name].filter(Boolean).join(' - ') || sys.id_hashid}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
           <Typography variant='body2' color='text.secondary' sx={{ mb: 2 }}>
-            选择一个外部商品来创建对应的核心商品：
+            {selectedExternalSystemHashid
+              ? '勾选一个或多个外部商品，批量创建核心商品并绑定：'
+              : '请先选择外部系统/店铺以加载商品列表'}
           </Typography>
-          <List>
+          <List dense>
+            {availableExternalProducts.length > 0 && (
+              <>
+                <ListItem dense>
+                  <Checkbox
+                    checked={
+                      selectedExternalProductIds.size ===
+                        availableExternalProducts.length &&
+                      availableExternalProducts.length > 0
+                    }
+                    indeterminate={
+                      selectedExternalProductIds.size > 0 &&
+                      selectedExternalProductIds.size <
+                        availableExternalProducts.length
+                    }
+                    onChange={(_, checked) =>
+                      handleSelectAllExternalProducts(checked)
+                    }
+                  />
+                  <ListItemText primary='全选' primaryTypographyProps={{ variant: 'body2' }} />
+                </ListItem>
+                <Divider />
+              </>
+            )}
             {availableExternalProducts.map((product, index) => (
               <React.Fragment key={product.id}>
-                <ListItemButton
-                  selected={selectedExternalProduct?.id === product.id}
-                  onClick={() => setSelectedExternalProduct(product)}
+                <ListItem
+                  dense
+                  onClick={() => handleToggleExternalProductSelection(product.id)}
+                  sx={{ cursor: 'pointer' }}
                 >
+                  <Checkbox
+                    checked={selectedExternalProductIds.has(String(product.id))}
+                    onChange={() =>
+                      handleToggleExternalProductSelection(product.id)
+                    }
+                    onClick={(e) => e.stopPropagation()}
+                  />
                   <ListItemText
                     primary={product.title}
                     secondary={`外部系统: ${product.external_system_name || 'Unknown'} | 店铺: ${product.shop_name || 'Unknown'} | 供应商: ${product.vendor || '-'} | 类型: ${product.product_type || '-'} | 外部ID: ${product.external_product_id}`}
                   />
-                </ListItemButton>
+                </ListItem>
                 {index < availableExternalProducts.length - 1 && <Divider />}
               </React.Fragment>
             ))}
@@ -975,7 +1346,9 @@ export function ProductsList() {
           <Button
             onClick={handleCreateFromExternal}
             variant='contained'
-            disabled={!selectedExternalProduct || creatingFromExternal}
+            disabled={
+              selectedExternalProductIds.size === 0 || creatingFromExternal
+            }
             startIcon={
               creatingFromExternal ? (
                 <CircularProgress size={16} />
@@ -984,7 +1357,11 @@ export function ProductsList() {
               )
             }
           >
-            {creatingFromExternal ? '创建中...' : '创建核心商品'}
+            {creatingFromExternal
+              ? '创建中...'
+              : selectedExternalProductIds.size > 0
+                ? `创建核心商品 (${selectedExternalProductIds.size})`
+                : '创建核心商品'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1052,17 +1429,132 @@ export function ProductsList() {
         </DialogActions>
       </Dialog>
 
-      {/* Snackbar 消息提示 */}
+      {/* 批量删除确认对话框 */}
+      <Dialog
+        open={bulkDeleteDialogOpen}
+        onClose={handleCancelBulkDelete}
+        maxWidth='sm'
+        fullWidth
+      >
+        <DialogTitle>确认删除选中的商品</DialogTitle>
+        <DialogContent>
+          <Alert severity='warning' sx={{ mb: 2 }}>
+            <Typography variant='body2' fontWeight='medium'>
+              将尝试删除 {selectedProductIds.size} 个商品。已映射到外部商品或已有订单的商品将跳过并提示原因。
+            </Typography>
+          </Alert>
+          <Typography variant='body2' color='text.secondary'>
+            仅当商品既无外部映射也无订单记录时才会被删除。此操作不可撤销。
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCancelBulkDelete} disabled={bulkDeleting}>
+            取消
+          </Button>
+          <Button
+            onClick={handleConfirmBulkDelete}
+            variant='contained'
+            color='error'
+            disabled={bulkDeleting}
+            startIcon={
+              bulkDeleting ? (
+                <CircularProgress size={16} />
+              ) : (
+                <DeleteIcon />
+              )
+            }
+          >
+            {bulkDeleting ? '删除中...' : '确认删除选中'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 管理映射弹窗 */}
+      <Dialog
+        open={!!mappingDialogProduct}
+        onClose={handleCloseMappingDialog}
+        maxWidth='sm'
+        fullWidth
+      >
+        <DialogTitle>
+          管理映射
+          {mappingDialogProduct && ` - ${mappingDialogProduct.title}`}
+        </DialogTitle>
+        <DialogContent>
+          {mappingDialogProduct?.mappings?.length ? (
+            <>
+              <Typography variant='body2' color='text.secondary' sx={{ mb: 2 }}>
+                该商品已映射到以下外部商品。解除全部映射后可删除此商品。
+              </Typography>
+              <List dense disablePadding>
+                {mappingDialogProduct.mappings.map(mapping => (
+                  <React.Fragment key={mapping.id_hashid}>
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        py: 1,
+                        px: 0,
+                        gap: 2,
+                      }}
+                    >
+                      <Box flex={1} minWidth={0}>
+                        <Typography variant='body2' fontWeight='medium'>
+                          {mapping.external_system_name || '外部系统'}
+                        </Typography>
+                        <Typography
+                          variant='caption'
+                          color='text.secondary'
+                          sx={{ wordBreak: 'break-all' }}
+                        >
+                          {mapping.external_product_id}
+                        </Typography>
+                      </Box>
+                      <Button
+                        size='small'
+                        color='error'
+                        variant='outlined'
+                        disabled={unmappingId === mapping.id_hashid}
+                        onClick={() =>
+                          handleUnmapMapping(mapping.id_hashid)
+                        }
+                      >
+                        {unmappingId === mapping.id_hashid ? (
+                          <CircularProgress size={16} />
+                        ) : (
+                          '解除映射'
+                        )}
+                      </Button>
+                    </Box>
+                    <Divider />
+                  </React.Fragment>
+                ))}
+              </List>
+            </>
+          ) : (
+            <Typography variant='body2' color='text.secondary'>
+              暂无映射
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseMappingDialog}>关闭</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Snackbar 消息提示：action 放在 Alert 上才能在 Alert 内显示可点击按钮 */}
       <Snackbar
         open={snackbarOpen}
-        autoHideDuration={6000}
+        autoHideDuration={snackbarAction ? 10000 : 6000}
         onClose={handleSnackbarClose}
         anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
       >
         <Alert
           onClose={handleSnackbarClose}
           severity={snackbarSeverity}
-          sx={{ width: '100%' }}
+          action={snackbarAction}
+          sx={{ width: '100%', alignItems: 'center' }}
         >
           {snackbarMessage}
         </Alert>

@@ -41,17 +41,27 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ detail: 'Invalid token' }, { status: 401 });
     }
 
-    // 获取查询参数
+    // 获取查询参数并转发给后端（用于签名与请求一致）
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
     const skip = (page - 1) * limit;
+    const externalSystemId = searchParams.get('external_system_id');
+    const status = searchParams.get('status');
+
+    const queryParts = [`skip=${skip}`, `limit=${limit}`];
+    if (externalSystemId != null && externalSystemId !== '') {
+      queryParts.push(`external_system_id=${externalSystemId}`);
+    }
+    if (status != null && status !== '') {
+      queryParts.push(`status=${status}`);
+    }
+    const queryString = queryParts.join('&');
 
     // 生成后端签名
     const timestamp = Math.floor(Date.now() / 1000);
     const nonce = Math.random().toString(36).substring(2, 15);
     const backendPath = `/api/v1/products/external-products/`;
-    const queryString = `skip=${skip}&limit=${limit}`;
     // 构建签名字符串 - 必须包含查询参数以匹配后端签名验证逻辑
     const fullPath = queryString
       ? `${backendPath}?${queryString}`

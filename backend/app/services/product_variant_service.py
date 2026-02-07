@@ -386,8 +386,13 @@ class ProductVariantService:
                    tenant_id=tenant_id,
                    filters=filters)
         
-        # 构建基础查询
-        query = select(ProductVariant).join(Product).where(Product.tenant_id == tenant_id)
+        # 构建基础查询（预加载 product 以便返回 product_title）
+        query = (
+            select(ProductVariant)
+            .options(selectinload(ProductVariant.product))
+            .join(Product)
+            .where(Product.tenant_id == tenant_id)
+        )
         
         # 应用筛选条件
         if filters:
