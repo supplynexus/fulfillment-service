@@ -434,13 +434,20 @@ export async function DELETE(
 
     if (!backendResponse.ok) {
       const errorText = await backendResponse.text();
+      let detail = 'Backend request failed';
+      try {
+        const parsed = JSON.parse(errorText);
+        if (typeof parsed?.detail === 'string') detail = parsed.detail;
+      } catch {
+        if (errorText) detail = errorText;
+      }
       logger.error('Backend DELETE request failed', {
         status: backendResponse.status,
         statusText: backendResponse.statusText,
         error: errorText,
       });
       return NextResponse.json(
-        { detail: 'Backend request failed' },
+        { detail },
         { status: backendResponse.status }
       );
     }

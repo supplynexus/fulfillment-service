@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import {
   Drawer,
@@ -280,22 +280,43 @@ const menuItems: MenuItem[] = [
 const DRAWER_WIDTH = 280;
 const DRAWER_WIDTH_COLLAPSED = 64;
 
+/** True if pathname is exactly item.path or a nested route under it (e.g. /products matches /products/123/edit). */
+function pathMatches(pathname: string, itemPath: string): boolean {
+  if (pathname === itemPath) return true;
+  if (!itemPath || itemPath === '/') return false;
+  return pathname.startsWith(itemPath + '/');
+}
+
+/** Returns parent menu ids that should be expanded so the current path is visible, or null if path not found. */
+function getExpandedIdsForPath(
+  pathname: string,
+  items: MenuItem[],
+  parentIds: string[] = []
+): string[] | null {
+  for (const item of items) {
+    if (item.path && pathMatches(pathname, item.path)) {
+      return item.children ? [...parentIds, item.id] : parentIds;
+    }
+    if (item.children) {
+      const found = getExpandedIdsForPath(pathname, item.children, [
+        ...parentIds,
+        item.id,
+      ]);
+      if (found !== null) return found;
+    }
+  }
+  return null;
+}
+
 export function Sidebar({ open, onToggle }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const [expandedItems, setExpandedItems] = useState<string[]>([
-    'core',
-    'products',
-    'orders',
-    'pim-config',
-    'product-mapping',
-    'external-systems',
-    'shopify',
-    'shopify-orders',
-    'printify',
-    'printify-orders',
-    'settings',
-  ]);
+  const [expandedItems, setExpandedItems] = useState<string[]>([]);
+
+  // Sync expanded state to current path's ancestors only when the route changes (pathname-only deps so manual expand/collapse is not overwritten)
+  useEffect(() => {
+    setExpandedItems(getExpandedIdsForPath(pathname, menuItems) ?? []);
+  }, [pathname]);
 
   const handleItemClick = (item: MenuItem) => {
     if (item.path) {
@@ -312,10 +333,12 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
 
   const isItemActive = (item: MenuItem): boolean => {
     if (item.path) {
-      return pathname === item.path;
+      return pathMatches(pathname, item.path);
     }
     if (item.children) {
-      return item.children.some(child => child.path === pathname);
+      return item.children.some(
+        child => child.path != null && pathMatches(pathname, child.path)
+      );
     }
     return false;
   };

@@ -278,15 +278,19 @@ export async function DELETE(
 
     if (!backendResponse.ok) {
       const errorText = await backendResponse.text();
+      let detail = errorText;
+      try {
+        const parsed = JSON.parse(errorText);
+        if (typeof parsed?.detail === 'string') detail = parsed.detail;
+      } catch {
+        // keep detail as errorText
+      }
       frontendLogger.error('❌ 后端 API 错误', {
         status: backendResponse.status,
         errorText,
       });
       return NextResponse.json(
-        {
-          error: `Backend API error: ${backendResponse.status}`,
-          detail: errorText,
-        },
+        { detail },
         { status: backendResponse.status }
       );
     }

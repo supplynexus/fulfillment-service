@@ -154,12 +154,18 @@ frontendApi.interceptors.response.use(
       // 服务器错误，显示友好错误信息
       toast.error('服务器错误，请稍后重试或联系管理员');
     } else if (error.response?.status >= 400) {
-      // 客户端错误，显示具体错误信息
-      const errorMessage =
-        error.response?.data?.detail ||
-        error.response?.data?.message ||
-        '请求失败';
-      toast.error(errorMessage);
+      // 删除商品等接口在组件内已有 Snackbar/自定义提示，避免重复弹出 toast
+      const url = error.config?.url ?? '';
+      const isProductDelete =
+        error.config?.method === 'delete' &&
+        (typeof url === 'string' && url.includes('/api/products/'));
+      if (!isProductDelete) {
+        const errorMessage =
+          error.response?.data?.detail ||
+          error.response?.data?.message ||
+          '请求失败';
+        toast.error(errorMessage);
+      }
     } else if (
       error.code === 'NETWORK_ERROR' ||
       error.message === 'Network Error'

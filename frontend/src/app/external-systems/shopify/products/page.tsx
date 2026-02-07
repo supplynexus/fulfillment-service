@@ -185,6 +185,38 @@ const ShopifyProductsPage: React.FC = () => {
   const [syncSuccess, setSyncSuccess] = useState(false);
   const [checkingMapping, setCheckingMapping] = useState(false);
   const [mappingResult, setMappingResult] = useState<any>(null);
+  const [syncingAll, setSyncingAll] = useState(false);
+  const [syncAllProgress, setSyncAllProgress] = useState<string | null>(null);
+  /** IDs of Shopify products that are already in external_products (gid://shopify/Product/...) */
+  const [syncedProductIds, setSyncedProductIds] = useState<Set<string>>(new Set());
+
+  // 获取当前店铺已同步到数据库的商品 ID 列表（用于卡片显示「已同步」）
+  const fetchSyncedProductIds = useCallback(async (store: ShopifyStore | null) => {
+    if (!store) {
+      setSyncedProductIds(new Set());
+      return;
+    }
+    try {
+      const ids = new Set<string>();
+      const limit = 100;
+      let pageNum = 1;
+      let total = 0;
+      do {
+        const res = await frontendApi.get('/api/external-products/', {
+          params: { external_system_id: store.id, page: pageNum, limit },
+        });
+        const list = res.data?.products ?? [];
+        total = res.data?.total ?? 0;
+        list.forEach((p: { external_product_id?: string }) => {
+          if (p.external_product_id) ids.add(p.external_product_id);
+        });
+        pageNum += 1;
+      } while ((pageNum - 1) * limit < total);
+      setSyncedProductIds(ids);
+    } catch (_) {
+      setSyncedProductIds(new Set());
+    }
+  }, []);
 
   // 获取 Shopify 店铺列表
   const fetchStores = useCallback(async () => {
@@ -338,27 +370,44 @@ const ShopifyProductsPage: React.FC = () => {
         storeId: selectedStore.id_hashid,
       });
 
+      let productToSync = selectedProduct;
+      let rawDataToSync = productJson ?? {};
+
+      // 若弹窗内没有变体数据，先拉取完整商品再保存
+      if (!productToSync.variants?.length && selectedStore.id_hashid) {
+        const numericProductId = productToSync.id.replace('gid://shopify/Product/', '');
+        const res = await frontendApi.get(
+          `/api/external-systems/shopify/products/${numericProductId}/json?external_system_hashid=${selectedStore.id_hashid}`
+        );
+        rawDataToSync = res.data ?? {};
+        if (res.data?.product?.variants?.edges?.length) {
+          productToSync = {
+            ...productToSync,
+            variants: res.data.product.variants.edges.map((edge: any) => edge.node),
+          };
+        }
+      }
+
       const productData = {
         external_system_id: selectedStore.id,
-        external_product_id: selectedProduct.id,
-        product_name: selectedProduct.title,
-        product_type: selectedProduct.product_type || '',
-        vendor: selectedProduct.vendor || '',
-        status: selectedProduct.status,
-        published_at: selectedProduct.published_at,
-        tags: selectedProduct.tags
-          ? selectedProduct.tags.split(',').map(tag => tag.trim())
+        external_product_id: productToSync.id,
+        product_name: productToSync.title,
+        product_type: productToSync.product_type || '',
+        vendor: productToSync.vendor || '',
+        status: productToSync.status,
+        tags: productToSync.tags
+          ? productToSync.tags.split(',').map((tag: string) => tag.trim())
           : [],
-        raw_data: productJson || {},
+        raw_data: rawDataToSync,
         variants:
-          selectedProduct.variants?.map(variant => ({
+          productToSync.variants?.map((variant: ShopifyVariant) => ({
             external_variant_id: variant.id,
             title: variant.title,
             // 避免空 SKU：Shopify 未填时用变体 ID 占位，防止 (tenant_id, sku) 唯一约束冲突
             sku:
               variant.sku?.trim() ||
               variant.id?.replace('gid://shopify/ProductVariant/', '') ||
-              `VAR-${selectedProduct.id?.replace('gid://shopify/Product/', '')}-${variant.id?.replace('gid://shopify/ProductVariant/', '')}`,
+              `VAR-${productToSync.id?.replace('gid://shopify/Product/', '')}-${variant.id?.replace('gid://shopify/ProductVariant/', '')}`,
             price: parseFloat(variant.price) || 0,
             compare_at_price: variant.compareAtPrice
               ? parseFloat(variant.compareAtPrice)
@@ -397,7 +446,7 @@ const ShopifyProductsPage: React.FC = () => {
 
       setError(null);
       setSyncSuccess(true);
-
+      fetchSyncedProductIds(selectedStore);
       setTimeout(() => {
         setSyncSuccess(false);
       }, 3000);
@@ -410,7 +459,118 @@ const ShopifyProductsPage: React.FC = () => {
     } finally {
       setSyncingToDatabase(false);
     }
-  }, [selectedProduct, selectedStore, productJson]);
+  }, [selectedProduct, selectedStore, productJson, fetchSyncedProductIds]);
+
+  // 全量同步当前店铺商品到数据库（external_products）
+  const syncAllProductsToDatabase = useCallback(async () => {
+    if (!selectedStore) return;
+    try {
+      setSyncingAll(true);
+      setSyncAllProgress('正在获取商品列表...');
+      setError(null);
+      const allProducts: ShopifyProduct[] = [];
+      let pageNum = 1;
+      let totalPages = 1;
+      do {
+        const response = await frontendApi.get(
+          `/api/external-systems/shopify/${selectedStore.id_hashid}/products`,
+          {
+            params: {
+              page: pageNum,
+              limit: 100,
+              sort_by: sortBy,
+              sort_order: sortOrder,
+              status: statusFilter !== 'all' ? statusFilter : undefined,
+            },
+          }
+        );
+        const list = response.data.products || [];
+        allProducts.push(...list);
+        totalPages = response.data.pagination?.total_pages || 1;
+        pageNum += 1;
+      } while (pageNum <= totalPages);
+
+      const total = allProducts.length;
+      if (total === 0) {
+        setSyncAllProgress('当前无商品可同步');
+        setSyncingAll(false);
+        return;
+      }
+
+      let done = 0;
+      let failed = 0;
+      for (let i = 0; i < allProducts.length; i++) {
+        const product = allProducts[i];
+        setSyncAllProgress(`正在同步 ${i + 1}/${total}: ${product.title?.slice(0, 30)}...`);
+        try {
+          const numericId = product.id.replace('gid://shopify/Product/', '');
+          const jsonRes = await frontendApi.get(
+            `/api/external-systems/shopify/products/${numericId}/json?external_system_hashid=${selectedStore.id_hashid}`
+          );
+          const data = jsonRes.data;
+          const node = data?.product;
+          if (!node) {
+            failed += 1;
+            continue;
+          }
+          const edges = node.variants?.edges || [];
+          const variants = edges.map((edge: any) => {
+            const v = edge.node;
+            return {
+              external_variant_id: v.id,
+              title: v.title,
+              sku:
+                v.sku?.trim() ||
+                v.id?.replace('gid://shopify/ProductVariant/', '') ||
+                `VAR-${node.id?.replace('gid://shopify/Product/', '')}-${v.id?.replace('gid://shopify/ProductVariant/', '')}`,
+              price: parseFloat(v.price) || 0,
+              compare_at_price: v.compareAtPrice ? parseFloat(v.compareAtPrice) : null,
+              inventory_quantity: v.inventoryQuantity ?? 0,
+              inventory_policy: v.inventoryPolicy || 'deny',
+              weight: v.weight || 0,
+              weight_unit: v.weightUnit || 'kg',
+              taxable: v.taxable ?? false,
+              tax_code: v.taxCode || '',
+              position: v.position || 0,
+              created_at: v.createdAt,
+              updated_at: v.updatedAt,
+              selected_options: v.selectedOptions || [],
+              image: v.image ? { id: v.image.id, url: v.image.url, alt_text: v.image.altText || '', width: v.image.width || 0, height: v.image.height || 0 } : null,
+            };
+          });
+          const productData = {
+            external_system_id: selectedStore.id,
+            external_product_id: node.id,
+            product_name: node.title,
+            product_type: node.productType || '',
+            vendor: node.vendor || '',
+            status: node.status,
+            tags: Array.isArray(node.tags) ? node.tags : [],
+            raw_data: data,
+            variants,
+          };
+          await frontendApi.post('/api/external-products/', productData);
+          done += 1;
+        } catch (err) {
+          failed += 1;
+          frontendLogger.error('全量同步单商品失败', { productId: product.id, error: (err as Error).message });
+        }
+      }
+
+      setSyncAllProgress(null);
+      setError(failed > 0 ? `同步完成：成功 ${done}，失败 ${failed}` : null);
+      if (failed === 0) setSyncSuccess(true);
+      fetchSyncedProductIds(selectedStore);
+      setTimeout(() => setSyncSuccess(false), 3000);
+      frontendLogger.info('✅ 全量同步完成', { total, done, failed });
+    } catch (err: any) {
+      setSyncAllProgress(null);
+      setError(err.message || '全量同步失败');
+      frontendLogger.error('❌ 全量同步失败', { error: err.message });
+    } finally {
+      setSyncingAll(false);
+    }
+  }, [selectedStore, sortBy, sortOrder, statusFilter, fetchSyncedProductIds]);
 
   // 获取 Shopify 商品列表
   const fetchProducts = useCallback(
@@ -470,6 +630,11 @@ const ShopifyProductsPage: React.FC = () => {
       fetchProducts(selectedStore, 1);
     }
   }, [selectedStore, fetchProducts]);
+
+  // 当选择店铺时拉取已同步到数据库的商品 ID，用于卡片显示「已同步」
+  useEffect(() => {
+    fetchSyncedProductIds(selectedStore);
+  }, [selectedStore, fetchSyncedProductIds]);
 
   // 搜索处理
   const handleSearch = useCallback(() => {
@@ -703,7 +868,28 @@ const ShopifyProductsPage: React.FC = () => {
                         搜索
                       </Button>
                     </Box>
+                    <Box sx={{ width: { xs: "100%", md: "auto" } }}>
+                      <Button
+                        variant='outlined'
+                        color='secondary'
+                        onClick={syncAllProductsToDatabase}
+                        disabled={!selectedStore || syncingAll}
+                        startIcon={syncingAll ? <CircularProgress size={18} /> : <SyncIcon />}
+                      >
+                        {syncingAll && syncAllProgress ? syncAllProgress : '同步全部到数据库'}
+                      </Button>
+                    </Box>
                   </Box>
+                  {syncingAll && syncAllProgress && (
+                    <Alert severity='info' sx={{ mt: 2 }}>
+                      {syncAllProgress}
+                    </Alert>
+                  )}
+                  {selectedStore && syncedProductIds.size >= 0 && (
+                    <Typography variant='body2' color='text.secondary' sx={{ mt: 1 }}>
+                      已同步 <strong>{syncedProductIds.size}</strong> 个商品到数据库
+                    </Typography>
+                  )}
                 </CardContent>
               </Card>
 
@@ -791,8 +977,17 @@ const ShopifyProductsPage: React.FC = () => {
                                 label={getStatusLabel(product.status)}
                                 color={getStatusColor(product.status) as any}
                                 size='small'
-                                sx={{ mb: 1 }}
+                                sx={{ mb: 1, mr: 0.5 }}
                               />
+                              {syncedProductIds.has(product.id) && (
+                                <Chip
+                                  label='已同步'
+                                  color='success'
+                                  size='small'
+                                  sx={{ mb: 1 }}
+                                  icon={<ActiveIcon sx={{ fontSize: 14 }} />}
+                                />
+                              )}
                               {product.tags && (
                                 <Box sx={{ mt: 1 }}>
                                   {product.tags

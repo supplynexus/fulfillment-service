@@ -32,6 +32,7 @@ async def get_orders(
     search: Optional[str] = None,
     sort_by: str = "created_at",
     sort_order: str = "desc",
+    core_product_id: Optional[str] = None,
     db: AsyncSession = Depends(get_async_db),
     auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
 ) -> OrderListResponse:
@@ -55,6 +56,16 @@ async def get_orders(
             f"✅ 认证成功: tenant_id={tenant.id}, tenant_name={tenant.name}, user_id={user.id}"
         )
 
+        # 按商品筛选：解码商品 hashid
+        product_id_int: Optional[int] = None
+        if core_product_id:
+            from app.core.hashids_utils import decode_id
+            try:
+                product_id_int = decode_id(core_product_id)
+                logger.info(f"🔍 按商品筛选: core_product_id={core_product_id} -> product_id={product_id_int}")
+            except Exception:
+                logger.warning(f"⚠️ 无效的商品 hashid，忽略: core_product_id={core_product_id}")
+
         logger.info(f"🔍 初始化 ShopifyOrderService...")
         order_service = ShopifyOrderService(db)
         logger.info(f"✅ ShopifyOrderService 初始化成功")
@@ -70,6 +81,7 @@ async def get_orders(
                 search=search,
                 sort_by=sort_by,
                 sort_order=sort_order,
+                core_product_id=product_id_int,
             )
             logger.info(f"✅ 查询订单成功: 找到 {len(orders)} 个订单，总数 {total}")
         except Exception as e:
@@ -668,6 +680,17 @@ async def delete_order(
         if not order:
             logger.error(f"❌ 订单不存在: order_id={order_id}, tenant_id={tenant.id}")
             raise HTTPException(status_code=404, detail="Order not found")
+
+        # 禁止删除：已映射到外部订单（如 Shopify）。仅检查映射用 ID；external_system_id 为审计字段，解除映射后仍保留，不参与此判断。
+        if order.shopify_order_id or order.external_order_id:
+            logger.warning(
+                f"⚠️ 订单已映射到外部订单，禁止删除: order_id={order_id}, "
+                f"shopify_order_id={order.shopify_order_id}, external_order_id={order.external_order_id}"
+            )
+            raise HTTPException(
+                status_code=400,
+                detail="不能删除：该订单已映射到外部订单，请先解除映射后再删除",
+            )
         
         # 先删除相关的 scm_order_sources 记录
         from app.models.scm_order import ScmOrderSource, SCMOrder, RoutingStatus
@@ -714,6 +737,58 @@ async def delete_order(
         import traceback
         logger.error(f"   异常堆栈: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.post("/{order_hashid}/unbind-external", response_model=dict)
+async def unbind_order_from_external(
+    order_hashid: str,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
+):
+    """
+    解除订单与外部订单的映射（如 Shopify）。
+    解除后可再删除该核心订单。
+    """
+    from app.core.logging import RequestLogger
+    from app.core.hashids_utils import decode_id
+    from app.models.order import Order
+    from sqlalchemy import select, update, and_
+
+    logger = RequestLogger("orders.unbind_external")
+    tenant, user = auth
+
+    try:
+        order_id = decode_id(order_hashid)
+        result = await db.execute(
+            select(Order).where(
+                and_(Order.id == order_id, Order.tenant_id == tenant.id)
+            )
+        )
+        order = result.scalar_one_or_none()
+        if not order:
+            raise HTTPException(status_code=404, detail="Order not found")
+        if not order.shopify_order_id and not order.external_order_id:
+            return {"message": "订单未绑定外部订单", "success": True}
+        # 只清除「映射用」的 ID，保留 external_system_id 作为来源审计（来自哪个外部系统）
+        await db.execute(
+            update(Order)
+            .where(and_(Order.id == order_id, Order.tenant_id == tenant.id))
+            .values(
+                shopify_order_id=None,
+                external_order_id=None,
+                shopify_fulfillment_order_id=None,
+                shopify_fulfillment_id=None,
+            )
+        )
+        await db.commit()
+        logger.info(f"✅ 订单已解除外部映射: order_id={order_id}（保留 external_system_id 审计）")
+        return {"message": "已解除与外部订单的映射", "success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"❌ 解除订单外部映射失败: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/batch-update-shopify-status", response_model=dict)

@@ -1285,6 +1285,34 @@ async def delete_scm_order(
         if not scm_order:
             logger.error(f"❌ SCM订单不存在: scm_order_id={scm_order_id}, tenant_id={tenant.id}")
             raise HTTPException(status_code=404, detail="SCM order not found")
+
+        # 禁止删除：已映射到外部 SCM 订单（如 Printify）
+        from app.models.printify_order import PrintifyOrder
+        from sqlalchemy import func
+        if scm_order.printify_order_id:
+            logger.warning(
+                f"⚠️ SCM 订单已映射到 Printify，禁止删除: scm_order_id={scm_order_id}, "
+                f"printify_order_id={scm_order.printify_order_id}"
+            )
+            raise HTTPException(
+                status_code=400,
+                detail="不能删除：该 SCM 订单已映射到外部订单（如 Printify），请先解除映射后再删除",
+            )
+        count_result = await db.execute(
+            select(func.count(PrintifyOrder.id)).where(
+                PrintifyOrder.scm_order_id == scm_order_id,
+                PrintifyOrder.tenant_id == tenant.id
+            )
+        )
+        printify_count = count_result.scalar() or 0
+        if printify_count > 0:
+            logger.warning(
+                f"⚠️ SCM 订单存在 {printify_count} 条 Printify 关联，禁止删除: scm_order_id={scm_order_id}"
+            )
+            raise HTTPException(
+                status_code=400,
+                detail="不能删除：该 SCM 订单已映射到外部订单（如 Printify），请先解除映射后再删除",
+            )
         
         # 先删除相关的 routing_status 记录（外键约束）
         from app.models.scm_order import RoutingStatus

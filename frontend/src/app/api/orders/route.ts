@@ -49,6 +49,7 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search');
     const sort_by = searchParams.get('sort_by');
     const sort_order = searchParams.get('sort_order');
+    const core_product_id = searchParams.get('product') || searchParams.get('core_product_id');
 
     // 构建后端请求参数 - 后端接收的是 page 和 limit，不是 skip
     const backendParams = new URLSearchParams({
@@ -67,6 +68,9 @@ export async function GET(request: NextRequest) {
     }
     if (sort_order) {
       backendParams.append('sort_order', sort_order);
+    }
+    if (core_product_id) {
+      backendParams.append('core_product_id', core_product_id);
     }
 
     // 构建后端请求体（用于签名，但GET请求不发送body）

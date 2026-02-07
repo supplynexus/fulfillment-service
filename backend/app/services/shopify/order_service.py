@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
 
-from app.models.order import Order, OrderStatus
+from app.models.order import Order, OrderItem, OrderStatus
 from app.models.shopify_order import ShopifyOrder
 from app.models.external_system import ExternalSystem, ExternalSystemType
 from app.schemas.order import OrderCreate
@@ -631,33 +631,61 @@ class ShopifyOrderService:
         search: Optional[str] = None,
         sort_by: str = "created_at",
         sort_order: str = "desc",
+        core_product_id: Optional[int] = None,
     ) -> tuple[List[Order], int]:
-        """获取分页订单列表"""
+        """获取分页订单列表。core_product_id 表示只返回包含该商品的订单。"""
         try:
             from sqlalchemy import func, or_
 
-            # 构建基础查询
-            query = select(Order).where(Order.tenant_id == tenant_id)
-
-            # 应用状态过滤
-            if status:
-                query = query.where(Order.status == status)
-
-            # 应用搜索过滤
-            if search:
-                search_filter = or_(
-                    Order.customer_email.ilike(f"%{search}%"),
-                    Order.external_order_id.ilike(f"%{search}%"),
-                    Order.external_order_name.ilike(f"%{search}%"),
-                    Order.shopify_order_id.ilike(f"%{search}%"),
-                    Order.shopify_order_number.ilike(f"%{search}%"),
+            # 按商品筛选时用「仅订单 ID」子查询，避免 SELECT DISTINCT 含 JSON 列导致 PostgreSQL 报错
+            if core_product_id is not None:
+                order_ids_subq = (
+                    select(Order.id)
+                    .join(OrderItem, Order.id == OrderItem.order_id)
+                    .where(
+                        Order.tenant_id == tenant_id,
+                        OrderItem.tenant_id == tenant_id,
+                        OrderItem.core_product_id == core_product_id,
+                    )
+                    .distinct()
                 )
-                query = query.where(search_filter)
-
-            # 获取总数
-            count_query = select(func.count()).select_from(query.subquery())
-            count_result = await self.db.execute(count_query)
-            total = count_result.scalar()
+                if status:
+                    order_ids_subq = order_ids_subq.where(Order.status == status)
+                if search:
+                    search_filter = or_(
+                        Order.customer_email.ilike(f"%{search}%"),
+                        Order.external_order_id.ilike(f"%{search}%"),
+                        Order.external_order_name.ilike(f"%{search}%"),
+                        Order.shopify_order_id.ilike(f"%{search}%"),
+                        Order.shopify_order_number.ilike(f"%{search}%"),
+                    )
+                    order_ids_subq = order_ids_subq.where(search_filter)
+                count_result = await self.db.execute(
+                    select(func.count()).select_from(order_ids_subq.subquery())
+                )
+                total = count_result.scalar() or 0
+                # 主查询：只按 ID 过滤，避免 JSON 列参与 DISTINCT
+                query = select(Order).where(
+                    Order.tenant_id == tenant_id,
+                    Order.id.in_(order_ids_subq),
+                )
+            else:
+                query = select(Order).where(Order.tenant_id == tenant_id)
+                if status:
+                    query = query.where(Order.status == status)
+                if search:
+                    search_filter = or_(
+                        Order.customer_email.ilike(f"%{search}%"),
+                        Order.external_order_id.ilike(f"%{search}%"),
+                        Order.external_order_name.ilike(f"%{search}%"),
+                        Order.shopify_order_id.ilike(f"%{search}%"),
+                        Order.shopify_order_number.ilike(f"%{search}%"),
+                    )
+                    query = query.where(search_filter)
+                count_result = await self.db.execute(
+                    select(func.count()).select_from(query.subquery())
+                )
+                total = count_result.scalar() or 0
 
             # 应用排序
             if sort_by == "order_date":
@@ -665,18 +693,14 @@ class ShopifyOrderService:
             elif sort_by == "created_at":
                 order_column = Order.created_at
             else:
-                order_column = Order.created_at  # 默认按创建时间排序
-
+                order_column = Order.created_at
             if sort_order.lower() == "asc":
                 query = query.order_by(order_column.asc())
             else:
                 query = query.order_by(order_column.desc())
 
-            # 获取分页数据
             orders_result = await self.db.execute(query.offset(skip).limit(limit))
-
             orders = orders_result.scalars().all()
-
             return orders, total
 
         except Exception as e:
