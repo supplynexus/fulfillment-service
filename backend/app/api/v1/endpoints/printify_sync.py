@@ -104,10 +104,11 @@ async def sync_printify_products(
             try:
                 logger.info(f"🔄 开始同步店铺商品: {store.get('title', store.get('name', 'Unknown Store'))}")
                 
-                # 获取店铺商品
+                # 获取店铺商品（API 返回全部，含未发布）
                 products = await printify_service.get_products(store['id'])
                 
                 if products:
+                    # 同步全部商品（已发布 + 未发布），并写入 is_published 供列表筛选
                     # 如果指定了商品ID列表，只同步指定的商品
                     if request.product_ids:
                         products = [p for p in products if p.get('id') in request.product_ids]

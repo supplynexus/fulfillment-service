@@ -16,7 +16,11 @@ import {
   TextField,
   Alert,
   CircularProgress,
+  FormControl,
   FormControlLabel,
+  InputLabel,
+  Select,
+  MenuItem,
   Switch,
 } from '@mui/material';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
@@ -112,6 +116,16 @@ function PrintifyStoresPage() {
   const [testingConnection, setTestingConnection] = useState(false);
   const [forceRender, setForceRender] = useState(0);
   const [showTestResultDialog, setShowTestResultDialog] = useState(false);
+  /** 当前连接测试对应的店铺，用于在成功弹窗里保存「首选店铺」 */
+  const [storeUnderTest, setStoreUnderTest] = useState<PrintifyStore | null>(null);
+  /** 弹窗内选中的首选店铺 id（仅成功时展示） */
+  const [preferredShopId, setPreferredShopId] = useState<string>('');
+  const [savingPreferred, setSavingPreferred] = useState(false);
+  /** 编辑时拉取的 Printify 店铺列表（用于首选店铺下拉） */
+  const [printifyShops, setPrintifyShops] = useState<
+    { id: number; title?: string; sales_channel?: string }[]
+  >([]);
+  const [printifyShopsLoading, setPrintifyShopsLoading] = useState(false);
 
   const fetchStores = useCallback(async () => {
     // Mock data for demonstration - using real Printify data
@@ -234,6 +248,32 @@ function PrintifyStoresPage() {
     fetchStores();
   }, [fetchStores]);
 
+  // 编辑时拉取 Printify 店铺列表，用于「首选店铺」下拉
+  useEffect(() => {
+    if (!openDialog || !editingStore?.id_hashid) {
+      setPrintifyShops([]);
+      return;
+    }
+    let cancelled = false;
+    setPrintifyShopsLoading(true);
+    frontendApi
+      .get<{ shops: { id: number; title?: string; sales_channel?: string }[] }>(
+        `/api/external-systems/printify/${editingStore.id_hashid}/shops`
+      )
+      .then(res => {
+        if (!cancelled && res.data?.shops) setPrintifyShops(res.data.shops);
+      })
+      .catch(() => {
+        if (!cancelled) setPrintifyShops([]);
+      })
+      .finally(() => {
+        if (!cancelled) setPrintifyShopsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [openDialog, editingStore?.id_hashid]);
+
   const handleAddStore = () => {
     setEditingStore(null);
     handleResetForm();
@@ -242,6 +282,8 @@ function PrintifyStoresPage() {
 
   const handleEditStore = (store: PrintifyStore) => {
     setEditingStore(store);
+    const currentPreferred = (store.settings as Record<string, unknown>)
+      ?.printify_shop_id as string | undefined;
     setFormData({
       name: store.name,
       external_id: store.external_id || '',
@@ -257,13 +299,15 @@ function PrintifyStoresPage() {
         api_version: store.settings.api_version || 'v1',
         default_shipping_method: store.settings.default_shipping_method || 1,
         send_shipping_notification:
-          store.settings.send_shipping_notification || true,
+          store.settings.send_shipping_notification ?? true,
         default_status: store.settings.default_status || 'onhold',
+        ...(currentPreferred != null && { printify_shop_id: currentPreferred }),
       },
       sync_enabled: store.sync_enabled,
       webhook_enabled: store.webhook_enabled,
     });
     setTestResult(null);
+    setPrintifyShops([]);
     setOpenDialog(true);
   };
 
@@ -301,6 +345,8 @@ function PrintifyStoresPage() {
       );
 
       if (response.data.success) {
+        const shops: { id: number; title?: string; sales_channel?: string }[] =
+          response.data.shops || [];
         setTestResult({
           success: true,
           message: response.data.message || '连接测试成功！',
@@ -308,9 +354,18 @@ function PrintifyStoresPage() {
             shop_id: response.data.shop_id,
             base_url: response.data.base_url,
             shops_count: response.data.shops_count,
-            shops: response.data.shops,
+            shops,
           },
         });
+        setStoreUnderTest(store);
+        const currentPreferred =
+          (store.settings as Record<string, unknown>)?.printify_shop_id as
+            | string
+            | undefined;
+        setPreferredShopId(
+          currentPreferred ||
+            (shops[0] ? String(shops[0].id) : '')
+        );
         setShowTestResultDialog(true);
       } else {
         setTestResult({
@@ -581,6 +636,7 @@ function PrintifyStoresPage() {
   const handleCloseDialog = () => {
     setOpenDialog(false);
     setEditingStore(null);
+    setPrintifyShops([]);
     // Don't reset testResult here - let user see the result
   };
 
@@ -684,6 +740,8 @@ function PrintifyStoresPage() {
       );
 
       if (response.data.success) {
+        const shops: { id: number; title?: string; sales_channel?: string }[] =
+          response.data.shops || [];
         const newTestResult = {
           success: true,
           message: response.data.message || '连接测试成功！',
@@ -691,12 +749,20 @@ function PrintifyStoresPage() {
             shop_id: response.data.shop_id,
             base_url: response.data.base_url,
             shops_count: response.data.shops_count,
-            shops: response.data.shops,
+            shops,
           },
         };
 
         console.log('✅ 测试连接成功，设置结果:', newTestResult);
         setTestResult(newTestResult);
+        setStoreUnderTest(editingStore);
+        const currentPreferred =
+          (formData.settings as Record<string, unknown>)?.printify_shop_id as
+            | string
+            | undefined;
+        setPreferredShopId(
+          currentPreferred || (shops[0] ? String(shops[0].id) : '')
+        );
         setForceRender(prev => prev + 1);
         setShowTestResultDialog(true);
         console.log('🔍 设置 showTestResultDialog 为 true');
@@ -1013,6 +1079,12 @@ function PrintifyStoresPage() {
                 </Typography>
 
                 <Typography variant='body2' color='text.secondary' mb={1}>
+                  首选店铺（同步用）:{' '}
+                  {(store.settings as Record<string, unknown>)
+                    ?.printify_shop_id ?? '未设置'}
+                </Typography>
+
+                <Typography variant='body2' color='text.secondary' mb={1}>
                   创建时间: {formatDate(store.created_at)}
                 </Typography>
 
@@ -1209,6 +1281,47 @@ function PrintifyStoresPage() {
                   />
                 </Box>
               </Box>
+
+              {editingStore?.id_hashid && (
+                <FormControl fullWidth size='small' sx={{ minWidth: 260 }}>
+                  <InputLabel id='printify-preferred-shop-label'>
+                    首选店铺（同步订单/商品用）
+                  </InputLabel>
+                  <Select
+                    labelId='printify-preferred-shop-label'
+                    label='首选店铺（同步订单/商品用）'
+                    value={
+                      (formData.settings as Record<string, unknown>)
+                        ?.printify_shop_id ?? ''
+                    }
+                    onChange={e => {
+                      const v = e.target.value as string;
+                      setFormData(prev => ({
+                        ...prev,
+                        settings: {
+                          ...prev.settings,
+                          printify_shop_id: v || undefined,
+                        },
+                      }));
+                    }}
+                    disabled={printifyShopsLoading}
+                  >
+                    <MenuItem value=''>
+                      <em>未选择</em>
+                    </MenuItem>
+                    {printifyShops.map(s => (
+                      <MenuItem key={s.id} value={String(s.id)}>
+                        {s.title || s.id} — {s.sales_channel || 'disconnected'}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                  {printifyShopsLoading && (
+                    <Typography variant='caption' color='text.secondary' sx={{ mt: 0.5 }}>
+                      正在加载店铺列表…
+                    </Typography>
+                  )}
+                </FormControl>
+              )}
             </Box>
 
             {/* Debug: Show testResult state */}
@@ -1404,7 +1517,10 @@ function PrintifyStoresPage() {
       {/* Test Result Dialog */}
       <Dialog
         open={showTestResultDialog}
-        onClose={() => setShowTestResultDialog(false)}
+        onClose={() => {
+          setShowTestResultDialog(false);
+          setStoreUnderTest(null);
+        }}
         maxWidth='md'
         fullWidth
       >
@@ -1423,6 +1539,41 @@ function PrintifyStoresPage() {
                 </Typography>
                 <Typography variant='body2'>{testResult.message}</Typography>
               </Alert>
+
+              {testResult.success &&
+                testResult.details?.shops?.length > 0 &&
+                storeUnderTest?.id_hashid && (
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant='subtitle1' sx={{ mb: 1 }}>
+                      首选店铺（获取订单等仅使用此店铺）
+                    </Typography>
+                    <FormControl fullWidth size='small' sx={{ minWidth: 280 }}>
+                      <select
+                        value={preferredShopId}
+                        onChange={e => setPreferredShopId(e.target.value)}
+                        style={{
+                          padding: '8px 12px',
+                          borderRadius: 4,
+                          border: '1px solid #ccc',
+                          fontSize: '0.875rem',
+                        }}
+                      >
+                        {testResult.details.shops.map(
+                          (shop: {
+                            id: number;
+                            title?: string;
+                            sales_channel?: string;
+                          }) => (
+                            <option key={shop.id} value={String(shop.id)}>
+                              {shop.title || shop.id} (
+                              {shop.sales_channel || '—'})
+                            </option>
+                          )
+                        )}
+                      </select>
+                    </FormControl>
+                  </Box>
+                )}
 
               {testResult.details && (
                 <Box>
@@ -1448,7 +1599,55 @@ function PrintifyStoresPage() {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowTestResultDialog(false)}>关闭</Button>
+          {testResult?.success &&
+            storeUnderTest?.id_hashid &&
+            (testResult.details?.shops?.length ?? 0) > 0 && (
+              <Button
+                variant='contained'
+                onClick={async () => {
+                  if (!storeUnderTest || !preferredShopId) return;
+                  const decodedIds = hashids.decode(storeUnderTest.id_hashid);
+                  if (!decodedIds?.length) return;
+                  setSavingPreferred(true);
+                  try {
+                    const nextSettings = {
+                      ...(storeUnderTest.settings || {}),
+                      printify_shop_id: String(preferredShopId),
+                    };
+                    await frontendApi.put(
+                      `/api/external-systems/${decodedIds[0]}`,
+                      { settings: nextSettings }
+                    );
+                    setStores(prev =>
+                      prev.map(s =>
+                        s.id_hashid === storeUnderTest.id_hashid
+                          ? { ...s, settings: nextSettings }
+                          : s
+                      )
+                    );
+                    setShowTestResultDialog(false);
+                    setStoreUnderTest(null);
+                  } catch (e: any) {
+                    setError(
+                      e.response?.data?.detail || '保存首选店铺失败'
+                    );
+                  } finally {
+                    setSavingPreferred(false);
+                  }
+                }}
+                disabled={savingPreferred}
+              >
+                {savingPreferred ? '保存中…' : '保存为首选店铺'}
+              </Button>
+            )}
+          <Button
+            onClick={() => {
+              setShowTestResultDialog(false);
+              setStoreUnderTest(null);
+            }}
+          >
+            关闭
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

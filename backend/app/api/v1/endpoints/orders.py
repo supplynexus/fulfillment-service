@@ -200,6 +200,7 @@ async def get_order(
     """
     from app.models.order import OrderItem
     from sqlalchemy import select
+    from app.core.hashids_utils import encode_id
 
     tenant, user = auth
 
@@ -241,9 +242,74 @@ async def get_order(
         
         logger.info(f"✅ 找到 {len(order_items)} 个订单行项目")
 
-        # 构建 line_items 数组
+        # Shopify store handle（用于商品链接）：先看订单关联的外部系统，否则用租户下任意 Shopify 配置（订单导入时可能未填 external_system_id）
+        from app.models.external_system import ExternalSystem
+        shopify_store_handle: Optional[str] = None
+        if order.external_system_id:
+            es_row = await db.execute(
+                select(ExternalSystem.system_type, ExternalSystem.base_url, ExternalSystem.external_system_id).where(
+                    ExternalSystem.id == order.external_system_id,
+                    ExternalSystem.tenant_id == tenant.id,
+                )
+            )
+            es = es_row.one_or_none()
+            if es and es.system_type == ExternalSystemType.SHOPIFY:
+                base_url = (es.base_url or "").strip() or (es.external_system_id or "")
+                if ".myshopify.com" in base_url:
+                    shopify_store_handle = base_url.replace("https://", "").replace("http://", "").split(".myshopify.com")[0].strip()
+        if not shopify_store_handle:
+            # 回退：订单未关联外部系统时，用本租户下第一个 Shopify 配置（行项目有 gid 时仍可生成链接）
+            fallback_row = await db.execute(
+                select(ExternalSystem.base_url, ExternalSystem.external_system_id).where(
+                    ExternalSystem.tenant_id == tenant.id,
+                    ExternalSystem.system_type == ExternalSystemType.SHOPIFY,
+                    ExternalSystem.is_active == True,
+                ).limit(1)
+            )
+            fallback = fallback_row.one_or_none()
+            if fallback:
+                base_url = (fallback.base_url or "").strip() or (fallback.external_system_id or "")
+                if ".myshopify.com" in base_url:
+                    shopify_store_handle = base_url.replace("https://", "").replace("http://", "").split(".myshopify.com")[0].strip()
+
+        # Printify 商品 ID 映射：core_product_id -> printify external_product_id
+        from app.models.product import ProductMapping
+        core_product_ids = [item.core_product_id for item in order_items if item.core_product_id]
+        printify_product_by_core: dict = {}
+        if core_product_ids:
+            pm_result = await db.execute(
+                select(ProductMapping.core_product_id, ProductMapping.external_product_id).where(
+                    ProductMapping.tenant_id == tenant.id,
+                    ProductMapping.core_product_id.in_(core_product_ids),
+                    ProductMapping.external_system_id.in_(
+                        select(ExternalSystem.id).where(
+                            ExternalSystem.tenant_id == tenant.id,
+                            ExternalSystem.system_type == ExternalSystemType.PRINTIFY,
+                        )
+                    ),
+                )
+            )
+            for row in pm_result.all():
+                printify_product_by_core[row.core_product_id] = row.external_product_id
+
+        # 构建 line_items 数组（含 Shopify / Printify 商品链接）
         line_items = []
         for item in order_items:
+            shopify_product_url: Optional[str] = None
+            if shopify_store_handle and item.external_product_id and "gid://shopify/Product/" in str(item.external_product_id):
+                try:
+                    shopify_product_id = str(item.external_product_id).split("/")[-1].strip()
+                    if shopify_product_id.isdigit():
+                        shopify_product_url = f"https://admin.shopify.com/store/{shopify_store_handle}/products/{shopify_product_id}"
+                except Exception:
+                    pass
+            printify_product_url: Optional[str] = None
+            if item.core_product_id and item.core_product_id in printify_product_by_core:
+                pid = printify_product_by_core[item.core_product_id]
+                if pid:
+                    printify_product_url = f"https://printify.com/app/product-details/{pid}?fromProductsPage=1"
+
+            core_product_id_hashid = encode_id(item.core_product_id) if item.core_product_id else None
             line_item = {
                 "id": item.id,
                 "title": item.title or "未知商品",
@@ -255,16 +321,17 @@ async def get_order(
                 "total_price": float(item.total_price) if item.total_price else 0.0,
                 "core_product_id": item.core_product_id,
                 "core_variant_id": item.core_variant_id,
+                "core_product_id_hashid": core_product_id_hashid,  # 用于前端「去绑定 Printify」链接
                 "external_product_id": item.external_product_id,
                 "external_variant_id": item.external_variant_id,
                 "fulfillment_status": item.fulfillment_status,
-                "item_metadata": item.item_metadata or {}
+                "item_metadata": item.item_metadata or {},
+                "shopify_product_url": shopify_product_url,
+                "printify_product_url": printify_product_url,
             }
             line_items.append(line_item)
 
-        # 转换为响应格式并添加 line_items，使用 hashids
-        from app.core.hashids_utils import encode_id
-        
+        # 转换为响应格式并添加 line_items
         order_data = {
             "id": order.id,
             "id_hashid": encode_id(order.id),
@@ -487,7 +554,9 @@ async def create_shipping_label(
             raise HTTPException(status_code=400, detail="无法解密 Printify 凭据")
 
         access_token = credentials.get("access_token")
-        shop_id = credentials.get("shop_id")
+        shop_id = (printify_config.settings or {}).get("printify_shop_id") or credentials.get("shop_id")
+        if shop_id is not None:
+            shop_id = str(shop_id).strip() or None
 
         if not access_token or not shop_id:
             logger.error(

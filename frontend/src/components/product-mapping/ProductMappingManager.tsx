@@ -31,6 +31,8 @@ import {
   DialogContent,
   DialogActions,
   DialogContentText,
+  Checkbox,
+  TablePagination,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -40,6 +42,7 @@ import {
   Delete as DeleteIcon,
   Add as AddIcon,
   Storefront as ShopifyIcon,
+  Storefront as StorefrontIcon,
   Print as PrintifyIcon,
   Public as YahooIcon,
   Storefront as RakutenIcon,
@@ -76,9 +79,6 @@ export function ProductMappingManager() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mappings, setMappings] = useState<ProductMapping[]>([]);
-  const [filteredMappings, setFilteredMappings] = useState<ProductMapping[]>(
-    []
-  );
   const [searchFilters, setSearchFilters] = useState<SearchFilters>({
     coreProduct: '',
     externalSystem: '',
@@ -89,29 +89,69 @@ export function ProductMappingManager() {
   const [mappingToDelete, setMappingToDelete] = useState<ProductMapping | null>(
     null
   );
+  const [selectedMappingIds, setSelectedMappingIds] = useState<string[]>([]);
+  const [batchDeleteDialogOpen, setBatchDeleteDialogOpen] = useState(false);
+  const [batchDeleting, setBatchDeleting] = useState(false);
+  const [deleteByFilterDialogOpen, setDeleteByFilterDialogOpen] = useState(false);
+  const [deleteByFiltering, setDeleteByFiltering] = useState(false);
+  const [page, setPage] = useState(0); // 0-based for MUI TablePagination
+  const [rowsPerPage, setRowsPerPage] = useState(20);
+  const [totalCount, setTotalCount] = useState(0);
+  /** 已应用到请求的筛选条件（点击「搜索」时更新），翻页时沿用 */
+  const [appliedFilters, setAppliedFilters] = useState<SearchFilters>({
+    coreProduct: '',
+    externalSystem: '',
+    syncStatus: '',
+    mappingType: '',
+  });
 
-  const fetchMappings = async () => {
+  const fetchMappings = async (
+    pageNum?: number,
+    limitNum?: number,
+    filters?: SearchFilters
+  ) => {
+    const p = pageNum ?? page + 1;
+    const l = limitNum ?? rowsPerPage;
+    const f = filters ?? appliedFilters;
     try {
       setLoading(true);
       setError(null);
 
-      frontendLogger.info('🔍 开始获取商品映射数据');
+      const params: Record<string, string | number> = {
+        page: p,
+        limit: l,
+      };
+      if (f.coreProduct?.trim()) {
+        params.core_product_title = f.coreProduct.trim();
+      }
+      if (f.externalSystem?.trim()) {
+        params.system_type = f.externalSystem.trim();
+      }
+      if (f.syncStatus?.trim()) {
+        params.sync_status = f.syncStatus.trim();
+      }
+      if (f.mappingType?.trim()) {
+        params.mapping_type = f.mappingType.trim();
+      }
 
-      // 获取商品映射数据
+      frontendLogger.info('🔍 开始获取商品映射数据', { page: p, limit: l, params });
+
       const response = await frontendApi.get('/api/products/mappings', {
-        params: {
-          page: 1,
-          limit: 100,
-        },
+        params,
       });
 
       const mappingsData = response.data.mappings || [];
+      const total =
+        response.data.pagination?.total ??
+        response.data.total ??
+        0;
       frontendLogger.info('✅ 商品映射数据获取成功', {
         count: mappingsData.length,
+        total,
       });
 
       setMappings(mappingsData);
-      setFilteredMappings(mappingsData);
+      setTotalCount(total);
     } catch (err: any) {
       frontendLogger.error('❌ 获取商品映射数据失败', {
         error: err.response?.data?.detail || err.message,
@@ -125,43 +165,29 @@ export function ProductMappingManager() {
   };
 
   useEffect(() => {
-    fetchMappings();
-  }, []);
+    fetchMappings(page + 1, rowsPerPage, appliedFilters);
+  }, [page, rowsPerPage, appliedFilters.coreProduct, appliedFilters.externalSystem, appliedFilters.syncStatus, appliedFilters.mappingType]);
 
-  // 过滤映射数据
-  useEffect(() => {
-    let filtered = mappings;
+  /** 点击「搜索」：应用当前筛选并跳到第 1 页（useEffect 会带 appliedFilters 请求） */
+  const handleSearch = () => {
+    setAppliedFilters(searchFilters);
+    setPage(0);
+    setSelectedMappingIds([]);
+  };
 
-    if (searchFilters.coreProduct) {
-      filtered = filtered.filter(mapping =>
-        mapping.core_product_title
-          .toLowerCase()
-          .includes(searchFilters.coreProduct.toLowerCase())
-      );
-    }
-
-    if (searchFilters.externalSystem) {
-      filtered = filtered.filter(mapping =>
-        mapping.external_system_name
-          .toLowerCase()
-          .includes(searchFilters.externalSystem.toLowerCase())
-      );
-    }
-
-    if (searchFilters.syncStatus) {
-      filtered = filtered.filter(
-        mapping => mapping.sync_status === searchFilters.syncStatus
-      );
-    }
-
-    if (searchFilters.mappingType) {
-      filtered = filtered.filter(
-        mapping => mapping.mapping_type === searchFilters.mappingType
-      );
-    }
-
-    setFilteredMappings(filtered);
-  }, [mappings, searchFilters]);
+  /** 点击「清空」：清除筛选并跳到第 1 页 */
+  const handleClearFiltersAndSearch = () => {
+    const empty: SearchFilters = {
+      coreProduct: '',
+      externalSystem: '',
+      syncStatus: '',
+      mappingType: '',
+    };
+    setSearchFilters(empty);
+    setAppliedFilters(empty);
+    setPage(0);
+    setSelectedMappingIds([]);
+  };
 
   const getSystemIcon = (systemType: string) => {
     switch (systemType) {
@@ -255,14 +281,6 @@ export function ProductMappingManager() {
     }));
   };
 
-  const handleClearFilters = () => {
-    setSearchFilters({
-      coreProduct: '',
-      externalSystem: '',
-      syncStatus: '',
-      mappingType: '',
-    });
-  };
 
   const handleViewMapping = (mapping: ProductMapping) => {
     frontendLogger.info('👁️ 查看商品映射详情', { mappingId: mapping.id });
@@ -281,6 +299,92 @@ export function ProductMappingManager() {
     setDeleteDialogOpen(true);
   };
 
+  const toggleSelectAll = () => {
+    if (selectedMappingIds.length >= mappings.length) {
+      setSelectedMappingIds([]);
+    } else {
+      setSelectedMappingIds(mappings.map(m => m.id_hashid));
+    }
+  };
+
+  const toggleSelectOne = (idHashid: string) => {
+    setSelectedMappingIds(prev =>
+      prev.includes(idHashid)
+        ? prev.filter(id => id !== idHashid)
+        : [...prev, idHashid]
+    );
+  };
+
+  /** 当前是否有任意筛选条件已应用（用于「按条件全部删除」） */
+  const hasAppliedFilter = Boolean(
+    appliedFilters.coreProduct?.trim() ||
+      appliedFilters.externalSystem?.trim() ||
+      appliedFilters.syncStatus?.trim() ||
+      appliedFilters.mappingType?.trim()
+  );
+
+  const handleBatchDelete = () => {
+    if (selectedMappingIds.length === 0) return;
+    setBatchDeleteDialogOpen(true);
+  };
+
+  const handleDeleteByFilter = () => {
+    if (!hasAppliedFilter) return;
+    setDeleteByFilterDialogOpen(true);
+  };
+
+  const confirmDeleteByFilter = async () => {
+    if (!hasAppliedFilter) return;
+    try {
+      setDeleteByFiltering(true);
+      setError(null);
+      const body: Record<string, string | undefined> = {};
+      if (appliedFilters.coreProduct?.trim()) body.core_product_title = appliedFilters.coreProduct.trim();
+      if (appliedFilters.externalSystem?.trim()) body.system_type = appliedFilters.externalSystem.trim();
+      if (appliedFilters.syncStatus?.trim()) body.sync_status = appliedFilters.syncStatus.trim();
+      if (appliedFilters.mappingType?.trim()) body.mapping_type = appliedFilters.mappingType.trim();
+      const res = await frontendApi.post('/api/products/mappings/batch-delete-by-filter', body);
+      frontendLogger.info('✅ 按条件全部删除成功', res.data);
+      setDeleteByFilterDialogOpen(false);
+      setPage(0);
+      setSelectedMappingIds([]);
+      await fetchMappings(1, rowsPerPage, appliedFilters);
+    } catch (err: any) {
+      frontendLogger.error('❌ 按条件全部删除失败', {
+        error: err.response?.data?.detail || err.message,
+      });
+      setError(
+        err.response?.data?.detail || err.message || '按条件删除失败'
+      );
+    } finally {
+      setDeleteByFiltering(false);
+    }
+  };
+
+  const confirmBatchDelete = async () => {
+    if (selectedMappingIds.length === 0) return;
+    try {
+      setBatchDeleting(true);
+      setError(null);
+      const res = await frontendApi.post('/api/products/mappings/batch-delete', {
+        mapping_id_hashids: selectedMappingIds,
+      });
+      frontendLogger.info('✅ 批量删除映射成功', res.data);
+      setSelectedMappingIds([]);
+      setBatchDeleteDialogOpen(false);
+      await fetchMappings(page + 1, rowsPerPage);
+    } catch (err: any) {
+      frontendLogger.error('❌ 批量删除映射失败', {
+        error: err.response?.data?.detail || err.message,
+      });
+      setError(
+        err.response?.data?.detail || err.message || '批量删除失败'
+      );
+    } finally {
+      setBatchDeleting(false);
+    }
+  };
+
   const confirmDeleteMapping = async () => {
     if (!mappingToDelete) return;
 
@@ -297,8 +401,8 @@ export function ProductMappingManager() {
         mappingId: mappingToDelete.id,
       });
 
-      // 刷新数据
-      await fetchMappings();
+      // 刷新数据（沿用当前筛选）
+      await fetchMappings(page + 1, rowsPerPage, appliedFilters);
       setDeleteDialogOpen(false);
       setMappingToDelete(null);
     } catch (err: any) {
@@ -346,10 +450,29 @@ export function ProductMappingManager() {
           <Button
             variant='outlined'
             startIcon={<RefreshIcon />}
-            onClick={fetchMappings}
+            onClick={() => fetchMappings(page + 1, rowsPerPage, appliedFilters)}
             disabled={loading}
           >
             刷新数据
+          </Button>
+          <Button
+            variant='outlined'
+            color='error'
+            startIcon={<DeleteIcon />}
+            onClick={handleBatchDelete}
+            disabled={selectedMappingIds.length === 0}
+          >
+            批量删除{selectedMappingIds.length > 0 ? ` (${selectedMappingIds.length})` : ''}
+          </Button>
+          <Button
+            variant='outlined'
+            color='error'
+            startIcon={<DeleteIcon />}
+            onClick={handleDeleteByFilter}
+            disabled={!hasAppliedFilter || totalCount === 0 || loading}
+            title={!hasAppliedFilter ? '请先设置筛选条件并点击「搜索」' : `删除符合当前条件的共 ${totalCount} 条映射`}
+          >
+            按条件全部删除{totalCount > 0 ? ` (${totalCount})` : ''}
           </Button>
           <Button
             variant='contained'
@@ -387,16 +510,22 @@ export function ProductMappingManager() {
               />
             </Box>
             <Box sx={{ width: "100%" }} md={3}>
-              <TextField
-                fullWidth
-                label='外部系统'
-                value={searchFilters.externalSystem}
-                onChange={e =>
-                  handleSearchChange('externalSystem', e.target.value)
-                }
-                placeholder='输入外部系统名称'
-                size='small'
-              />
+              <FormControl fullWidth size='small'>
+                <InputLabel>外部系统</InputLabel>
+                <Select
+                  value={searchFilters.externalSystem}
+                  onChange={e =>
+                    handleSearchChange('externalSystem', e.target.value)
+                  }
+                  label='外部系统'
+                >
+                  <MenuItem value=''>全部</MenuItem>
+                  <MenuItem value='SHOPIFY'>Shopify</MenuItem>
+                  <MenuItem value='PRINTIFY'>Printify</MenuItem>
+                  <MenuItem value='YAHOO'>Yahoo</MenuItem>
+                  <MenuItem value='RAKUTEN'>乐天</MenuItem>
+                </Select>
+              </FormControl>
             </Box>
             <Box sx={{ width: "100%" }} md={2}>
               <FormControl fullWidth size='small'>
@@ -439,14 +568,14 @@ export function ProductMappingManager() {
                 <Button
                   variant='outlined'
                   startIcon={<SearchIcon />}
-                  onClick={() => {}} // 过滤逻辑在useEffect中处理
+                  onClick={handleSearch}
                   size='small'
                 >
                   搜索
                 </Button>
                 <Button
                   variant='text'
-                  onClick={handleClearFilters}
+                  onClick={handleClearFiltersAndSearch}
                   size='small'
                 >
                   清空
@@ -467,7 +596,12 @@ export function ProductMappingManager() {
             mb={2}
           >
             <Typography variant='h6' component='h2'>
-              映射列表 ({filteredMappings.length} 条)
+              映射列表（共 {totalCount} 条，本页 {mappings.length} 条）
+              {selectedMappingIds.length > 0 && (
+                <Typography component='span' variant='body2' color='text.secondary' sx={{ ml: 1 }}>
+                  已选 {selectedMappingIds.length} 条
+                </Typography>
+              )}
             </Typography>
           </Box>
 
@@ -475,6 +609,20 @@ export function ProductMappingManager() {
             <Table>
               <TableHead>
                 <TableRow>
+                  <TableCell padding='checkbox'>
+                    <Checkbox
+                      indeterminate={
+                        selectedMappingIds.length > 0 &&
+                        selectedMappingIds.length < mappings.length
+                      }
+                      checked={
+                        mappings.length > 0 &&
+                        selectedMappingIds.length === mappings.length
+                      }
+                      onChange={toggleSelectAll}
+                      aria-label='全选'
+                    />
+                  </TableCell>
                   <TableCell>核心商品</TableCell>
                   <TableCell>核心变体</TableCell>
                   <TableCell>外部系统</TableCell>
@@ -487,17 +635,25 @@ export function ProductMappingManager() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {filteredMappings.length === 0 ? (
+                {mappings.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} align='center'>
+                    <TableCell colSpan={10} align='center'>
                       <Typography variant='body2' color='text.secondary'>
                         暂无映射记录
                       </Typography>
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredMappings.map(mapping => (
+                  mappings.map(mapping => (
                     <TableRow key={mapping.id} hover>
+                      <TableCell padding='checkbox'>
+                        <Checkbox
+                          checked={selectedMappingIds.includes(mapping.id_hashid)}
+                          onChange={() => toggleSelectOne(mapping.id_hashid)}
+                          onClick={e => e.stopPropagation()}
+                          aria-label={`选择 ${mapping.core_product_title}`}
+                        />
+                      </TableCell>
                       <TableCell>
                         <Typography variant='body2' fontWeight='medium'>
                           {mapping.core_product_title}
@@ -601,6 +757,26 @@ export function ProductMappingManager() {
               </TableBody>
             </Table>
           </TableContainer>
+          <TablePagination
+            component='div'
+            count={totalCount}
+            page={page}
+            onPageChange={(_, newPage) => {
+              setPage(newPage);
+              setSelectedMappingIds([]);
+            }}
+            rowsPerPage={rowsPerPage}
+            onRowsPerPageChange={e => {
+              setRowsPerPage(parseInt(e.target.value, 10));
+              setPage(0);
+              setSelectedMappingIds([]);
+            }}
+            rowsPerPageOptions={[10, 20, 50, 100]}
+            labelRowsPerPage='每页'
+            labelDisplayedRows={({ from, to, count }) =>
+              `${from}–${to} / 共 ${count !== -1 ? count : `${to} 以上`} 条`
+            }
+          />
         </CardContent>
       </Card>
 
@@ -635,6 +811,50 @@ export function ProductMappingManager() {
           <Button onClick={() => setDeleteDialogOpen(false)}>取消</Button>
           <Button onClick={confirmDeleteMapping} color='error' autoFocus>
             删除
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 批量删除确认对话框 */}
+      <Dialog
+        open={batchDeleteDialogOpen}
+        onClose={() => !batchDeleting && setBatchDeleteDialogOpen(false)}
+        aria-labelledby='batch-delete-dialog-title'
+      >
+        <DialogTitle id='batch-delete-dialog-title'>确认批量删除</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            确定要删除选中的 <strong>{selectedMappingIds.length}</strong> 条映射吗？此操作不可撤销。
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setBatchDeleteDialogOpen(false)} disabled={batchDeleting}>
+            取消
+          </Button>
+          <Button onClick={confirmBatchDelete} color='error' disabled={batchDeleting}>
+            {batchDeleting ? '删除中…' : '全部删除'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 按条件全部删除确认对话框 */}
+      <Dialog
+        open={deleteByFilterDialogOpen}
+        onClose={() => !deleteByFiltering && setDeleteByFilterDialogOpen(false)}
+        aria-labelledby='delete-by-filter-dialog-title'
+      >
+        <DialogTitle id='delete-by-filter-dialog-title'>按条件全部删除</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            将删除符合<strong>当前筛选条件</strong>的共 <strong>{totalCount}</strong> 条映射（如：外部系统=Shopify 时删除全部 Shopify 映射）。此操作不可撤销，确定继续？
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteByFilterDialogOpen(false)} disabled={deleteByFiltering}>
+            取消
+          </Button>
+          <Button onClick={confirmDeleteByFilter} color='error' disabled={deleteByFiltering}>
+            {deleteByFiltering ? '删除中…' : '确定删除'}
           </Button>
         </DialogActions>
       </Dialog>

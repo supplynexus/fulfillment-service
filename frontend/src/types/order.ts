@@ -112,9 +112,14 @@ export interface LineItem {
   // 核心系统ID
   core_product_id?: string;
   core_variant_id?: string;
+  /** 核心商品 hashid，用于「去绑定 Printify」等链接 */
+  core_product_id_hashid?: string;
   // 外部系统ID
   external_product_id?: string;
   external_variant_id?: string;
+  // 外部商品链接（订单详情用）
+  shopify_product_url?: string;
+  printify_product_url?: string;
   // 其他字段
   fulfillment_status?: string;
   item_metadata?: { [key: string]: any };

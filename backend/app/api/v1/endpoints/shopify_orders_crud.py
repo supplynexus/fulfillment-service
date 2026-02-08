@@ -7,7 +7,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, or_
+from sqlalchemy import select, func, and_, or_, cast, String
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_async_db
@@ -80,12 +80,12 @@ async def get_shopify_orders(
         if cancelled is not None:
             query = query.where(ShopifyOrder.cancelled == cancelled)
         
-        # 搜索功能
+        # 搜索功能（JSONB 字段用 cast 转文本再 ilike，避免 .astext 在 SQLAlchemy 2.x 不可用）
         if search:
             search_filter = or_(
                 ShopifyOrder.name.ilike(f"%{search}%"),
                 ShopifyOrder.confirmation_number.ilike(f"%{search}%"),
-                ShopifyOrder.customer_data["email"].astext.ilike(f"%{search}%")
+                cast(ShopifyOrder.customer_data["email"], String).ilike(f"%{search}%")
             )
             query = query.where(search_filter)
         

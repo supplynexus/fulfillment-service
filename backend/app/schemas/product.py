@@ -97,7 +97,9 @@ class ProductResponse(BaseModel):
     variants: List[ProductVariantResponse] = []
     tags: List[ProductTagResponse] = []
     mappings: List[ProductMappingResponse] = []
-    
+    # 列表/筛选用：是否已绑定 Printify（仅当 include_mappings 时可靠）
+    has_printify_mapping: Optional[bool] = None
+
     class Config:
         from_attributes = True
 

@@ -507,6 +507,81 @@ async def test_printify_connection(
         )
 
 
+@router.get("/printify/{external_system_hashid}/shops", response_model=dict)
+async def get_printify_shops(
+    external_system_hashid: str,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
+) -> Any:
+    """
+    Get list of Printify shops for the given external system (by hashid).
+    Used for config UI: show dropdown to pick preferred shop (printify_shop_id).
+    """
+    from app.core.hashids_utils import decode_id
+    from app.services.printify_service import PrintifyService
+
+    logger = get_logger(__name__)
+    tenant, user = auth
+
+    try:
+        external_system_id = decode_id(external_system_hashid)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid external system ID",
+        )
+
+    service = ExternalSystemService(db)
+    external_system = await service.get_external_system(external_system_id, tenant.id)
+    if not external_system:
+        raise HTTPException(status_code=404, detail="External system not found")
+    if external_system.system_type != ExternalSystemType.PRINTIFY:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Not a Printify external system",
+        )
+
+    decrypted_credentials = await service.get_decrypted_credentials(
+        external_system.id, tenant.id
+    )
+    if not decrypted_credentials:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Could not decrypt credentials",
+        )
+    access_token = decrypted_credentials.get("access_token")
+    if not access_token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Access Token not configured",
+        )
+
+    printify_service = PrintifyService(printify_api_token=access_token)
+    shops = await printify_service.get_shops()
+    if not shops:
+        shops = []
+
+    # Normalize: ensure id is present (Printify API may return id as int)
+    shop_list = [
+        {
+            "id": s.get("id"),
+            "title": s.get("title") or "",
+            "sales_channel": s.get("sales_channel") or "disconnected",
+        }
+        for s in shops
+        if s.get("id") is not None
+    ]
+    printify_shop_id = (external_system.settings or {}).get("printify_shop_id")
+    if printify_shop_id is not None:
+        printify_shop_id = str(printify_shop_id).strip() or None
+
+    return {
+        "shops": shop_list,
+        "shops_count": len(shop_list),
+        "printify_shop_id": printify_shop_id,
+    }
+
+
 @router.post("/shopify/test-connection", response_model=dict)
 async def test_shopify_connection(
     request_data: dict,
@@ -686,7 +761,10 @@ async def get_printify_products(
             )
 
         access_token = decrypted_credentials.get("access_token")
-        shop_id = decrypted_credentials.get("shop_id")
+        # Prefer preferred shop from settings (e.g. when tenant has multiple Printify shops)
+        shop_id = (external_system.settings or {}).get("printify_shop_id") or decrypted_credentials.get("shop_id")
+        if shop_id is not None:
+            shop_id = str(shop_id).strip() or None
 
         if not access_token:
             logger.error(
@@ -712,14 +790,29 @@ async def get_printify_products(
         logger.info(f"🔍 开始调用 Printify API 获取商品列表: shop_id={shop_id}")
         products = await printify_service.get_products(shop_id)
 
+        # 为每条商品附加 is_published（sales_channel_properties 非空），供前端筛选与角标
+        def _is_published(p: dict) -> bool:
+            scp = p.get("sales_channel_properties")
+            if scp is None:
+                return False
+            if isinstance(scp, list):
+                return len(scp) > 0
+            if isinstance(scp, dict):
+                return bool(scp)
+            return False
+
+        products_with_flag = [
+            {**p, "is_published": _is_published(p)} for p in products
+        ]
+
         logger.info(f"✅ Printify 商品列表获取成功: 数量={len(products)}")
 
         return {
             "success": True,
             "external_system_id": external_system_hashid,
             "shop_id": shop_id,
-            "products": products,
-            "total_count": len(products),
+            "products": products_with_flag,
+            "total_count": len(products_with_flag),
             "message": "Products retrieved successfully",
         }
 
@@ -798,7 +891,9 @@ async def get_printify_order_details(
         logger.info(f"✅ 凭据解密成功: external_system_id={external_system.id}")
 
         access_token = decrypted_credentials.get("access_token")
-        shop_id = decrypted_credentials.get("shop_id")
+        shop_id = (external_system.settings or {}).get("printify_shop_id") or decrypted_credentials.get("shop_id")
+        if shop_id is not None:
+            shop_id = str(shop_id).strip() or None
 
         if not access_token:
             logger.error(
@@ -928,7 +1023,9 @@ async def get_printify_orders(
         logger.info(f"✅ 凭据解密成功: external_system_id={external_system.id}")
 
         access_token = decrypted_credentials.get("access_token")
-        shop_id = decrypted_credentials.get("shop_id")
+        shop_id = (external_system.settings or {}).get("printify_shop_id") or decrypted_credentials.get("shop_id")
+        if shop_id is not None:
+            shop_id = str(shop_id).strip() or None
 
         if not access_token:
             logger.error(
@@ -1242,7 +1339,9 @@ async def test_connection_by_external_id(
             from app.services.printify_service import PrintifyService
 
             access_token = decrypted_credentials.get("access_token")
-            shop_id = decrypted_credentials.get("shop_id")
+            shop_id = (external_system.settings or {}).get("printify_shop_id") or decrypted_credentials.get("shop_id")
+            if shop_id is not None:
+                shop_id = str(shop_id).strip() or None
 
             if not access_token:
                 logger.error(

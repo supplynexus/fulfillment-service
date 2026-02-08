@@ -12,6 +12,7 @@ import {
   IconButton,
   Alert,
   CircularProgress,
+  LinearProgress,
   Grid,
   Pagination,
   TextField,
@@ -29,6 +30,7 @@ import {
   Paper,
   Tooltip,
   Badge,
+  Checkbox,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -43,12 +45,17 @@ import {
   Sort as SortIcon,
   Link as LinkIcon,
   Sync as SyncIcon,
+  CheckBox as CheckBoxIcon,
+  CheckBoxOutlineBlank as CheckBoxOutlineBlankIcon,
 } from '@mui/icons-material';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import toast from 'react-hot-toast';
 import { frontendApi } from '@/lib/api';
 import { frontendLogger } from '@/lib/frontend-logger';
 import { ProductMappingDialog } from '@/components/printify/ProductMappingDialog';
+
+const TOAST_SYNC_ID = 'printify-batch-sync';
 
 interface PrintifyProduct {
   id: string;
@@ -85,6 +92,8 @@ interface PrintifyProduct {
   updated_at: string;
   visible: boolean;
   is_locked: boolean;
+  /** 是否已发布到销售渠道（与 Printify 后台 Published 一致），用于筛选 */
+  is_published?: boolean;
   external: {
     id: string;
     handle: string;
@@ -129,6 +138,8 @@ function PrintifyProductsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  /** 发布状态筛选: 'all' | 'published' | 'unpublished' */
+  const [publishedFilter, setPublishedFilter] = useState<'all' | 'published' | 'unpublished'>('all');
   const [filteredProducts, setFilteredProducts] = useState<PrintifyProduct[]>(
     []
   );
@@ -140,6 +151,13 @@ function PrintifyProductsPage() {
   const [openMappingDialog, setOpenMappingDialog] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  /** 列表勾选中的 Printify 商品 id，用于批量同步到本地 */
+  const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(
+    () => new Set()
+  );
+  const [batchSyncing, setBatchSyncing] = useState(false);
+  /** 当前批量同步的数量（用于同步中展示「正在同步 N 个」） */
+  const [batchSyncCount, setBatchSyncCount] = useState(0);
 
   // 获取 Printify 店铺列表
   const fetchStores = useCallback(async () => {
@@ -227,12 +245,11 @@ function PrintifyProductsPage() {
     }
   }, [selectedStore, fetchProducts]);
 
-  // 搜索过滤
+  // 搜索 + 发布状态筛选
   useEffect(() => {
-    if (!searchTerm) {
-      setFilteredProducts(products);
-    } else {
-      const filtered = products.filter(
+    let list = products;
+    if (searchTerm) {
+      list = list.filter(
         product =>
           product.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
           product.description
@@ -242,10 +259,15 @@ function PrintifyProductsPage() {
             tag.toLowerCase().includes(searchTerm.toLowerCase())
           )
       );
-      setFilteredProducts(filtered);
     }
-    setPage(1); // 重置到第一页
-  }, [searchTerm, products]);
+    if (publishedFilter === 'published') {
+      list = list.filter(p => p.is_published === true);
+    } else if (publishedFilter === 'unpublished') {
+      list = list.filter(p => p.is_published !== true);
+    }
+    setFilteredProducts(list);
+    setPage(1);
+  }, [searchTerm, publishedFilter, products]);
 
   // 初始化
   useEffect(() => {
@@ -307,6 +329,7 @@ function PrintifyProductsPage() {
     try {
       setSyncing(true);
       setError(null);
+      toast.loading('正在同步该商品到本地…', { id: 'printify-single-sync' });
 
       frontendLogger.info('🔄 开始同步单个 Printify 商品到本地数据库', {
         productId: product.id,
@@ -322,21 +345,103 @@ function PrintifyProductsPage() {
         }
       );
 
+      toast.success(`同步成功：${product.title} 已写入本地`, {
+        id: 'printify-single-sync',
+      });
       frontendLogger.info('✅ Printify 商品同步成功', response.data);
 
-      // 刷新商品列表
       await fetchProducts(selectedStore);
-    } catch (error) {
+    } catch (err: any) {
       frontendLogger.error('❌ Printify 商品同步失败', {
-        error: String(error),
+        error: String(err),
         productId: product.id,
       });
+      const msg = err.response?.data?.detail || '同步失败';
       setError('同步 Printify 商品失败');
+      toast.error(msg, { id: 'printify-single-sync' });
     } finally {
       setSyncing(false);
     }
   };
 
+  const toggleSelect = (id: string) => {
+    setSelectedProductIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllOnPage = () => {
+    const ids = currentProducts.map(p => p.id);
+    setSelectedProductIds(prev => {
+      const next = new Set(prev);
+      ids.forEach(id => next.add(id));
+      return next;
+    });
+  };
+
+  const selectAllFiltered = () => {
+    setSelectedProductIds(new Set(filteredProducts.map(p => p.id)));
+  };
+
+  const clearSelection = () => {
+    setSelectedProductIds(new Set());
+  };
+
+  const handleBatchSyncToLocal = async () => {
+    if (!selectedStore || selectedProductIds.size === 0) {
+      setError('请先勾选要同步的商品');
+      return;
+    }
+    const productIds = Array.from(selectedProductIds);
+    const count = productIds.length;
+    setBatchSyncCount(count);
+    setBatchSyncing(true);
+    setError(null);
+    toast.loading(`正在同步 ${count} 个商品到本地，请稍候…`, {
+      id: TOAST_SYNC_ID,
+      duration: Infinity,
+    });
+    try {
+      frontendLogger.info('🔄 批量同步 Printify 商品到本地', {
+        storeId: selectedStore.id_hashid,
+        count,
+      });
+      const response = await frontendApi.post(
+        '/api/printify-sync/sync-products',
+        {
+          external_system_id_hashid: selectedStore.id_hashid,
+          product_ids: productIds,
+        }
+      );
+      const data = response?.data ?? {};
+      const totalSynced = data.total_synced ?? count;
+      const totalErrors = data.total_errors ?? 0;
+      frontendLogger.info('✅ 批量同步完成', data);
+      setSelectedProductIds(new Set());
+      await fetchProducts(selectedStore);
+      if (totalErrors > 0) {
+        toast.success(
+          `同步完成：成功 ${totalSynced} 个，失败 ${totalErrors} 个`,
+          { id: TOAST_SYNC_ID, duration: 5000 }
+        );
+      } else {
+        toast.success(`同步成功：共 ${totalSynced} 个商品已写入本地`, {
+          id: TOAST_SYNC_ID,
+        });
+      }
+    } catch (err: any) {
+      frontendLogger.error('❌ 批量同步失败', { error: String(err) });
+      const msg = err.response?.data?.detail || '批量同步失败';
+      setError(msg);
+      toast.error(msg, { id: TOAST_SYNC_ID, duration: 5000 });
+    } finally {
+      setBatchSyncing(false);
+      setBatchSyncCount(0);
+    }
+  };
 
   return (
     <ProtectedRoute>
@@ -422,9 +527,111 @@ function PrintifyProductsPage() {
                   color='primary'
                   variant='outlined'
                 />
+                <Typography variant='body2' color='text.secondary' sx={{ whiteSpace: 'nowrap' }}>
+                  发布状态:
+                </Typography>
+                <Chip
+                  label='全部'
+                  size='small'
+                  onClick={() => setPublishedFilter('all')}
+                  color={publishedFilter === 'all' ? 'primary' : 'default'}
+                  variant={publishedFilter === 'all' ? 'filled' : 'outlined'}
+                />
+                <Chip
+                  label='已发布'
+                  size='small'
+                  onClick={() => setPublishedFilter('published')}
+                  color={publishedFilter === 'published' ? 'primary' : 'default'}
+                  variant={publishedFilter === 'published' ? 'filled' : 'outlined'}
+                />
+                <Chip
+                  label='未发布'
+                  size='small'
+                  onClick={() => setPublishedFilter('unpublished')}
+                  color={publishedFilter === 'unpublished' ? 'primary' : 'default'}
+                  variant={publishedFilter === 'unpublished' ? 'filled' : 'outlined'}
+                />
               </Box>
             </CardContent>
           </Card>
+
+          {/* 批量操作工具栏：全选 + 一键同步到本地 */}
+          {!loading && selectedStore && filteredProducts.length > 0 && (
+            <Card sx={{ mb: 2 }}>
+              <CardContent>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 2,
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <Button
+                    size='small'
+                    variant='outlined'
+                    onClick={selectAllOnPage}
+                    disabled={batchSyncing}
+                  >
+                    全选当前页
+                  </Button>
+                  <Button
+                    size='small'
+                    variant='outlined'
+                    onClick={selectAllFiltered}
+                    disabled={batchSyncing}
+                  >
+                    全选全部（{filteredProducts.length} 个）
+                  </Button>
+                  <Button
+                    size='small'
+                    variant='outlined'
+                    onClick={clearSelection}
+                    disabled={
+                      selectedProductIds.size === 0 || batchSyncing
+                    }
+                  >
+                    取消全选
+                  </Button>
+                  <Typography variant='body2' color='text.secondary'>
+                    已选 {selectedProductIds.size} 个
+                  </Typography>
+                  <Button
+                    variant='contained'
+                    startIcon={
+                      batchSyncing ? (
+                        <CircularProgress size={16} color='inherit' />
+                      ) : (
+                        <SyncIcon />
+                      )
+                    }
+                    onClick={handleBatchSyncToLocal}
+                    disabled={
+                      batchSyncing || selectedProductIds.size === 0
+                    }
+                  >
+                    {batchSyncing ? '同步中…' : '一键同步到本地'}
+                  </Button>
+                </Box>
+                {batchSyncing && batchSyncCount > 0 && (
+                  <Box sx={{ mt: 2 }}>
+                    <LinearProgress
+                      sx={{ mb: 1, borderRadius: 1 }}
+                      color='primary'
+                    />
+                    <Typography
+                      variant='body2'
+                      color='text.secondary'
+                      sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
+                    >
+                      <CircularProgress size={12} color='inherit' />
+                      正在同步 {batchSyncCount} 个商品到本地，请稍候…
+                    </Typography>
+                  </Box>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* 错误提示 */}
           {error && (
@@ -485,8 +692,40 @@ function PrintifyProductsPage() {
                             height: '100%',
                             display: 'flex',
                             flexDirection: 'column',
+                            position: 'relative',
                           }}
                         >
+                          <Box
+                            sx={{
+                              position: 'absolute',
+                              top: 8,
+                              right: 8,
+                              zIndex: 1,
+                            }}
+                          >
+                            <Chip
+                              label={product.is_published ? '已发布' : '未发布'}
+                              size='small'
+                              color={product.is_published ? 'success' : 'default'}
+                              variant='filled'
+                              sx={{ opacity: 0.95 }}
+                            />
+                          </Box>
+                          <Box
+                            sx={{
+                              position: 'absolute',
+                              top: 8,
+                              left: 8,
+                              zIndex: 1,
+                            }}
+                          >
+                            <Checkbox
+                              size='small'
+                              checked={selectedProductIds.has(product.id)}
+                              onChange={() => toggleSelect(product.id)}
+                              sx={{ bgcolor: 'background.paper', borderRadius: 1 }}
+                            />
+                          </Box>
                           <CardMedia
                             component='img'
                             image={getProductImage(product)}
@@ -737,13 +976,19 @@ function PrintifyProductsPage() {
             <DialogActions>
               <Button
                 variant='outlined'
-                startIcon={<SyncIcon />}
+                startIcon={
+                  syncing ? (
+                    <CircularProgress size={16} color='inherit' />
+                  ) : (
+                    <SyncIcon />
+                  )
+                }
                 onClick={() => handleSyncProduct(selectedProduct!)}
                 disabled={syncing}
                 color='primary'
                 sx={{ mr: 1 }}
               >
-                {syncing ? '同步中...' : '同步到本地'}
+                {syncing ? '同步中…' : '同步到本地'}
               </Button>
               <Button
                 variant='outlined'

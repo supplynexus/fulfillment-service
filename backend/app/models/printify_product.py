@@ -37,6 +37,7 @@ class PrintifyProduct(Base):
     # 商品状态
     visible = Column(Boolean, nullable=False, default=True)  # 是否可见
     is_locked = Column(Boolean, nullable=False, default=False)  # 是否锁定
+    is_published = Column(Boolean, nullable=False, default=True)  # 是否已发布到销售渠道（sales_channel_properties 非空），用于列表筛选
     
     # 外部系统信息
     external = Column(JSON, nullable=True)  # 外部系统信息 {id, handle, sku}
@@ -82,6 +83,7 @@ class PrintifyProduct(Base):
         Index('idx_printify_products_printify_product_id', 'printify_product_id'),
         Index('idx_printify_products_printify_shop_id', 'printify_shop_id'),
         Index('idx_printify_products_visible', 'visible'),
+        Index('idx_printify_products_is_published', 'is_published'),
         Index('idx_printify_products_sync_status', 'sync_status'),
         Index('idx_printify_products_created_at', 'created_at'),
         Index('idx_printify_products_tenant_system_product', 'tenant_id', 'external_system_id', 'printify_product_id'),
@@ -103,6 +105,7 @@ class PrintifyProduct(Base):
             'tags': self.tags,
             'visible': self.visible,
             'is_locked': self.is_locked,
+            'is_published': self.is_published,
             'external': self.external,
             'user_id': self.user_id,
             'print_provider_id': self.print_provider_id,

@@ -4,7 +4,8 @@ Product management endpoints - 新的商品系统API
 
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, delete
+from sqlalchemy import select, func, delete, or_, and_, cast
+from sqlalchemy import String, Text
 from sqlalchemy.orm import selectinload
 from typing import Any, List, Optional
 from pydantic import BaseModel
@@ -117,6 +118,24 @@ async def get_products(
         
         logger.info(f"✅ 查询到 {len(products)} 个商品")
         
+        # 批量加载当前页商品映射涉及的外部系统，用于显示「映射到谁」(SHOPIFY/PRINTIFY 等)
+        external_system_id_to_type: dict[int, str] = {}
+        if include_mappings and products:
+            es_ids = set()
+            for p in products:
+                if p.mappings:
+                    for m in p.mappings:
+                        if m.external_system_id:
+                            es_ids.add(m.external_system_id)
+            if es_ids:
+                es_result = await db.execute(
+                    select(ExternalSystem.id, ExternalSystem.system_type).where(
+                        ExternalSystem.id.in_(es_ids)
+                    )
+                )
+                for row in es_result.all():
+                    external_system_id_to_type[row.id] = row.system_type.value if row.system_type else "Unknown"
+        
         # 转换为响应格式
         product_responses = []
         for product in products:
@@ -173,22 +192,15 @@ async def get_products(
                             sort_order=product_tag.sort_order
                         ))
             
-            # 构建映射响应
+            # 构建映射响应（external_system_name 使用真实系统类型，如 SHOPIFY/PRINTIFY）
             mappings = []
             if include_mappings and product.mappings:
                 for mapping in product.mappings:
-                    # 获取外部系统名称 - 安全访问，避免懒加载
-                    external_system_name = "Unknown"
-                    try:
-                        # 检查是否有外部系统ID，如果有则查询外部系统名称
-                        if mapping.external_system_id:
-                            # 这里我们暂时使用 "External System" 作为默认名称
-                            # 在实际应用中，可以通过额外的查询获取外部系统名称
-                            external_system_name = f"External System {mapping.external_system_id}"
-                    except Exception as e:
-                        logger.warning(f"无法获取外部系统名称: {str(e)}")
-                        external_system_name = "Unknown"
-                    
+                    external_system_name = (
+                        external_system_id_to_type.get(mapping.external_system_id)
+                        if mapping.external_system_id
+                        else "Unknown"
+                    )
                     mappings.append(ProductMappingResponse(
                         id_hashid=encode_id(mapping.id),
                         external_system_name=external_system_name,
@@ -199,7 +211,14 @@ async def get_products(
                         sync_status=mapping.sync_status,
                         last_synced_at=mapping.last_synced_at
                     ))
-            
+            has_printify_mapping = (
+                any(
+                    external_system_id_to_type.get(m.external_system_id) == "PRINTIFY"
+                    for m in (product.mappings or [])
+                )
+                if include_mappings and product.mappings
+                else None
+            )
             # 构建商品响应
             product_response = ProductResponse(
                 id_hashid=encode_id(product.id),
@@ -218,6 +237,7 @@ async def get_products(
                 dimensions=dimensions,
                 variants=variants,
                 tags=tags,
+                has_printify_mapping=has_printify_mapping,
                 mappings=mappings
             )
             
@@ -309,6 +329,19 @@ async def get_product(
         
         logger.info(f"✅ 找到商品: {product.title} (ID: {product.id})")
         
+        # 单商品详情：加载映射涉及的外部系统类型，用于 external_system_name
+        external_system_id_to_type_detail: dict[int, str] = {}
+        if include_mappings and getattr(product, "mappings", None):
+            es_ids = {m.external_system_id for m in product.mappings if m.external_system_id}
+            if es_ids:
+                es_result = await db.execute(
+                    select(ExternalSystem.id, ExternalSystem.system_type).where(
+                        ExternalSystem.id.in_(es_ids)
+                    )
+                )
+                for row in es_result.all():
+                    external_system_id_to_type_detail[row.id] = row.system_type.value if row.system_type else "Unknown"
+        
         # 构建响应数据
         dimensions = []
         variants = []
@@ -371,13 +404,18 @@ async def get_product(
                         created_at=product_tag.created_at
                     ))
         
-        # 构建映射数据
+        # 构建映射数据（external_system_name 使用真实系统类型）
         if include_mappings and hasattr(product, 'mappings') and product.mappings:
             for mapping in product.mappings:
+                ext_name = (
+                    external_system_id_to_type_detail.get(mapping.external_system_id)
+                    if mapping.external_system_id
+                    else "Unknown"
+                )
                 mappings.append(ProductMappingResponse(
                     id_hashid=encode_id(mapping.id),
                     core_variant_id_hashid=encode_id(mapping.core_variant_id) if mapping.core_variant_id else None,
-                    external_system_name="Shopify",  # 这里应该从external_system表获取
+                    external_system_name=ext_name,
                     external_product_id=mapping.external_product_id,
                     external_variant_id=mapping.external_variant_id,
                     mapping_type=mapping.mapping_type,
@@ -765,6 +803,105 @@ async def delete_product(
         raise HTTPException(status_code=500, detail=f"Failed to delete product: {str(e)}")
 
 
+class BatchDeleteProductsByFilterRequest(BaseModel):
+    """按当前筛选条件批量删除核心商品请求（与列表筛选参数一致）"""
+    search: Optional[str] = None
+    status: Optional[str] = None
+    product_type: Optional[str] = None
+    vendor: Optional[str] = None
+
+
+@router.post("/batch-delete-by-filter", response_model=dict)
+async def batch_delete_products_by_filter(
+    request: BatchDeleteProductsByFilterRequest,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
+):
+    """
+    按当前筛选条件删除所有符合条件的核心商品。
+    仅删除无映射、无订单记录的商品；至少需传一个筛选条件。
+    """
+    from fastapi import status
+    tenant, user = auth
+    req = request
+    has_filter = any([
+        bool(req.search and req.search.strip()),
+        bool(req.status),
+        bool(req.product_type),
+        bool(req.vendor),
+    ])
+    if not has_filter:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="请至少选择一个筛选条件（如状态、类型、供应商或搜索关键词），避免误删全部商品",
+        )
+    conditions = [Product.tenant_id == tenant.id]
+    if req.status:
+        conditions.append(Product.status == req.status)
+    if req.product_type:
+        conditions.append(Product.product_type == req.product_type)
+    if req.vendor:
+        conditions.append(Product.vendor == req.vendor)
+    if req.search and req.search.strip():
+        conditions.append(Product.title.ilike(f"%{req.search.strip()}%"))
+    # 仅可删除：无映射、无订单的商品
+    mapping_ids = select(ProductMapping.core_product_id).where(
+        ProductMapping.tenant_id == tenant.id
+    )
+    order_ids = select(OrderItem.core_product_id).where(
+        OrderItem.tenant_id == tenant.id
+    )
+    stmt = (
+        select(Product.id)
+        .where(*conditions)
+        .where(Product.id.not_in(mapping_ids))
+        .where(Product.id.not_in(order_ids))
+    )
+    result = await db.execute(stmt)
+    ids_to_delete = [row[0] for row in result.all()]
+    deleted = 0
+    for product_id in ids_to_delete:
+        await db.execute(
+            delete(ProductMapping).where(
+                ProductMapping.core_product_id == product_id,
+                ProductMapping.tenant_id == tenant.id,
+            )
+        )
+        await db.execute(
+            delete(ProductVariant).where(
+                ProductVariant.product_id == product_id,
+                ProductVariant.tenant_id == tenant.id,
+            )
+        )
+        await db.execute(
+            delete(ProductDimension).where(
+                ProductDimension.product_id == product_id,
+                ProductDimension.tenant_id == tenant.id,
+            )
+        )
+        await db.execute(
+            delete(ProductTag).where(
+                ProductTag.product_id == product_id,
+                ProductTag.tenant_id == tenant.id,
+            )
+        )
+        await db.execute(
+            delete(Product).where(
+                Product.id == product_id,
+                Product.tenant_id == tenant.id,
+            )
+        )
+        deleted += 1
+    await db.commit()
+    logger.info(
+        f"✅ 按条件批量删除核心商品: deleted={deleted}, tenant_id={tenant.id}, filters={req.model_dump()}"
+    )
+    return {
+        "deleted": deleted,
+        "message": f"已按条件删除 {deleted} 条商品（仅删除无映射、无订单的记录）",
+    }
+
+
 @router.get("/catalog")
 async def sync_product_catalog(
     db: AsyncSession = Depends(get_async_db),
@@ -997,11 +1134,13 @@ async def get_external_products(
     limit: int = Query(10, ge=1, le=200, description="每页记录数（如从外部商品创建弹窗可请求 200）"),
     external_system_id: Optional[str] = Query(None, description="外部系统ID过滤（支持 hashid 或数字 id）"),
     status: Optional[str] = Query(None, description="商品状态过滤"),
+    search: Optional[str] = Query(None, description="搜索关键词（匹配标题、handle、供应商）"),
     db: AsyncSession = Depends(get_async_db),
     auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
 ):
     """
     获取外部商品列表。external_system_id 可为 hashid（前端常用）或数字 id。
+    search 对 title、handle、vendor 做模糊匹配。
     """
     tenant, user = auth
 
@@ -1021,23 +1160,66 @@ async def get_external_products(
                    tenant_id=tenant.id, 
                    user_id=user.id,
                    skip=skip, 
-                   limit=limit)
+                   limit=limit,
+                   search=search)
         
         # 构建查询条件
         query = select(ExternalProduct).where(ExternalProduct.tenant_id == tenant.id)
+        count_query = select(func.count(ExternalProduct.id)).where(ExternalProduct.tenant_id == tenant.id)
         
         if external_system_id_int is not None:
             query = query.where(ExternalProduct.external_system_id == external_system_id_int)
+            count_query = count_query.where(ExternalProduct.external_system_id == external_system_id_int)
         
         if status:
             query = query.where(ExternalProduct.status == status)
-        
-        # 获取总数
-        count_query = select(func.count(ExternalProduct.id)).where(ExternalProduct.tenant_id == tenant.id)
-        if external_system_id_int is not None:
-            count_query = count_query.where(ExternalProduct.external_system_id == external_system_id_int)
-        if status:
             count_query = count_query.where(ExternalProduct.status == status)
+        
+        if search and search.strip():
+            search_term = f"%{search.strip()}%"
+            search_condition = or_(
+                ExternalProduct.title.ilike(search_term),
+                ExternalProduct.handle.ilike(search_term),
+                ExternalProduct.vendor.ilike(search_term),
+            )
+            query = query.where(search_condition)
+            count_query = count_query.where(search_condition)
+            logger.info(f"   添加外部商品搜索: {search.strip()!r}")
+        
+        # Printify：仅展示已发布商品 = visible 非 false 且已发布到销售渠道（sales_channel_properties 非空）
+        # 使用 Text 做 cast 避免方言差异；对 NULL external_data 已用 is_(None) 排除
+        _visible_text = ExternalProduct.external_data.op("->>")("visible")
+        _scp = ExternalProduct.external_data.op("->")("sales_channel_properties")
+        _visible_ok = or_(
+            ExternalProduct.external_data.is_(None),
+            _visible_text.is_(None),
+            _visible_text != "false",
+        )
+        _scp_not_empty = and_(
+            _scp.isnot(None),
+            cast(_scp, Text).notin_(["[]", "{}"]),
+        )
+        _printify_published = and_(
+            ExternalProduct.external_data.isnot(None),
+            _visible_ok,
+            _scp_not_empty,
+        )
+        query = query.join(
+            ExternalSystem, ExternalProduct.external_system_id == ExternalSystem.id
+        ).where(
+            or_(
+                ExternalSystem.system_type != ExternalSystemType.PRINTIFY,
+                _printify_published,
+            )
+        )
+        count_query = count_query.join(
+            ExternalSystem, ExternalProduct.external_system_id == ExternalSystem.id
+        ).where(
+            or_(
+                ExternalSystem.system_type != ExternalSystemType.PRINTIFY,
+                _printify_published,
+            )
+        )
         
         total_result = await db.execute(count_query)
         total = total_result.scalar()
@@ -1057,6 +1239,31 @@ async def get_external_products(
                 systems = systems_result.scalars().all()
                 for system in systems:
                     external_systems[system.id] = system
+
+        # 批量查询：每个外部商品在 product_mappings 中的映射（用于列表「已映射/未映射」）
+        mappings_by_key = {}  # (external_system_id, external_product_id) -> [{"id": encoded_id}, ...]
+        if products:
+            keys = set((p.external_system_id, p.external_product_id) for p in products if p.external_system_id and p.external_product_id)
+            if keys:
+                conds = [and_(
+                    ProductMapping.external_system_id == es_id,
+                    ProductMapping.external_product_id == ep_id,
+                ) for (es_id, ep_id) in keys]
+                if hasattr(ProductMapping, "is_deleted"):
+                    q = select(ProductMapping).where(
+                        ProductMapping.tenant_id == tenant.id,
+                        or_(*conds),
+                        or_(ProductMapping.is_deleted.is_(None), ProductMapping.is_deleted == False),
+                    )
+                else:
+                    q = select(ProductMapping).where(ProductMapping.tenant_id == tenant.id, or_(*conds))
+                mapping_result = await db.execute(q)
+                mapping_rows = mapping_result.scalars().all()
+                for m in mapping_rows:
+                    k = (m.external_system_id, m.external_product_id)
+                    if k not in mappings_by_key:
+                        mappings_by_key[k] = []
+                    mappings_by_key[k].append({"id": encode_id(m.id)})
         
         # 转换为响应格式
         product_list = []
@@ -1070,24 +1277,15 @@ async def get_external_products(
             if product.external_system_id in external_systems:
                 system = external_systems[product.external_system_id]
                 external_system_name = system.system_type.value
-                logger.info(f"   外部系统类型: {external_system_name}")
-                
-                # 从credentials中获取店铺名称
-                if system.credentials and 'store_url' in system.credentials:
-                    store_url = system.credentials['store_url']
-                    # 从store_url中提取店铺名称，例如：https://shop1.myshopify.com -> shop1
-                    if store_url:
-                        shop_name = store_url.replace('https://', '').replace('http://', '').split('.')[0]
-                elif system.name:
-                    shop_name = system.name
-                else:
-                    # 使用外部系统名称作为店铺名称
-                    shop_name = system.name or "Unknown"
-                
-                logger.info(f"   店铺名称: {shop_name}")
+                # 列表显示真实店铺名：优先用 ExternalSystem.name（如 Impeach Printify Store）
+                shop_name = (getattr(system, "name", None) or "").strip() or "Unknown"
+                logger.info(f"   外部系统类型: {external_system_name}, 店铺名称: {shop_name}")
             else:
                 logger.warning(f"   ⚠️ 外部系统未找到: external_system_id={product.external_system_id}")
             
+            mapping_list = mappings_by_key.get(
+                (product.external_system_id, product.external_product_id), []
+            )
             product_list.append({
                 "id": encode_id(product.id),
                 "external_system_id": product.external_system_id,
@@ -1116,7 +1314,8 @@ async def get_external_products(
                 "sync_error": product.sync_error,
                 "last_synced_at": product.last_synced_at,
                 "created_at": product.created_at,
-                "updated_at": product.updated_at
+                "updated_at": product.updated_at,
+                "mappings": mapping_list,
             })
         
         logger.info("✅ 外部商品列表获取成功", 
@@ -1561,20 +1760,24 @@ def _get_variant_sku(variant_data: dict, external_product_id: str = "") -> Optio
 
 def _extract_variant_attributes(variant_data: dict) -> dict:
     """
-    从外部变体数据中提取属性信息
+    从外部变体数据中提取「规格维度」属性，且仅以来源平台的商品定义为准。
+
+    - Shopify：维度来自商品的 options（如 Color, Size），在 API 中体现为
+      variant.selectedOptions / selected_options，每项为 { name, value }，
+      name 即商品选项名（product option name），value 即该变体的取值。
+      variant 的 title 字段是展示用组合字符串（如 "S / White"），不是选项名，
+      因此绝不写入 attributes，否则会与 Printify 的 Color/Size 等真实维度不一致。
+    - 其他平台：同样只使用其「选项/维度」结构，不写入展示用 title。
     """
     attributes = {}
 
-    # 处理 selected_options (蛇形) 或 selectedOptions (GraphQL 驼峰)
+    # 仅使用平台定义的选项：Shopify 为 selected_options / selectedOptions（name = 选项名，value = 取值）
     opts = variant_data.get("selected_options") or variant_data.get("selectedOptions") or []
     for option in opts:
         if isinstance(option, dict) and option.get("name") is not None and option.get("value") is not None:
             attributes[option["name"]] = option["value"]
 
-    # 处理其他可能的属性字段
-    if variant_data.get("title"):
-        attributes["title"] = variant_data["title"]
-
+    # 禁止把 variant.title（展示用）写入 attributes，维度以商品定义为准
     return attributes
 
 
@@ -1795,75 +1998,92 @@ async def get_product_mappings(
     page: int = Query(1, ge=1, description="页码"),
     limit: int = Query(50, ge=1, le=100, description="每页数量"),
     core_product_id: Optional[int] = Query(None, description="核心商品ID"),
+    core_product_title: Optional[str] = Query(None, description="核心商品标题模糊搜索"),
     external_system_id: Optional[int] = Query(None, description="外部系统ID"),
     sync_status: Optional[str] = Query(None, description="同步状态"),
     mapping_type: Optional[str] = Query(None, description="映射类型"),
-    system_type: Optional[str] = Query(None, description="外部系统类型"),
+    system_type: Optional[str] = Query(None, description="外部系统类型，如 SHOPIFY/PRINTIFY"),
     db: AsyncSession = Depends(get_async_db),
     auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
 ):
     """
-    获取商品映射列表
+    获取商品映射列表。支持按核心商品、外部系统类型等筛选，便于只查 Shopify 映射等。
     """
     tenant, user = auth
     
     try:
-        logger.info("🔍 开始获取商品映射列表", 
-                   page=page, limit=limit, tenant_id=tenant.id)
+        logger.info("🔍 开始获取商品映射列表",
+                   page=page, limit=limit, tenant_id=tenant.id,
+                   system_type=system_type, core_product_title=bool(core_product_title))
         
-        # 构建查询条件
-        stmt = select(ProductMapping).where(ProductMapping.tenant_id == tenant.id)
-        
+        # 构建基础条件（与 count 和 list 共用）
+        base = select(ProductMapping).where(ProductMapping.tenant_id == tenant.id)
+        count_stmt = select(func.count(ProductMapping.id)).where(ProductMapping.tenant_id == tenant.id)
+
         if core_product_id:
-            stmt = stmt.where(ProductMapping.core_product_id == core_product_id)
-        
+            base = base.where(ProductMapping.core_product_id == core_product_id)
+            count_stmt = count_stmt.where(ProductMapping.core_product_id == core_product_id)
+        if core_product_title and core_product_title.strip():
+            term = f"%{core_product_title.strip()}%"
+            base = base.join(Product, ProductMapping.core_product_id == Product.id).where(
+                Product.tenant_id == tenant.id,
+                Product.title.ilike(term)
+            )
+            count_stmt = count_stmt.join(Product, ProductMapping.core_product_id == Product.id).where(
+                Product.tenant_id == tenant.id,
+                Product.title.ilike(term)
+            )
         if external_system_id:
-            stmt = stmt.where(ProductMapping.external_system_id == external_system_id)
-        
+            base = base.where(ProductMapping.external_system_id == external_system_id)
+            count_stmt = count_stmt.where(ProductMapping.external_system_id == external_system_id)
         if sync_status:
-            stmt = stmt.where(ProductMapping.sync_status == sync_status)
-        
+            base = base.where(ProductMapping.sync_status == sync_status)
+            count_stmt = count_stmt.where(ProductMapping.sync_status == sync_status)
         if mapping_type:
-            stmt = stmt.where(ProductMapping.mapping_type == mapping_type)
-        
-        # 如果指定了系统类型，需要关联外部系统表进行过滤
+            base = base.where(ProductMapping.mapping_type == mapping_type)
+            count_stmt = count_stmt.where(ProductMapping.mapping_type == mapping_type)
         if system_type:
-            stmt = stmt.join(ExternalSystem, ProductMapping.external_system_id == ExternalSystem.id)
-            stmt = stmt.where(ExternalSystem.system_type == system_type)
+            base = base.join(ExternalSystem, ProductMapping.external_system_id == ExternalSystem.id)
+            base = base.where(ExternalSystem.system_type == system_type)
+            count_stmt = count_stmt.join(ExternalSystem, ProductMapping.external_system_id == ExternalSystem.id)
+            count_stmt = count_stmt.where(ExternalSystem.system_type == system_type)
+        total_result = await db.execute(count_stmt)
+        total = total_result.scalar() or 0
         
-        # 添加排序
-        stmt = stmt.order_by(ProductMapping.created_at.desc())
-        
-        # 添加分页
+        # 分页列表
         offset = (page - 1) * limit
-        stmt = stmt.offset(offset).limit(limit)
-        
-        # 执行查询
+        stmt = base.order_by(ProductMapping.created_at.desc()).offset(offset).limit(limit)
         result = await db.execute(stmt)
         mappings = result.scalars().all()
         
-        logger.info(f"✅ 查询到 {len(mappings)} 条商品映射记录")
+        logger.info(f"✅ 查询到 {len(mappings)} 条商品映射记录, 总数 {total}")
         
-        # 构建响应数据
+        # 批量加载关联：核心商品、核心变体、外部系统
+        product_ids = list({m.core_product_id for m in mappings if m.core_product_id})
+        variant_ids = list({m.core_variant_id for m in mappings if m.core_variant_id})
+        system_ids = list({m.external_system_id for m in mappings if m.external_system_id})
+        
+        products_by_id = {}
+        if product_ids:
+            prod_result = await db.execute(select(Product).where(Product.id.in_(product_ids)))
+            for p in prod_result.scalars().all():
+                products_by_id[p.id] = p
+        variants_by_id = {}
+        if variant_ids:
+            var_result = await db.execute(select(ProductVariant).where(ProductVariant.id.in_(variant_ids)))
+            for v in var_result.scalars().all():
+                variants_by_id[v.id] = v
+        systems_by_id = {}
+        if system_ids:
+            sys_result = await db.execute(select(ExternalSystem).where(ExternalSystem.id.in_(system_ids)))
+            for s in sys_result.scalars().all():
+                systems_by_id[s.id] = s
+        
         mapping_responses = []
         for mapping in mappings:
-            # 获取核心商品信息
-            core_product_stmt = select(Product).where(Product.id == mapping.core_product_id)
-            core_product_result = await db.execute(core_product_stmt)
-            core_product = core_product_result.scalar_one_or_none()
-            
-            # 获取核心变体信息（如果存在）
-            core_variant = None
-            if mapping.core_variant_id:
-                core_variant_stmt = select(ProductVariant).where(ProductVariant.id == mapping.core_variant_id)
-                core_variant_result = await db.execute(core_variant_stmt)
-                core_variant = core_variant_result.scalar_one_or_none()
-            
-            # 获取外部系统信息
-            external_system_stmt = select(ExternalSystem).where(ExternalSystem.id == mapping.external_system_id)
-            external_system_result = await db.execute(external_system_stmt)
-            external_system = external_system_result.scalar_one_or_none()
-            
+            core_product = products_by_id.get(mapping.core_product_id) if mapping.core_product_id else None
+            core_variant = variants_by_id.get(mapping.core_variant_id) if mapping.core_variant_id else None
+            external_system = systems_by_id.get(mapping.external_system_id) if mapping.external_system_id else None
             mapping_responses.append({
                 "id": mapping.id,
                 "id_hashid": encode_id(mapping.id),
@@ -1882,15 +2102,16 @@ async def get_product_mappings(
                 "system_type": external_system.system_type.value if external_system else "UNKNOWN"
             })
         
-        logger.info(f"✅ 商品映射列表获取成功: 共 {len(mapping_responses)} 条记录")
+        pages = (total + limit - 1) // limit if total else 0
+        logger.info(f"✅ 商品映射列表获取成功: 本页 {len(mapping_responses)} 条, 总 {total}")
         
         return {
             "mappings": mapping_responses,
             "pagination": {
                 "page": page,
                 "limit": limit,
-                "total": len(mapping_responses),
-                "pages": (len(mapping_responses) + limit - 1) // limit
+                "total": total,
+                "pages": pages
             }
         }
         
@@ -1899,6 +2120,137 @@ async def get_product_mappings(
         import traceback
         logger.error(f"   异常堆栈: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Failed to get product mappings: {str(e)}")
+
+
+class BatchDeleteMappingsRequest(BaseModel):
+    """批量删除商品映射请求"""
+    mapping_id_hashids: List[str]
+
+
+class BatchDeleteByFilterRequest(BaseModel):
+    """按当前筛选条件批量删除映射请求（与列表筛选参数一致）"""
+    core_product_id: Optional[int] = None
+    core_product_title: Optional[str] = None
+    external_system_id: Optional[int] = None
+    sync_status: Optional[str] = None
+    mapping_type: Optional[str] = None
+    system_type: Optional[str] = None
+
+
+def _build_mapping_filter_subquery(tenant_id: int, req: BatchDeleteByFilterRequest):
+    """构建与 get_product_mappings 一致的筛选子查询，返回 select(ProductMapping.id)。"""
+    subq = select(ProductMapping.id).where(ProductMapping.tenant_id == tenant_id)
+    if req.core_product_id:
+        subq = subq.where(ProductMapping.core_product_id == req.core_product_id)
+    if req.core_product_title and req.core_product_title.strip():
+        term = f"%{req.core_product_title.strip()}%"
+        subq = subq.join(Product, ProductMapping.core_product_id == Product.id).where(
+            Product.tenant_id == tenant_id,
+            Product.title.ilike(term)
+        )
+    if req.external_system_id is not None:
+        subq = subq.where(ProductMapping.external_system_id == req.external_system_id)
+    if req.sync_status:
+        subq = subq.where(ProductMapping.sync_status == req.sync_status)
+    if req.mapping_type:
+        subq = subq.where(ProductMapping.mapping_type == req.mapping_type)
+    if req.system_type:
+        subq = subq.join(ExternalSystem, ProductMapping.external_system_id == ExternalSystem.id)
+        subq = subq.where(ExternalSystem.system_type == req.system_type)
+    return subq
+
+
+@router.post("/mappings/batch-delete-by-filter", response_model=dict)
+async def batch_delete_product_mappings_by_filter(
+    request: BatchDeleteByFilterRequest,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
+):
+    """
+    按当前筛选条件删除所有符合条件的商品映射（如：外部系统=Shopify 时删除全部 Shopify 映射）。
+    至少需传一个筛选条件，避免误删全表。
+    """
+    tenant, user = auth
+    req = request
+    has_filter = any([
+        req.core_product_id is not None,
+        bool(req.core_product_title and req.core_product_title.strip()),
+        req.external_system_id is not None,
+        bool(req.sync_status),
+        bool(req.mapping_type),
+        bool(req.system_type),
+    ])
+    if not has_filter:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="请至少选择一个筛选条件（如外部系统=Shopify），避免误删全部映射",
+        )
+    try:
+        id_subq = _build_mapping_filter_subquery(tenant.id, req)
+        delete_stmt = delete(ProductMapping).where(ProductMapping.id.in_(id_subq))
+        result = await db.execute(delete_stmt)
+        await db.commit()
+        deleted = result.rowcount or 0
+        logger.info(f"✅ 按条件批量删除商品映射: deleted={deleted}, tenant_id={tenant.id}, filters={req.model_dump()}")
+        return {
+            "deleted": deleted,
+            "message": f"已按条件删除 {deleted} 条映射",
+        }
+    except Exception as e:
+        logger.error(f"❌ 按条件批量删除商品映射失败: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/mappings/batch-delete", response_model=dict)
+async def batch_delete_product_mappings(
+    request: BatchDeleteMappingsRequest,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
+):
+    """
+    批量删除商品映射。仅删除当前租户下且存在的映射。
+    """
+    tenant, user = auth
+    ids = request.mapping_id_hashids or []
+    if not ids:
+        return {"deleted": 0, "failed": 0, "message": "No mapping IDs provided"}
+
+    deleted = 0
+    failed = 0
+    try:
+        for mapping_id_hashid in ids:
+            try:
+                mapping_id = decode_id(mapping_id_hashid)
+            except Exception:
+                failed += 1
+                continue
+            mapping_stmt = select(ProductMapping).where(
+                ProductMapping.id == mapping_id,
+                ProductMapping.tenant_id == tenant.id
+            )
+            mapping_result = await db.execute(mapping_stmt)
+            mapping = mapping_result.scalar_one_or_none()
+            if mapping:
+                await db.delete(mapping)
+                deleted += 1
+            else:
+                failed += 1
+        await db.commit()
+        logger.info(f"✅ 批量删除商品映射: deleted={deleted}, failed={failed}, tenant_id={tenant.id}")
+        return {
+            "deleted": deleted,
+            "failed": failed,
+            "message": f"已删除 {deleted} 条映射" + (f"，{failed} 条无效或不存在" if failed else ""),
+        }
+    except Exception as e:
+        logger.error(f"❌ 批量删除商品映射失败: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.delete("/mappings/{mapping_id_hashid}")
