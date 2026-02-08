@@ -46,7 +46,9 @@ export async function GET(request: NextRequest) {
     const page = searchParams.get('page') || '1';
     const limit = searchParams.get('limit') || '50';
     const coreProductId = searchParams.get('core_product_id');
+    const coreProductTitle = searchParams.get('core_product_title');
     const externalSystemId = searchParams.get('external_system_id');
+    const systemType = searchParams.get('system_type');
     const syncStatus = searchParams.get('sync_status');
     const mappingType = searchParams.get('mapping_type');
 
@@ -59,8 +61,14 @@ export async function GET(request: NextRequest) {
     if (coreProductId) {
       backendParams.append('core_product_id', coreProductId);
     }
+    if (coreProductTitle && coreProductTitle.trim()) {
+      backendParams.append('core_product_title', coreProductTitle.trim());
+    }
     if (externalSystemId) {
       backendParams.append('external_system_id', externalSystemId);
+    }
+    if (systemType) {
+      backendParams.append('system_type', systemType);
     }
     if (syncStatus) {
       backendParams.append('sync_status', syncStatus);

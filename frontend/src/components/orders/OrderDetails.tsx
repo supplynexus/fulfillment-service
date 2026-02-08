@@ -8,6 +8,7 @@ import {
   Typography,
   Chip,
   Button,
+  Link,
   Table,
   TableBody,
   TableCell,
@@ -814,11 +815,11 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
           )}
         </Stack>
 
-        {/* Line Items */}
+        {/* Line Items - 下单的商品 */}
         <Card>
           <CardContent>
             <Typography variant='h6' gutterBottom>
-              商品清单
+              下单的商品
             </Typography>
             {createError && (
               <Alert severity='error' sx={{ mb: 2 }}>
@@ -849,8 +850,17 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {(order.line_items || []).map(item => (
-                    <TableRow key={item.id}>
+                  {(order.line_items || []).length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} align='center' sx={{ py: 3 }}>
+                        <Typography color='text.secondary'>
+                          该订单暂无商品明细
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                  (order.line_items || []).map(item => (
+                    <TableRow key={String(item.id)}>
                       <TableCell padding='checkbox'>
                         <Checkbox
                           color='primary'
@@ -873,6 +883,36 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
                               {item.variant_title}
                             </Typography>
                           )}
+                          <Stack direction='row' spacing={1} sx={{ mt: 0.5 }} flexWrap='wrap' useFlexGap>
+                            {item.shopify_product_url && (
+                              <Link
+                                href={item.shopify_product_url}
+                                target='_blank'
+                                rel='noopener noreferrer'
+                                variant='caption'
+                              >
+                                Shopify 商品
+                              </Link>
+                            )}
+                            {item.printify_product_url && (
+                              <Link
+                                href={item.printify_product_url}
+                                target='_blank'
+                                rel='noopener noreferrer'
+                                variant='caption'
+                              >
+                                Printify 商品
+                              </Link>
+                            )}
+                            {!item.printify_product_url && item.core_product_id_hashid && (
+                              <Link
+                                href={`/product-mapping/printify?core_product_id=${encodeURIComponent(item.core_product_id_hashid)}`}
+                                variant='caption'
+                              >
+                                去绑定 Printify
+                              </Link>
+                            )}
+                          </Stack>
                         </Box>
                       </TableCell>
                       <TableCell>
@@ -960,7 +1000,8 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
                         </Typography>
                       </TableCell>
                     </TableRow>
-                  ))}
+                  ))
+                  )}
                 </TableBody>
               </Table>
             </TableContainer>

@@ -855,13 +855,22 @@ async def sync_printify_orders(
                     )
                     continue
 
+                # 首选店铺：settings.printify_shop_id 或 credentials.shop_id，只同步该店铺
+                preferred_shop_id = (printify_system.settings or {}).get("printify_shop_id") or decrypted_credentials.get("shop_id")
+                if preferred_shop_id is not None:
+                    preferred_shop_id = str(preferred_shop_id).strip() or None
+
                 # 创建Printify服务
                 printify_service = PrintifyService(access_token)
 
-                # 首先获取所有店铺
-                logger.info(f"🔍 开始获取 Printify 店铺列表...")
-                shops = await printify_service.get_shops()
-                logger.info(f"📊 获取到 {len(shops) if shops else 0} 个 Printify 店铺")
+                if preferred_shop_id:
+                    # 只拉首选店铺的订单，不遍历 get_shops()
+                    shops = [{"id": preferred_shop_id, "title": "Preferred shop", "sales_channel": ""}]
+                    logger.info(f"🔍 使用首选店铺拉取订单: shop_id={preferred_shop_id}")
+                else:
+                    logger.info(f"🔍 开始获取 Printify 店铺列表...")
+                    shops = await printify_service.get_shops()
+                    logger.info(f"📊 获取到 {len(shops) if shops else 0} 个 Printify 店铺")
 
                 if not shops:
                     logger.warning(
@@ -869,7 +878,7 @@ async def sync_printify_orders(
                     )
                     continue
 
-                # 为每个店铺获取发货单
+                # 为每个店铺获取发货单（有首选时仅一个）
                 all_orders = []
                 for shop in shops:
                     shop_id = shop.get("id")

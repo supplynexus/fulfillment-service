@@ -1111,9 +1111,13 @@ def sync_printify_orders_to_local(self, tenant_id: int, limit: int = 100, ignore
                 # printify_system 是 ExternalSystem 对象，不是字典
                 credentials = printify_system.credentials or {}
 
-                # 解密凭据
+                # 解密凭据；首选店铺优先用 settings.printify_shop_id
                 access_token = decrypt_data(credentials.get("access_token", "")) if credentials.get("access_token") else None
-                shop_id = decrypt_data(credentials.get("shop_id", "")) if credentials.get("shop_id") else None
+                shop_id = (printify_system.settings or {}).get("printify_shop_id")
+                if not shop_id and credentials.get("shop_id"):
+                    shop_id = decrypt_data(credentials.get("shop_id", ""))
+                if shop_id is not None:
+                    shop_id = str(shop_id).strip() or None
 
                 if not access_token or not shop_id:
                     logger.error("❌ Printify凭据不完整", tenant_id=tenant_id)

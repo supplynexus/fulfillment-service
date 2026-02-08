@@ -61,6 +61,27 @@ import { Product, ProductListResponse } from '@/types/product';
 
 const ITEMS_PER_PAGE = 10;
 
+/** 将 external_system_name（如 SHOPIFY）转为展示名（如 Shopify） */
+function systemDisplayName(name: string): string {
+  if (!name || name === 'Unknown') return name;
+  return name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
+}
+
+/** 按外部系统分组统计映射数量，用于列表展示「映射到谁」 */
+function mappingSummaryBySystem(
+  mappings: { external_system_name?: string }[] | undefined
+): { system: string; count: number }[] {
+  if (!mappings?.length) return [];
+  const counts: Record<string, number> = {};
+  for (const m of mappings) {
+    const key = m.external_system_name || 'Unknown';
+    counts[key] = (counts[key] ?? 0) + 1;
+  }
+  return Object.entries(counts)
+    .map(([system, count]) => ({ system, count }))
+    .sort((a, b) => b.count - a.count);
+}
+
 export function ProductsList() {
   const router = useRouter();
   const [products, setProducts] = useState<Product[]>([]);
@@ -69,6 +90,7 @@ export function ProductsList() {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
   const [hasMore, setHasMore] = useState(false);
 
   // 过滤条件
@@ -106,6 +128,9 @@ export function ProductsList() {
   >([]);
   const [selectedExternalSystemHashid, setSelectedExternalSystemHashid] =
     useState<string>('');
+  /** 外部商品映射 Tab 下按外部系统筛选（空字符串 = 全部） */
+  const [externalSystemFilterHashid, setExternalSystemFilterHashid] =
+    useState<string>('');
 
   // Snackbar 状态
   const [snackbarOpen, setSnackbarOpen] = useState(false);
@@ -131,6 +156,8 @@ export function ProductsList() {
   );
   const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [deleteByFilterDialogOpen, setDeleteByFilterDialogOpen] = useState(false);
+  const [deleteByFiltering, setDeleteByFiltering] = useState(false);
 
   // 管理映射弹窗（当前选中的商品，用于查看/解除映射）
   const [mappingDialogProduct, setMappingDialogProduct] =
@@ -178,7 +205,9 @@ export function ProductsList() {
       const data: ProductListResponse = response.data;
       const list = data.products || [];
       setProducts(list);
-      setTotalPages(Math.ceil((data.total || 0) / ITEMS_PER_PAGE));
+      const total = data.total ?? 0;
+      setTotalCount(total);
+      setTotalPages(Math.ceil(total / ITEMS_PER_PAGE));
       setHasMore(data.has_more || false);
       return list;
     } catch (err: any) {
@@ -195,12 +224,23 @@ export function ProductsList() {
       setExternalLoading(true);
       setExternalError(null);
 
+      const params: Record<string, number | string | boolean> = {
+        page: currentPage,
+        limit: ITEMS_PER_PAGE,
+        include_mappings: true,
+      };
+      if (externalSystemFilterHashid) {
+        params.external_system_id = externalSystemFilterHashid;
+      }
+      if (statusFilter) {
+        params.status = statusFilter;
+      }
+      if (searchTerm && searchTerm.trim()) {
+        params.search = searchTerm.trim();
+      }
+
       const response = await frontendApi.get('/api/external-products', {
-        params: {
-          page: currentPage,
-          limit: ITEMS_PER_PAGE,
-          include_mappings: true,
-        },
+        params,
       });
 
       setExternalProducts(response.data.products || []);
@@ -321,6 +361,7 @@ export function ProductsList() {
     if (activeTab === 0) {
       fetchProducts();
     } else if (activeTab === 1) {
+      fetchExternalSystemsList();
       fetchExternalProducts();
     }
   }, [
@@ -330,6 +371,7 @@ export function ProductsList() {
     statusFilter,
     productTypeFilter,
     vendorFilter,
+    externalSystemFilterHashid,
   ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSearch = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -530,6 +572,52 @@ export function ProductsList() {
     setBulkDeleteDialogOpen(false);
   };
 
+  /** 当前是否有任意筛选条件（用于「按条件全部删除」） */
+  const hasAppliedFilter = Boolean(
+    searchTerm.trim() ||
+      statusFilter ||
+      productTypeFilter ||
+      vendorFilter
+  );
+
+  const handleDeleteByFilter = () => {
+    if (!hasAppliedFilter) return;
+    setDeleteByFilterDialogOpen(true);
+  };
+
+  const confirmDeleteByFilter = async () => {
+    if (!hasAppliedFilter) return;
+    try {
+      setDeleteByFiltering(true);
+      setError(null);
+      const body: Record<string, string> = {};
+      if (searchTerm.trim()) body.search = searchTerm.trim();
+      if (statusFilter) body.status = statusFilter;
+      if (productTypeFilter) body.product_type = productTypeFilter;
+      if (vendorFilter) body.vendor = vendorFilter;
+      const res = await frontendApi.post('/api/products/batch-delete-by-filter', body);
+      const deleted = res.data?.deleted ?? 0;
+      setDeleteByFilterDialogOpen(false);
+      setCurrentPage(1);
+      setSelectedProductIds(new Set());
+      await fetchProducts();
+      showMessage(
+        deleted > 0
+          ? `已按条件删除 ${deleted} 条商品（仅删除无映射、无订单的记录）`
+          : '当前筛选条件下没有可删除的商品（有映射或订单的已跳过）',
+        deleted > 0 ? 'success' : 'info'
+      );
+    } catch (err: any) {
+      setError(err.response?.data?.detail || err.message || '按条件删除失败');
+      showMessage(
+        err.response?.data?.detail || err.message || '按条件删除失败',
+        'error'
+      );
+    } finally {
+      setDeleteByFiltering(false);
+    }
+  };
+
   const handleOpenMappingDialog = (product: Product) => {
     setMappingDialogProduct(product);
   };
@@ -595,6 +683,7 @@ export function ProductsList() {
     setProductTypeFilter('');
     setVendorFilter('');
     setSearchTerm('');
+    setExternalSystemFilterHashid('');
     setCurrentPage(1);
   };
 
@@ -676,6 +765,22 @@ export function ProductsList() {
               删除选中 ({selectedProductIds.size})
             </Button>
           )}
+          {activeTab === 0 && (
+            <Button
+              variant='outlined'
+              color='error'
+              startIcon={<DeleteIcon />}
+              onClick={handleDeleteByFilter}
+              disabled={!hasAppliedFilter || totalCount === 0 || loading}
+              title={
+                !hasAppliedFilter
+                  ? '请先设置筛选条件（搜索/状态/类型/供应商）'
+                  : `删除符合当前条件的共 ${totalCount} 条中的可删商品（无映射、无订单）`
+              }
+            >
+              按条件全部删除{totalCount > 0 ? ` (${totalCount})` : ''}
+            </Button>
+          )}
           <Button
             variant='outlined'
             startIcon={<RefreshIcon />}
@@ -727,6 +832,28 @@ export function ProductsList() {
                 }}
               />
             </Box>
+            {activeTab === 1 && (
+              <Box minWidth='200px'>
+                <FormControl fullWidth>
+                  <InputLabel>外部系统</InputLabel>
+                  <Select
+                    value={externalSystemFilterHashid}
+                    onChange={e => {
+                      setExternalSystemFilterHashid(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    label='外部系统'
+                  >
+                    <MenuItem value=''>全部</MenuItem>
+                    {externalSystemsList.map(sys => (
+                      <MenuItem key={sys.id_hashid} value={sys.id_hashid}>
+                        {sys.name || sys.id_hashid} ({sys.system_type || '—'})
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Box>
+            )}
             <Box minWidth='150px'>
               <FormControl fullWidth>
                 <InputLabel>状态</InputLabel>
@@ -786,6 +913,12 @@ export function ProductsList() {
             </Box>
           </Box>
 
+          {activeTab === 0 && (
+            <Typography variant='body2' color='text.secondary' sx={{ mb: 1 }}>
+              共 {totalCount} 条，本页 {products.length} 条
+            </Typography>
+          )}
+
           <TableContainer component={Paper} variant='outlined'>
             <Table>
               <TableHead>
@@ -811,6 +944,7 @@ export function ProductsList() {
                     </TableCell>
                   )}
                   <TableCell>商品</TableCell>
+                  {activeTab === 1 && <TableCell>外部系统</TableCell>}
                   <TableCell>供应商</TableCell>
                   <TableCell>类型</TableCell>
                   <TableCell>状态</TableCell>
@@ -929,18 +1063,39 @@ export function ProductsList() {
                                   {product.variants.length}
                                 </Typography>
                               </Badge>
-                              {product.mappings?.length > 0 && (
-                                <Chip
-                                  icon={<LinkIcon sx={{ fontSize: 14 }} />}
-                                  label={`映射 ${product.mappings.length}`}
-                                  size='small'
-                                  color='primary'
-                                  variant='outlined'
-                                  onClick={() =>
-                                    handleOpenMappingDialog(product)
-                                  }
-                                  sx={{ cursor: 'pointer' }}
-                                />
+                              {mappingSummaryBySystem(product.mappings).length > 0 && (
+                                <Box
+                                  component='span'
+                                  display='flex'
+                                  alignItems='center'
+                                  gap={0.5}
+                                  flexWrap='wrap'
+                                >
+                                  <Typography
+                                    component='span'
+                                    variant='caption'
+                                    color='text.secondary'
+                                    sx={{ mr: 0.25 }}
+                                  >
+                                    映射到：
+                                  </Typography>
+                                  {mappingSummaryBySystem(product.mappings).map(
+                                    ({ system, count }) => (
+                                      <Chip
+                                        key={system}
+                                        icon={<LinkIcon sx={{ fontSize: 14 }} />}
+                                        label={`${systemDisplayName(system)} ${count}`}
+                                        size='small'
+                                        color='primary'
+                                        variant='outlined'
+                                        onClick={() =>
+                                          handleOpenMappingDialog(product)
+                                        }
+                                        sx={{ cursor: 'pointer' }}
+                                      />
+                                    )
+                                  )}
+                                </Box>
                               )}
                             </Box>
                           </TableCell>
@@ -1108,7 +1263,7 @@ export function ProductsList() {
                 ) : // 外部商品标签页
                 externalProducts.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} align='center'>
+                    <TableCell colSpan={10} align='center'>
                       <Typography variant='body2' color='text.secondary'>
                         {externalLoading ? '加载中...' : '暂无外部商品数据'}
                       </Typography>
@@ -1137,6 +1292,11 @@ export function ProductsList() {
                             </Typography>
                           </Box>
                         </Box>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant='body2'>
+                          {externalProduct.external_system_name || '-'}
+                        </Typography>
                       </TableCell>
                       <TableCell>
                         <Typography variant='body2'>
@@ -1469,6 +1629,46 @@ export function ProductsList() {
         </DialogActions>
       </Dialog>
 
+      {/* 按条件全部删除确认对话框 */}
+      <Dialog
+        open={deleteByFilterDialogOpen}
+        onClose={() => !deleteByFiltering && setDeleteByFilterDialogOpen(false)}
+        maxWidth='sm'
+        fullWidth
+      >
+        <DialogTitle>按条件全部删除</DialogTitle>
+        <DialogContent>
+          <Alert severity='warning' sx={{ mb: 2 }}>
+            <Typography variant='body2' fontWeight='medium'>
+              将删除符合<strong>当前筛选条件</strong>的、且<strong>无映射、无订单</strong>的商品（共 {totalCount} 条中符合可删条件的会被删除）。已映射或已有订单的商品将跳过。此操作不可撤销。
+            </Typography>
+          </Alert>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => setDeleteByFilterDialogOpen(false)}
+            disabled={deleteByFiltering}
+          >
+            取消
+          </Button>
+          <Button
+            onClick={confirmDeleteByFilter}
+            variant='contained'
+            color='error'
+            disabled={deleteByFiltering}
+            startIcon={
+              deleteByFiltering ? (
+                <CircularProgress size={16} />
+              ) : (
+                <DeleteIcon />
+              )
+            }
+          >
+            {deleteByFiltering ? '删除中…' : '确定删除'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* 管理映射弹窗 */}
       <Dialog
         open={!!mappingDialogProduct}
@@ -1501,7 +1701,9 @@ export function ProductsList() {
                     >
                       <Box flex={1} minWidth={0}>
                         <Typography variant='body2' fontWeight='medium'>
-                          {mapping.external_system_name || '外部系统'}
+                          {systemDisplayName(
+                            mapping.external_system_name || '外部系统'
+                          )}
                         </Typography>
                         <Typography
                           variant='caption'

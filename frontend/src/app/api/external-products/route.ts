@@ -48,13 +48,17 @@ export async function GET(request: NextRequest) {
     const skip = (page - 1) * limit;
     const externalSystemId = searchParams.get('external_system_id');
     const status = searchParams.get('status');
+    const search = searchParams.get('search');
 
     const queryParts = [`skip=${skip}`, `limit=${limit}`];
     if (externalSystemId != null && externalSystemId !== '') {
-      queryParts.push(`external_system_id=${externalSystemId}`);
+      queryParts.push(`external_system_id=${encodeURIComponent(externalSystemId)}`);
     }
     if (status != null && status !== '') {
-      queryParts.push(`status=${status}`);
+      queryParts.push(`status=${encodeURIComponent(status)}`);
+    }
+    if (search != null && search !== '') {
+      queryParts.push(`search=${encodeURIComponent(search)}`);
     }
     const queryString = queryParts.join('&');
 
@@ -98,8 +102,15 @@ export async function GET(request: NextRequest) {
       tenantName,
     });
 
-    // 调用后端 API - fullPath 已经包含查询参数
-    const backendUrl = `${process.env.BACKEND_API_URL}${fullPath}`;
+    const backendBase = process.env.BACKEND_API_URL;
+    if (!backendBase?.trim()) {
+      logger.error('❌ BACKEND_API_URL 未配置');
+      return NextResponse.json(
+        { error: 'Backend URL not configured' },
+        { status: 500 }
+      );
+    }
+    const backendUrl = `${backendBase.replace(/\/$/, '')}${fullPath.startsWith('/') ? '' : '/'}${fullPath}`;
     const backendResponse = await fetch(backendUrl, {
       method: 'GET',
       headers: {
@@ -140,11 +151,12 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     const duration = Date.now() - startTime;
     logger.error('❌ 外部商品API调用失败', {
-      error: error.message,
+      error: error?.message ?? String(error),
+      stack: error?.stack,
       duration,
     });
     return NextResponse.json(
-      { error: 'Failed to fetch external products' },
+      { error: 'Failed to fetch external products', detail: error?.message ?? String(error) },
       { status: 500 }
     );
   }

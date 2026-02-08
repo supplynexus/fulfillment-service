@@ -49,9 +49,12 @@ import {
   FilterList as FilterIcon,
   Sync as SyncIcon,
   Delete as DeleteIcon,
+  List as ListIcon,
 } from '@mui/icons-material';
+import Link from 'next/link';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { useSearchParams } from 'next/navigation';
 import { frontendApi } from '@/lib/api';
 import { frontendLogger } from '@/lib/frontend-logger';
 import toast from 'react-hot-toast';
@@ -87,10 +90,11 @@ interface SyncedShopifyOrder {
 }
 
 const SyncedShopifyOrdersPage: React.FC = () => {
+  const searchParams = useSearchParams();
   const [orders, setOrders] = useState<SyncedShopifyOrder[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(() => searchParams.get('search') || '');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
@@ -168,7 +172,13 @@ const SyncedShopifyOrdersPage: React.FC = () => {
     ]
   );
 
-  // 初始化
+  // 从 URL ?search= 同步到搜索框并触发查询（便于从实时订单页「同步订单」跳转过来带筛选）
+  useEffect(() => {
+    const q = searchParams.get('search');
+    if (q != null) setSearchTerm(q);
+  }, [searchParams]);
+
+  // 初始化及筛选变化时拉取
   useEffect(() => {
     fetchOrders(1);
   }, [fetchOrders]);
@@ -778,7 +788,7 @@ const SyncedShopifyOrdersPage: React.FC = () => {
                           )}
                         </TableCell>
                         <TableCell>
-                          <Stack direction='row' spacing={1}>
+                          <Stack direction='row' spacing={0.5} alignItems='center' flexWrap='wrap'>
                             <Tooltip title='查看详情'>
                               <IconButton
                                 size='small'
@@ -786,6 +796,17 @@ const SyncedShopifyOrdersPage: React.FC = () => {
                               >
                                 <ViewIcon />
                               </IconButton>
+                            </Tooltip>
+                            <Tooltip title='在核心订单列表按订单号筛选'>
+                              <Link
+                                href={`/orders?search=${encodeURIComponent((order.name || order.confirmation_number || '').replace(/^#/, ''))}`}
+                                passHref
+                                legacyBehavior
+                              >
+                                <IconButton size='small' component='a'>
+                                  <ListIcon />
+                                </IconButton>
+                              </Link>
                             </Tooltip>
                             <Tooltip title='查看原始数据'>
                               <IconButton

@@ -6,7 +6,6 @@ import {
   Card,
   CardContent,
   Typography,
-  Grid,
   Button,
   TextField,
   InputAdornment,
@@ -29,6 +28,7 @@ import {
   DialogContent,
   DialogActions,
   FormControl,
+  FormControlLabel,
   InputLabel,
   Select,
   MenuItem,
@@ -70,6 +70,8 @@ interface CoreProduct {
   is_available: boolean;
   created_at: string;
   variants: CoreVariant[];
+  /** 是否有任一映射到 Printify（后端 include_mappings 时返回） */
+  has_printify_mapping?: boolean;
 }
 
 interface CoreVariant {
@@ -94,6 +96,8 @@ interface PrintifyProduct {
   tags?: string[];
   visible: boolean;
   is_locked: boolean;
+  /** 是否已发布到销售渠道，用于筛选与角标 */
+  is_published?: boolean;
   external?: {
     id: string;
     handle: string;
@@ -154,6 +158,147 @@ interface PrintifyVariant {
   options: number[];
 }
 
+/** 创建映射前的校验结果：标题与变体维度是否一致或近似 */
+interface MappingValidation {
+  titleMatch: 'exact' | 'similar' | 'mismatch';
+  titleMessage?: string;
+  dimensionMatch: boolean;
+  dimensionMessage?: string;
+  variantCountCore: number;
+  variantCountPrintify: number;
+  variantCountMatch: boolean;
+  warnings: string[];
+  canForce: boolean;
+}
+
+function normalizeTitle(s: string): string {
+  return (s || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function computeMappingValidation(
+  core: CoreProduct,
+  printify: PrintifyProduct
+): MappingValidation {
+  const warnings: string[] = [];
+  let titleMatch: 'exact' | 'similar' | 'mismatch' = 'exact';
+  let titleMessage: string | undefined;
+  let dimensionMatch = true;
+  let dimensionMessage: string | undefined;
+
+  const coreTitle = normalizeTitle(core.title);
+  const printifyTitle = normalizeTitle(printify.title);
+  if (coreTitle === printifyTitle) {
+    titleMatch = 'exact';
+  } else if (
+    coreTitle && printifyTitle &&
+    (coreTitle.includes(printifyTitle) || printifyTitle.includes(coreTitle))
+  ) {
+    titleMatch = 'similar';
+    titleMessage = '标题不完全一致，但包含关系';
+  } else {
+    titleMatch = 'mismatch';
+    titleMessage = '标题不一致';
+    warnings.push('标题不一致，请确认是否为同一商品。');
+  }
+
+  const variantCountCore = core.variants?.length ?? 0;
+  const variantCountPrintify = printify.variants?.length ?? 0;
+  const variantCountMatch = variantCountCore === variantCountPrintify;
+  if (!variantCountMatch) {
+    warnings.push(
+      `变体数量不一致：核心 ${variantCountCore} 个，Printify ${variantCountPrintify} 个。`
+    );
+  }
+
+  // 核心商品维度：应以来源平台商品定义为准（如 Shopify 的 options → variant.selectedOptions 的 name）。
+  // 若历史数据里误存了展示用字段（variant.title 等），此处排除，不参与维度比对。
+  const DISPLAY_ONLY_ATTR_KEYS = new Set(['title', 'name']);
+  const coreDimNames = new Set<string>();
+  const coreDimValues: Record<string, Set<string>> = {};
+  if (core.variants?.length) {
+    for (const v of core.variants) {
+      const attrs = v.attributes || {};
+      for (const [k, val] of Object.entries(attrs)) {
+        const key = (k || '').trim();
+        if (!key || DISPLAY_ONLY_ATTR_KEYS.has(key.toLowerCase())) continue;
+        coreDimNames.add(key);
+        if (!coreDimValues[key]) coreDimValues[key] = new Set();
+        coreDimValues[key].add(String(val).trim());
+      }
+    }
+  }
+  const coreDimList = Array.from(coreDimNames).sort();
+
+  let printifyDimList: string[] = [];
+  const printifyDimValues: Record<string, Set<string>> = {};
+  const opts = printify.options || [];
+  for (const opt of opts) {
+    const name = (opt.name || '').trim();
+    if (!name) continue;
+    printifyDimList.push(name);
+    const vals = new Set<string>();
+    for (const v of opt.values || []) {
+      const t = (v.title || '').trim();
+      if (t) vals.add(t);
+    }
+    printifyDimValues[name] = vals;
+  }
+  printifyDimList = printifyDimList.sort();
+
+  /** 维度名是否等价（含单复数：Color ↔ Colors, Size ↔ Sizes） */
+  const dimensionNamesMatch = (a: string, b: string): boolean => {
+    const x = (a || '').toLowerCase().trim();
+    const y = (b || '').toLowerCase().trim();
+    if (x === y) return true;
+    if (x + 's' === y || y + 's' === x) return true;
+    return false;
+  };
+
+  const coreDimSet = new Set(coreDimList.map(d => d.toLowerCase()));
+  const printifyDimSet = new Set(printifyDimList.map(d => d.toLowerCase()));
+  if (coreDimList.length !== printifyDimList.length || coreDimSet.size !== printifyDimSet.size) {
+    dimensionMatch = false;
+    dimensionMessage = `维度数量不一致：核心 [${coreDimList.join(', ') || '无'}], Printify [${printifyDimList.join(', ') || '无'}]`;
+    warnings.push(dimensionMessage);
+  } else {
+    for (const cDim of coreDimList) {
+      const pDim = printifyDimList.find(p => dimensionNamesMatch(p, cDim));
+      if (!pDim) {
+        dimensionMatch = false;
+        dimensionMessage = `维度名称不一致：核心有「${cDim}」，Printify 无对应维度`;
+        warnings.push(dimensionMessage);
+        break;
+      }
+      const cVals = coreDimValues[cDim];
+      const pVals = printifyDimValues[pDim];
+      if (cVals && pVals) {
+        const cArr = Array.from(cVals);
+        const pArr = Array.from(pVals);
+        const overlap = cArr.filter(x => pArr.some(y => y.toLowerCase() === x.toLowerCase())).length;
+        if (overlap === 0 && (cArr.length > 0 || pArr.length > 0)) {
+          dimensionMatch = false;
+          dimensionMessage = `维度「${pDim}」取值无重叠：核心 [${cArr.slice(0, 5).join(', ')}${cArr.length > 5 ? '...' : ''}], Printify [${pArr.slice(0, 5).join(', ')}${pArr.length > 5 ? '...' : ''}]`;
+          warnings.push(dimensionMessage);
+        } else if (overlap < Math.min(cArr.length, pArr.length) * 0.5) {
+          warnings.push(`维度「${pDim}」取值部分重叠，请核对是否同一规格体系。`);
+        }
+      }
+    }
+  }
+
+  return {
+    titleMatch,
+    titleMessage,
+    dimensionMatch,
+    dimensionMessage,
+    variantCountCore,
+    variantCountPrintify,
+    variantCountMatch,
+    warnings,
+    canForce: true,
+  };
+}
+
 interface PrintifyStore {
   id_hashid: string;
   name: string;
@@ -183,7 +328,12 @@ interface ProductMapping {
   printify_variant_sku: string | null;
 }
 
-export function PrintifyMapping() {
+interface PrintifyMappingProps {
+  /** 从订单详情等跳转时传入，预选该核心商品以便绑定 Printify */
+  initialCoreProductIdHashid?: string;
+}
+
+export function PrintifyMapping({ initialCoreProductIdHashid }: PrintifyMappingProps = {}) {
   const [coreProducts, setCoreProducts] = useState<CoreProduct[]>([]);
   const [printifyProducts, setPrintifyProducts] = useState<PrintifyProduct[]>(
     []
@@ -213,6 +363,8 @@ export function PrintifyMapping() {
   const [mappingStatus, setMappingStatus] = useState<'active' | 'pending'>(
     'active'
   );
+  const [mappingValidation, setMappingValidation] =
+    useState<MappingValidation | null>(null);
   const [selectedCoreProduct, setSelectedCoreProduct] =
     useState<CoreProduct | null>(null);
   const [selectedPrintifyProduct, setSelectedPrintifyProduct] =
@@ -253,7 +405,7 @@ export function PrintifyMapping() {
           include_variants: true,
           include_dimensions: false,
           include_tags: false,
-          include_mappings: false,
+          include_mappings: true, // 用于「仅未映射到 Printify」筛选
         },
       });
 
@@ -307,24 +459,27 @@ export function PrintifyMapping() {
     }
   }, []);
 
-  // 获取 Printify 商品数据（从本地数据库）
-  const fetchPrintifyProducts = useCallback(async (store: PrintifyStore) => {
-    if (!store) return;
+  // 获取 Printify 商品数据（从本地数据库）；默认仅已发布，可选显示未发布
+  const fetchPrintifyProducts = useCallback(
+    async (store: PrintifyStore, publishedOnly: boolean = true) => {
+      if (!store) return;
 
-    try {
-      frontendLogger.info('🔍 开始获取 Printify 商品列表（本地数据库）', {
-        storeId: store.id_hashid,
-        storeName: store.name,
-      });
+      try {
+        frontendLogger.info('🔍 开始获取 Printify 商品列表（本地数据库）', {
+          storeId: store.id_hashid,
+          storeName: store.name,
+          publishedOnly,
+        });
 
-      const response = await frontendApi.get('/api/printify-products/', {
-        params: {
-          external_system_id: store.id_hashid,
-          limit: 100,
-          offset: 0,
-          visible_only: true,
-        },
-      });
+        const response = await frontendApi.get('/api/printify-products/', {
+          params: {
+            external_system_id: store.id_hashid,
+            limit: 100,
+            offset: 0,
+            visible_only: true,
+            published_only: publishedOnly,
+          },
+        });
 
       if (response.data && response.data.products) {
         const productsData = response.data.products || [];
@@ -375,30 +530,82 @@ export function PrintifyMapping() {
   }, []);
 
   // 初始化数据
+  const fetchSingleCoreProduct = useCallback(
+    async (productHashid: string) => {
+      const res = await frontendApi.get(`/api/products/${productHashid}`, {
+        params: { include_variants: true, include_mappings: true },
+      });
+      const p = res.data;
+      const coreProduct: CoreProduct = {
+        id_hashid: p.id_hashid,
+        title: p.title,
+        vendor: p.vendor || '',
+        product_type: p.product_type || '',
+        status: p.status || '',
+        is_active: p.is_active ?? true,
+        is_available: p.is_available ?? true,
+        created_at: p.created_at,
+        variants: (p.variants || []).map((v: any) => ({
+          id_hashid: v.id_hashid,
+          sku: v.sku,
+          name: v.name || v.sku,
+          price: v.price ?? 0,
+          is_active: v.is_active ?? true,
+          is_available: v.is_available ?? true,
+          attributes: v.attributes || {},
+        })),
+        has_printify_mapping: p.has_printify_mapping,
+      };
+      setCoreProducts([coreProduct]);
+      setSelectedCoreProducts([productHashid]);
+    },
+    []
+  );
+
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
-      await Promise.all([
-        fetchCoreProducts(),
-        fetchPrintifyStores(),
-        fetchMappings(),
-      ]);
+      if (initialCoreProductIdHashid) {
+        await Promise.all([
+          fetchSingleCoreProduct(initialCoreProductIdHashid),
+          fetchPrintifyStores(),
+          fetchMappings(),
+        ]);
+      } else {
+        await Promise.all([
+          fetchCoreProducts(),
+          fetchPrintifyStores(),
+          fetchMappings(),
+        ]);
+      }
     } catch (err: any) {
       frontendLogger.error('❌ 初始化数据失败', { error: err.message });
       setError(err.response?.data?.detail || err.message || '初始化数据失败');
     } finally {
       setLoading(false);
     }
-  }, [fetchCoreProducts, fetchPrintifyStores, fetchMappings]);
+  }, [
+    initialCoreProductIdHashid,
+    fetchSingleCoreProduct,
+    fetchCoreProducts,
+    fetchPrintifyStores,
+    fetchMappings,
+  ]);
 
-  // 当选择店铺时获取商品
+  // 仅显示未映射的筛选（默认开启，便于补齐映射）
+  const [showOnlyUnmappedCore, setShowOnlyUnmappedCore] = useState(true);
+  const [showOnlyUnmappedPrintify, setShowOnlyUnmappedPrintify] = useState(true);
+  // Printify 右侧列表：默认仅已发布（避免未发布/店铺不一致混入）
+  const [printifyPublishedOnly, setPrintifyPublishedOnly] = useState(true);
+
+  // 当选择店铺或「仅已发布」变更时重新获取 Printify 商品
   useEffect(() => {
     if (selectedStore) {
-      fetchPrintifyProducts(selectedStore);
+      fetchPrintifyProducts(selectedStore, printifyPublishedOnly);
     }
-  }, [selectedStore, fetchPrintifyProducts]);
+  }, [selectedStore, printifyPublishedOnly, fetchPrintifyProducts]);
 
   // 映射列表变化时，若当前页无数据则回到第 1 页
   useEffect(() => {
@@ -415,24 +622,40 @@ export function PrintifyMapping() {
     fetchData();
   }, [fetchData]);
 
-  // 过滤商品
-  const filteredCoreProducts = coreProducts.filter(
-    product =>
-      product.title.toLowerCase().includes(coreSearchTerm.toLowerCase()) ||
-      product.vendor.toLowerCase().includes(coreSearchTerm.toLowerCase())
+  // 已映射到 Printify 的 external_product_id 集合（用于 Printify 列表筛选）
+  const mappedPrintifyProductIds = new Set(
+    mappings.map(m => m.external_product_id)
   );
 
-  const filteredPrintifyProducts = printifyProducts.filter(
-    product =>
-      product.title.toLowerCase().includes(printifySearchTerm.toLowerCase()) ||
-      (product.description &&
-        product.description
-          .toLowerCase()
-          .includes(printifySearchTerm.toLowerCase())) ||
-      product.tags.some(tag =>
-        tag.toLowerCase().includes(printifySearchTerm.toLowerCase())
-      )
-  );
+  // 过滤商品：搜索 + 可选「仅未映射」
+  const filteredCoreProducts = coreProducts
+    .filter(
+      product =>
+        product.title.toLowerCase().includes(coreSearchTerm.toLowerCase()) ||
+        (product.vendor || '').toLowerCase().includes(coreSearchTerm.toLowerCase())
+    )
+    .filter(
+      product =>
+        !showOnlyUnmappedCore || product.has_printify_mapping !== true
+    );
+
+  const filteredPrintifyProducts = printifyProducts
+    .filter(
+      product =>
+        product.title.toLowerCase().includes(printifySearchTerm.toLowerCase()) ||
+        (product.description &&
+          product.description
+            .toLowerCase()
+            .includes(printifySearchTerm.toLowerCase())) ||
+        (product.tags || []).some(tag =>
+          tag.toLowerCase().includes(printifySearchTerm.toLowerCase())
+        )
+    )
+    .filter(
+      product =>
+        !showOnlyUnmappedPrintify ||
+        !mappedPrintifyProductIds.has(product.printify_product_id)
+    );
 
   // 检查商品是否已映射
   const isProductMapped = (
@@ -490,6 +713,7 @@ export function PrintifyMapping() {
       if (coreProduct && printifyProduct) {
         setSelectedCoreProduct(coreProduct);
         setSelectedPrintifyProduct(printifyProduct);
+        setMappingValidation(computeMappingValidation(coreProduct, printifyProduct));
 
         // 检查是否有变体，如果有则显示变体映射对话框
         if (
@@ -498,6 +722,12 @@ export function PrintifyMapping() {
           printifyProduct.variants &&
           printifyProduct.variants.length > 0
         ) {
+          frontendLogger.info('[VariantMapping] 打开变体映射弹窗（创建映射）', {
+            coreTitle: coreProduct.title,
+            printifyTitle: printifyProduct.title,
+            coreVariantsCount: coreProduct.variants.length,
+            printifyVariantsCount: printifyProduct.variants.length,
+          });
           setVariantMappingDialogOpen(true);
         } else {
           setMappingDialogOpen(true);
@@ -757,6 +987,51 @@ export function PrintifyMapping() {
     }
   };
 
+  // 清空该店铺下所有 Printify 本地数据（便于先删后重新同步）
+  const [clearing, setClearing] = useState(false);
+  const handleClearPrintifyProducts = async () => {
+    if (!selectedStore) {
+      setError('请先选择店铺');
+      return;
+    }
+    if (!window.confirm('确定清空该店铺下所有 Printify 本地数据吗？清空后可再点击「同步商品到本地」重新拉取。')) return;
+    try {
+      setClearing(true);
+      setError(null);
+      await frontendApi.post('/api/printify-products/clear-by-external-system', {
+        external_system_id_hashid: selectedStore.id_hashid,
+      });
+      frontendLogger.info('✅ 已清空 Printify 本地数据');
+      await fetchPrintifyProducts(selectedStore);
+    } catch (error) {
+      frontendLogger.error('❌ 清空失败', { error: String(error) });
+      setError('清空 Printify 数据失败');
+    } finally {
+      setClearing(false);
+    }
+  };
+
+  // 同步后校验：查看 options/variants 摘要，确认数据是否正确
+  const [verifyResult, setVerifyResult] = useState<Record<string, unknown> | null>(null);
+  const handleVerifyData = async () => {
+    if (!selectedStore) {
+      setError('请先选择店铺');
+      return;
+    }
+    try {
+      setError(null);
+      setVerifyResult(null);
+      const res = await frontendApi.get(
+        `/api/printify-products/verify-data?external_system_id_hashid=${encodeURIComponent(selectedStore.id_hashid)}&limit=2`
+      );
+      setVerifyResult(res.data);
+      frontendLogger.info('校验数据结果', res.data);
+    } catch (error) {
+      frontendLogger.error('校验失败', { error: String(error) });
+      setError('校验数据失败');
+    }
+  };
+
   // 同步 Printify 商品到本地数据库
   const handleSyncPrintifyProducts = async () => {
     if (!selectedStore) {
@@ -873,15 +1148,32 @@ export function PrintifyMapping() {
             >
               <Typography variant='h6'>选择 Printify 店铺</Typography>
               {selectedStore && (
-                <Button
-                  variant='outlined'
-                  startIcon={<SyncIcon />}
-                  onClick={handleSyncPrintifyProducts}
-                  disabled={syncing}
-                  color='primary'
-                >
-                  {syncing ? '同步中...' : '同步商品到本地'}
-                </Button>
+                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                  <Button
+                    variant='outlined'
+                    startIcon={<SyncIcon />}
+                    onClick={handleSyncPrintifyProducts}
+                    disabled={syncing || clearing}
+                    color='primary'
+                  >
+                    {syncing ? '同步中...' : '同步商品到本地'}
+                  </Button>
+                  <Button
+                    variant='outlined'
+                    onClick={handleClearPrintifyProducts}
+                    disabled={syncing || clearing}
+                    color='warning'
+                  >
+                    {clearing ? '清空中...' : '清空本地 Printify 数据'}
+                  </Button>
+                  <Button
+                    variant='outlined'
+                    onClick={handleVerifyData}
+                    disabled={syncing || clearing}
+                  >
+                    校验数据（同步后查看）
+                  </Button>
+                </Box>
               )}
             </Box>
             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
@@ -903,9 +1195,48 @@ export function PrintifyMapping() {
                 />
               ))}
             </Box>
+            {verifyResult && (
+              <Alert
+                severity='info'
+                sx={{ mt: 2 }}
+                onClose={() => setVerifyResult(null)}
+              >
+                <Typography variant='subtitle2' gutterBottom>
+                  校验摘要（options 与变体样本）
+                </Typography>
+                <Box component='pre' sx={{ whiteSpace: 'pre-wrap', fontSize: '0.85rem', maxHeight: 320, overflow: 'auto' }}>
+                  {JSON.stringify(verifyResult, null, 2)}
+                </Box>
+              </Alert>
+            )}
           </CardContent>
         </Card>
       )}
+
+      {/* 操作说明与筛选 */}
+      <Alert severity='info' sx={{ mb: 2 }}>
+        <strong>操作：</strong>左侧选核心商品、右侧选 Printify 商品，点击「创建映射」。本页仅关心核心↔Printify，不涉及 Shopify。勾选「仅未映射」可缩小范围，便于为每个核心商品找到对应 Printify。
+      </Alert>
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 2, alignItems: 'center' }}>
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={showOnlyUnmappedCore}
+              onChange={e => setShowOnlyUnmappedCore(e.target.checked)}
+            />
+          }
+          label='仅显示未映射到 Printify 的核心商品'
+        />
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={showOnlyUnmappedPrintify}
+              onChange={e => setShowOnlyUnmappedPrintify(e.target.checked)}
+            />
+          }
+          label='仅显示未映射的 Printify 商品'
+        />
+      </Box>
 
       {/* 映射操作区域 */}
       {selectedCoreProducts.length > 0 &&
@@ -940,13 +1271,25 @@ export function PrintifyMapping() {
           </Card>
         )}
 
-      <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
-        {/* 核心商品列表 */}
-        <Box sx={{ width: "100%" }} md={6}>
-          <Card>
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: { xs: 'column', sm: 'row' },
+          gap: 2,
+          alignItems: 'stretch',
+        }}
+      >
+        {/* 核心商品列表 - 左侧 */}
+        <Box sx={{ flex: { sm: '1 1 0%' }, minWidth: { sm: 0 }, display: 'flex', flexDirection: 'column' }}>
+          <Card sx={{ height: '100%', minHeight: 420, display: 'flex', flexDirection: 'column' }}>
             <CardContent>
               <Typography variant='h6' component='h2' mb={2}>
                 核心商品
+                {showOnlyUnmappedCore && (
+                  <Typography component='span' variant='body2' color='text.secondary' sx={{ ml: 1 }}>
+                    （仅未映射 {filteredCoreProducts.length}）
+                  </Typography>
+                )}
               </Typography>
 
               <TextField
@@ -967,9 +1310,9 @@ export function PrintifyMapping() {
               <TableContainer
                 component={Paper}
                 variant='outlined'
-                sx={{ maxHeight: 400 }}
+                sx={{ maxHeight: 420 }}
               >
-                <Table stickyHeader>
+                <Table stickyHeader size='small'>
                   <TableHead>
                     <TableRow>
                       <TableCell padding='checkbox'>选择</TableCell>
@@ -1023,13 +1366,28 @@ export function PrintifyMapping() {
           </Card>
         </Box>
 
-        {/* Printify 商品列表 */}
-        <Box sx={{ width: "100%" }} md={6}>
-          <Card>
+        {/* Printify 商品列表 - 右侧 */}
+        <Box sx={{ flex: { sm: '1 1 0%' }, minWidth: { sm: 0 }, display: 'flex', flexDirection: 'column' }}>
+          <Card sx={{ height: '100%', minHeight: 420, display: 'flex', flexDirection: 'column' }}>
             <CardContent>
-              <Typography variant='h6' component='h2' mb={2}>
+              <Typography variant='h6' component='h2' mb={1}>
                 Printify 商品
+                {showOnlyUnmappedPrintify && (
+                  <Typography component='span' variant='body2' color='text.secondary' sx={{ ml: 1 }}>
+                    （仅未映射 {filteredPrintifyProducts.length}）
+                  </Typography>
+                )}
               </Typography>
+              <FormControlLabel
+                sx={{ mb: 2, display: 'block' }}
+                control={
+                  <Checkbox
+                    checked={printifyPublishedOnly}
+                    onChange={e => setPrintifyPublishedOnly(e.target.checked)}
+                  />
+                }
+                label='仅已发布（默认只显示当前店铺且已发布商品）'
+              />
 
               <TextField
                 fullWidth
@@ -1049,9 +1407,9 @@ export function PrintifyMapping() {
               <TableContainer
                 component={Paper}
                 variant='outlined'
-                sx={{ maxHeight: 400 }}
+                sx={{ maxHeight: 420 }}
               >
-                <Table stickyHeader>
+                <Table stickyHeader size='small'>
                   <TableHead>
                     <TableRow>
                       <TableCell padding='checkbox'>选择</TableCell>
@@ -1086,15 +1444,20 @@ export function PrintifyMapping() {
                         </TableCell>
                         <TableCell>
                           <Typography variant='body2'>
-                            {product.variants.length}
+                            {product.variants?.length ?? 0}
                           </Typography>
                         </TableCell>
                         <TableCell>
                           <Chip
-                            label={product.visible ? '可见' : '隐藏'}
-                            color={product.visible ? 'success' : 'default'}
+                            label={product.is_published !== false ? '已发布' : '未发布'}
+                            color={product.is_published !== false ? 'success' : 'default'}
                             size='small'
                           />
+                          {product.printify_shop_id && (
+                            <Typography component='span' variant='caption' color='text.secondary' sx={{ ml: 0.5 }}>
+                              · {product.printify_shop_id}
+                            </Typography>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -1317,15 +1680,45 @@ export function PrintifyMapping() {
       {/* 映射确认对话框 */}
       <Dialog
         open={mappingDialogOpen}
-        onClose={() => setMappingDialogOpen(false)}
+        onClose={() => {
+          setMappingDialogOpen(false);
+          setMappingValidation(null);
+        }}
         maxWidth='sm'
         fullWidth
       >
         <DialogTitle>确认创建映射</DialogTitle>
         <DialogContent>
           <Typography variant='body2' mb={2}>
-            您即将创建核心商品与 Printify 商品的映射关系。
+            您即将创建核心商品与 Printify 商品的映射关系（商品级，不区分变体）。
           </Typography>
+          <Alert severity='info' sx={{ mb: 2 }}>
+            履约时系统会按「核心变体 SKU」在 Printify 该商品的变体中匹配；若两边变体数一致且 SKU 一致，即可正确发货。若 SKU 不一致，需在商品管理或后续流程中补充变体级映射。
+          </Alert>
+
+          {mappingValidation && mappingValidation.warnings.length > 0 && (
+            <Alert severity='warning' sx={{ mb: 2 }}>
+              <Typography variant='subtitle2' gutterBottom>
+                一致性校验：存在以下差异，是否仍要映射？
+              </Typography>
+              <Box component='ul' sx={{ m: 0, pl: 2 }}>
+                {mappingValidation.warnings.map((w, i) => (
+                  <li key={i}>
+                    <Typography variant='body2'>{w}</Typography>
+                  </li>
+                ))}
+              </Box>
+              <Typography variant='body2' sx={{ mt: 1 }}>
+                若确认是同一商品或可接受差异，可点击「强制映射」继续创建。
+              </Typography>
+            </Alert>
+          )}
+
+          {mappingValidation && mappingValidation.warnings.length === 0 && (
+            <Alert severity='success' sx={{ mb: 2 }}>
+              标题与变体维度一致或近似，可放心创建映射。
+            </Alert>
+          )}
 
           {selectedCoreProduct && (
             <Box mb={2}>
@@ -1335,6 +1728,11 @@ export function PrintifyMapping() {
               <Typography variant='body2'>
                 {selectedCoreProduct.title}
               </Typography>
+              {mappingValidation && (
+                <Typography variant='caption' color='text.secondary'>
+                  变体数：{mappingValidation.variantCountCore}
+                </Typography>
+              )}
             </Box>
           )}
 
@@ -1346,6 +1744,11 @@ export function PrintifyMapping() {
               <Typography variant='body2'>
                 {selectedPrintifyProduct.title}
               </Typography>
+              {mappingValidation && (
+                <Typography variant='caption' color='text.secondary'>
+                  变体数：{mappingValidation.variantCountPrintify}
+                </Typography>
+              )}
             </Box>
           )}
 
@@ -1364,9 +1767,20 @@ export function PrintifyMapping() {
           </FormControl>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setMappingDialogOpen(false)}>取消</Button>
-          <Button onClick={handleConfirmMapping} variant='contained'>
-            确认创建
+          <Button
+            onClick={() => {
+              setMappingDialogOpen(false);
+              setMappingValidation(null);
+            }}
+          >
+            取消
+          </Button>
+          <Button
+            onClick={handleConfirmMapping}
+            variant='contained'
+            color={mappingValidation?.warnings?.length ? 'warning' : 'primary'}
+          >
+            {mappingValidation?.warnings?.length ? '强制映射' : '确认创建'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1524,11 +1938,15 @@ export function PrintifyMapping() {
       {selectedCoreProduct && selectedPrintifyProduct && (
         <VariantMappingDialog
           open={variantMappingDialogOpen}
-          onClose={() => setVariantMappingDialogOpen(false)}
+          onClose={() => {
+            setVariantMappingDialogOpen(false);
+            setMappingValidation(null);
+          }}
           onConfirm={handleConfirmVariantMapping}
           coreProduct={selectedCoreProduct}
           printifyProduct={selectedPrintifyProduct}
           printifySystemId={printifySystemId}
+          validationWarnings={mappingValidation?.warnings}
         />
       )}
     </Box>

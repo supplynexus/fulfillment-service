@@ -114,10 +114,11 @@ export function OrdersList() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const productFromUrl = searchParams.get('product') ?? '';
+  const searchFromUrl = searchParams.get('search') ?? '';
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(() => searchFromUrl || '');
   const [productFilter, setProductFilter] = useState(productFromUrl);
   const [productFilterLabel, setProductFilterLabel] = useState<string>('');
   const [productOptions, setProductOptions] = useState<ProductOption[]>([]);
@@ -189,6 +190,12 @@ export function OrdersList() {
       setProductFilter(p);
       if (!p) setProductFilterLabel('');
     }
+  }, [searchParams]);
+
+  // 从 URL 同步搜索关键词（例如从同步订单页「核心订单」跳转带入订单号筛选）
+  useEffect(() => {
+    const q = searchParams.get('search') ?? '';
+    if (q !== searchTerm) setSearchTerm(q);
   }, [searchParams]);
 
   // 当 URL 带入商品 hashid 时，拉取该商品标题用于展示（人类可读）
@@ -336,6 +343,7 @@ export function OrdersList() {
   };
 
   const handleViewOrder = (orderId: string) => {
+    if (!orderId) return;
     router.push(`/orders/${orderId}`);
   };
 

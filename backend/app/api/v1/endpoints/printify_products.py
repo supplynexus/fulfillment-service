@@ -17,7 +17,9 @@ from app.core.hashids_utils import encode_id, decode_id
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.models.printify_product import PrintifyProduct, PrintifyVariant
+from app.models.external_system import ExternalSystem
 from app.services.printify_product_service import PrintifyProductService
+from sqlalchemy import select
 
 logger = get_logger(__name__)
 
@@ -37,6 +39,7 @@ class PrintifyProductResponse(BaseResponse):
     tags: Optional[List[str]]
     visible: bool
     is_locked: bool
+    is_published: bool = True  # 是否已发布到销售渠道，用于筛选
     external: Optional[Dict[str, Any]]
     user_id: Optional[int]
     print_provider_id: Optional[int]
@@ -79,38 +82,64 @@ class PrintifyProductListResponse(BaseModel):
 
 @router.get("/", response_model=PrintifyProductListResponse)
 async def get_printify_products(
-    external_system_id_hashid: Optional[str] = Query(None, description="外部系统 ID"),
+    external_system_id_hashid: Optional[str] = Query(None, description="外部系统 ID (hashid)"),
+    external_system_id: Optional[str] = Query(None, description="外部系统 ID (hashid)，与 external_system_id_hashid 同义，前端常用"),
     limit: int = Query(50, ge=1, le=100, description="每页数量"),
     offset: int = Query(0, ge=0, description="偏移量"),
     visible_only: bool = Query(True, description="只显示可见商品"),
+    published_only: Optional[bool] = Query(None, description="按发布状态筛选: true=仅已发布, false=仅未发布, 不传=全部"),
     db: AsyncSession = Depends(get_async_db),
     auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
 ):
     """获取 Printify 商品列表"""
     tenant, user = auth
-    
+    hashid = external_system_id_hashid or external_system_id
+
     try:
-        logger.info("🔍 开始获取 Printify 商品列表", 
+        logger.info("🔍 开始获取 Printify 商品列表",
                    tenant_id=tenant.id,
-                   external_system_id_hashid=external_system_id_hashid)
-        
-        # 解码外部系统 ID
+                   external_system_id_hashid=hashid)
+
+        # 解码外部系统 ID，并读取首选店铺（用于只显示当前店铺商品，避免店铺不一致）
         external_system_id = None
-        if external_system_id_hashid:
+        printify_shop_id: Optional[str] = None
+        if hashid:
             try:
-                external_system_id = decode_id(external_system_id_hashid)
-                logger.info(f"✅ 外部系统ID解码成功: {external_system_id_hashid} -> {external_system_id}")
+                external_system_id = decode_id(hashid)
+                logger.info(f"✅ 外部系统ID解码成功: {hashid} -> {external_system_id}")
             except Exception as e:
-                logger.error(f"❌ 外部系统ID解码失败: {str(e)}")
+                logger.error(f"❌ 外部系统ID解码失败: {hashid} -> {str(e)}")
                 raise HTTPException(status_code=400, detail="Invalid external system ID")
-        
-        # 获取商品列表
+            # 若外部系统配置了首选店铺，只返回该店铺商品
+            es_result = await db.execute(
+                select(ExternalSystem.settings).where(
+                    ExternalSystem.id == external_system_id,
+                    ExternalSystem.tenant_id == tenant.id,
+                )
+            )
+            row = es_result.one_or_none()
+            settings = None
+            if row is not None:
+                if isinstance(row, dict):
+                    settings = row
+                elif hasattr(row, "_mapping"):
+                    settings = row._mapping.get("settings")
+                else:
+                    settings = getattr(row, "settings", None)
+            if settings and isinstance(settings, dict):
+                raw = settings.get("printify_shop_id")
+                if raw is not None:
+                    printify_shop_id = str(raw).strip() or None
+
+        # 获取商品列表（按店铺、发布状态过滤）
         service = PrintifyProductService(db)
         products = await service.get_products_by_tenant(
             tenant_id=tenant.id,
             external_system_id=external_system_id,
             limit=limit,
-            offset=offset
+            offset=offset,
+            published_only=published_only,
+            printify_shop_id=printify_shop_id,
         )
         
         # 过滤可见商品
@@ -132,6 +161,7 @@ async def get_printify_products(
                 tags=product.tags,
                 visible=product.visible,
                 is_locked=product.is_locked,
+                is_published=product.is_published,
                 external=product.external,
                 user_id=product.user_id,
                 print_provider_id=product.print_provider_id,
@@ -166,6 +196,85 @@ async def get_printify_products(
         import traceback
         logger.error(f"   异常堆栈: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Failed to get Printify products: {str(e)}")
+
+
+class ClearByExternalSystemRequest(BaseModel):
+    """按外部系统清空 Printify 本地数据请求"""
+    external_system_id_hashid: str
+
+
+@router.post("/clear-by-external-system", response_model=dict)
+async def clear_printify_products_by_external_system(
+    body: ClearByExternalSystemRequest,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
+):
+    """
+    清空该外部系统下所有 Printify 本地数据（printify_products、printify_variants、对应 external_products）。
+    清空后可再点击「同步商品到本地」重新拉取。
+    """
+    tenant, user = auth
+    try:
+        external_system_id = decode_id(body.external_system_id_hashid)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid external system ID")
+    service = PrintifyProductService(db)
+    result = await service.clear_products_by_external_system(tenant.id, external_system_id)
+    return {"message": "Printify data cleared", **result}
+
+
+@router.get("/verify-data", response_model=dict)
+async def verify_printify_data(
+    external_system_id_hashid: str = Query(..., description="外部系统 hashid"),
+    limit: int = Query(2, ge=1, le=10, description="抽查商品数量"),
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
+):
+    """
+    同步后校验：返回若干商品的 options 与 variants 摘要，用于确认维度/变体数据是否正确
+    （如 product.options 含 name/values、variant 含 options 或 title，便于匹配 White 等）
+    """
+    tenant, user = auth
+    try:
+        external_system_id = decode_id(external_system_id_hashid)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid external system ID")
+    service = PrintifyProductService(db)
+    products = await service.get_products_by_tenant(
+        tenant_id=tenant.id,
+        external_system_id=external_system_id,
+        limit=limit,
+        offset=0,
+    )
+    summary = []
+    for p in products:
+        opts = p.options or []
+        option_summary = [
+            {
+                "name": o.get("name"),
+                "values_count": len(o.get("values") or []),
+                "value_titles": [v.get("title") for v in (o.get("values") or [])[:8]],
+            }
+            for o in opts
+        ]
+        variants = p.variants or []
+        variant_sample = []
+        for v in variants[:5]:
+            opt_ids = v.get("options")
+            variant_sample.append({
+                "id": v.get("id"),
+                "title": v.get("title"),
+                "has_options": isinstance(opt_ids, list) and len(opt_ids) > 0,
+                "options": opt_ids,
+            })
+        summary.append({
+            "printify_product_id": p.printify_product_id,
+            "title": p.title,
+            "options": option_summary,
+            "variants_count": len(variants),
+            "variant_sample": variant_sample,
+        })
+    return {"external_system_id_hashid": external_system_id_hashid, "products": summary}
 
 
 @router.get("/{product_id_hashid}", response_model=PrintifyProductResponse)
@@ -217,6 +326,7 @@ async def get_printify_product(
             tags=product.tags,
             visible=product.visible,
             is_locked=product.is_locked,
+            is_published=product.is_published,
             external=product.external,
             user_id=product.user_id,
             print_provider_id=product.print_provider_id,

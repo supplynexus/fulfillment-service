@@ -8,11 +8,17 @@ export const metadata: Metadata = {
   description: '管理核心商品与 Printify 商品的映射关系',
 };
 
-export default function PrintifyMappingPage() {
+type PageProps = {
+  searchParams: Promise<{ core_product_id?: string }>;
+};
+
+export default async function PrintifyMappingPage({ searchParams }: PageProps) {
+  const params = await searchParams;
+  const initialCoreProductIdHashid = params?.core_product_id?.trim() || undefined;
   return (
     <ProtectedRoute>
       <DashboardLayout>
-        <PrintifyMapping />
+        <PrintifyMapping initialCoreProductIdHashid={initialCoreProductIdHashid} />
       </DashboardLayout>
     </ProtectedRoute>
   );

@@ -600,6 +600,58 @@ class PrintifyFulfillmentService:
             mapping = mapping_result.scalar_one_or_none()
             
             if not mapping:
+                # 商品级映射回退：按 core_product_id 查 product-level 映射，再按核心变体 SKU 在 ExternalProduct.variants 中匹配
+                from app.models.product import ProductVariant, ExternalProduct
+                variant_row = await db.execute(
+                    select(ProductVariant).where(
+                        and_(
+                            ProductVariant.id == core_variant_id,
+                            ProductVariant.tenant_id == tenant_id
+                        )
+                    )
+                )
+                core_variant = variant_row.scalar_one_or_none()
+                if core_variant:
+                    pl_result = await db.execute(
+                        select(ProductMapping).where(
+                            and_(
+                                ProductMapping.core_product_id == core_variant.product_id,
+                                ProductMapping.core_variant_id.is_(None),
+                                ProductMapping.tenant_id == tenant_id,
+                                ProductMapping.external_system_id == external_system.id,
+                                ProductMapping.external_product_id.isnot(None),
+                            )
+                        )
+                    )
+                    pl = pl_result.scalar_one_or_none()
+                    if pl:
+                        ep_row = await db.execute(
+                            select(ExternalProduct).where(
+                                and_(
+                                    ExternalProduct.tenant_id == tenant_id,
+                                    ExternalProduct.external_system_id == external_system.id,
+                                    ExternalProduct.external_product_id == pl.external_product_id,
+                                )
+                            )
+                        )
+                        ep = ep_row.scalar_one_or_none()
+                        if ep and ep.variants and core_variant.sku:
+                            core_sku = (core_variant.sku or "").strip()
+                            for v in ep.variants:
+                                if not isinstance(v, dict):
+                                    continue
+                                v_sku = (v.get("sku") or "").strip()
+                                if core_sku and v_sku and core_sku == v_sku:
+                                    ext_id = v.get("id")
+                                    if ext_id is not None:
+                                        logger.info(
+                                            f"✅ 商品级映射+SKU回退: core_variant_id={core_variant_id}, sku={core_sku}, external_variant_id={ext_id}"
+                                        )
+                                        return {
+                                            "printify_product_id": pl.external_product_id,
+                                            "printify_variant_id": str(ext_id)
+                                        }
+                                    break
                 logger.warning(f"⚠️ 未找到 Printify 产品映射: core_variant_id={core_variant_id}")
                 return None
             
@@ -688,7 +740,7 @@ class PrintifyFulfillmentService:
         用于自动化流程，在调用 create_fulfillment_order 前增强行项目。
         当 core_variant_id 和 sku 为空时，可选通过 source_order_id + source_line_item_id 从 OrderItem 解析（与手动创建时 SCM API 的规范化逻辑一致）。
         """
-        from app.models.product import ProductVariant, ProductMapping
+        from app.models.product import ProductVariant, ProductMapping, ExternalProduct
         from app.models.order import OrderItem
         from app.models.external_system import ExternalSystem, ExternalSystemType
         from sqlalchemy import select, and_, or_
@@ -851,13 +903,66 @@ class PrintifyFulfillmentService:
                 )
                 mapping = mapping_result.scalar_one_or_none()
 
+            # 商品级映射回退：无变体级映射时，用「核心商品↔Printify 商品」+ 按 SKU 在 Printify 变体中解析 external_variant_id
+            if core_variant and not mapping:
+                product_level_result = await db.execute(
+                    select(ProductMapping).where(
+                        and_(
+                            ProductMapping.core_product_id == core_variant.product_id,
+                            ProductMapping.core_variant_id.is_(None),
+                            ProductMapping.tenant_id == tenant_id,
+                            ProductMapping.external_system_id == external_system.id,
+                            ProductMapping.external_product_id.isnot(None),
+                        )
+                    )
+                )
+                product_level = product_level_result.scalar_one_or_none()
+                if product_level:
+                    ep_result = await db.execute(
+                        select(ExternalProduct).where(
+                            and_(
+                                ExternalProduct.tenant_id == tenant_id,
+                                ExternalProduct.external_system_id == external_system.id,
+                                ExternalProduct.external_product_id == product_level.external_product_id,
+                            )
+                        )
+                    )
+                    ext_product = ep_result.scalar_one_or_none()
+                    if ext_product and ext_product.variants:
+                        core_sku = (core_variant.sku or "").strip()
+                        ext_variant_id = None
+                        for v in ext_product.variants:
+                            if not isinstance(v, dict):
+                                continue
+                            v_sku = (v.get("sku") or v.get("options", {}).get("sku") or "").strip()
+                            if core_sku and v_sku and core_sku == v_sku:
+                                ext_variant_id = v.get("id")
+                                break
+                        if ext_variant_id is not None:
+                            item_copy["core_product_id"] = core_variant.product_id
+                            item_copy["core_variant_id"] = core_variant.id
+                            item_copy["external_product_id"] = product_level.external_product_id
+                            item_copy["external_variant_id"] = str(ext_variant_id)
+                            logger.info(
+                                f"✅ 商品级映射+SKU匹配: core_sku={core_sku}, external_variant_id={ext_variant_id}"
+                            )
+                        else:
+                            logger.warning(
+                                f"⚠️ 商品级映射存在但未匹配到变体 SKU: core_sku={core_sku!r}, "
+                                f"external_product_id={product_level.external_product_id}"
+                            )
+                    else:
+                        logger.debug(
+                            f"商品级映射存在但 ExternalProduct 无 variants: external_product_id={product_level.external_product_id}"
+                        )
+
             if mapping:
                 item_copy["core_product_id"] = core_variant.product_id
                 item_copy["core_variant_id"] = core_variant.id
                 item_copy["external_product_id"] = mapping.external_product_id
                 item_copy["external_variant_id"] = mapping.external_variant_id
                 logger.info(f"✅ 预增强行项目: sku={item_copy.get('metadata', {}).get('sku')}, external_variant_id={mapping.external_variant_id}")
-            else:
+            elif not (item_copy.get("external_product_id") and item_copy.get("external_variant_id")):
                 sku = item_copy.get("metadata", {}).get("sku")
                 logger.debug(f"⚠️ 行项目无 Printify 映射: sku={sku}, core_variant_id={item_copy.get('core_variant_id')}")
 

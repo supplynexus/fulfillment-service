@@ -11,9 +11,22 @@ from datetime import datetime
 
 from app.models.printify_product import PrintifyProduct, PrintifyVariant
 from app.models.external_system import ExternalSystem
+from app.models.product import ExternalProduct
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+def _is_published_from_api_data(product_data: Dict[str, Any]) -> bool:
+    """Printify 已发布 = 已发布到销售渠道，API 中 sales_channel_properties 非空。"""
+    scp = product_data.get("sales_channel_properties")
+    if scp is None:
+        return False
+    if isinstance(scp, list):
+        return len(scp) > 0
+    if isinstance(scp, dict):
+        return bool(scp)
+    return False
 
 
 class PrintifyProductService:
@@ -41,6 +54,7 @@ class PrintifyProductService:
                 tags=product_data.get('tags', []),
                 visible=product_data.get('visible', True),
                 is_locked=product_data.get('is_locked', False),
+                is_published=_is_published_from_api_data(product_data),
                 external=product_data.get('external'),
                 user_id=product_data.get('user_id'),
                 print_provider_id=product_data.get('print_provider_id'),
@@ -77,6 +91,7 @@ class PrintifyProductService:
                                   product_id=printify_product.id)
                     # 不重新抛出异常，让商品创建成功
             
+            await self._upsert_external_product(tenant_id, external_system_id, product_data)
             await self.db.commit()
             
             logger.info(" Printify 商品创建完成", 
@@ -183,6 +198,82 @@ class PrintifyProductService:
         
         return valid_variants
     
+    async def _upsert_external_product(
+        self, tenant_id: int, external_system_id: int, product_data: Dict[str, Any]
+    ) -> None:
+        """
+        同步写入 external_products，使「外部商品映射」列表能显示已同步的 Printify 商品。
+        Printify 未发布（visible=False）的商品不写入或从 external_products 移除，避免映射时出现多个同名未发布项。
+        """
+        try:
+            # Printify: visible=true 表示已发布到销售渠道，visible=false 表示未发布
+            is_published = product_data.get("visible", True)
+            ext_product_id = str(product_data["id"])
+
+            stmt = select(ExternalProduct).where(
+                and_(
+                    ExternalProduct.tenant_id == tenant_id,
+                    ExternalProduct.external_system_id == external_system_id,
+                    ExternalProduct.external_product_id == ext_product_id,
+                    ExternalProduct.external_variant_id.is_(None),
+                )
+            )
+            result = await self.db.execute(stmt)
+            existing = result.scalar_one_or_none()
+
+            if not is_published:
+                # 未发布：不展示在映射列表。若曾写入过则删除，避免列表中同时出现多个同名（1 个 published + 2 个 unpublished）
+                if existing:
+                    await self.db.delete(existing)
+                    logger.info(
+                        " 从 external_products 移除未发布 Printify 商品（映射列表不再展示）",
+                        external_product_id=ext_product_id,
+                    )
+                return
+            # 已发布：正常 upsert
+            variants = product_data.get("variants") or []
+            first_price = float(variants[0]["price"]) if variants and variants[0].get("price") is not None else None
+            now = datetime.now()
+            if existing:
+                existing.title = product_data.get("title") or existing.title
+                existing.description = product_data.get("description")
+                existing.status = "enabled"
+                existing.is_active = True
+                existing.is_available = True
+                existing.price = first_price
+                existing.variants = variants
+                existing.images = product_data.get("images")
+                existing.product_type = None
+                existing.vendor = None
+                existing.tags = product_data.get("tags")
+                existing.external_data = product_data
+                existing.last_synced_at = now
+                existing.sync_status = "synced"
+                existing.sync_error = None
+                existing.updated_at = now
+            else:
+                ext = ExternalProduct(
+                    tenant_id=tenant_id,
+                    external_system_id=external_system_id,
+                    external_product_id=ext_product_id,
+                    external_variant_id=None,
+                    title=product_data.get("title"),
+                    description=product_data.get("description"),
+                    status="enabled",
+                    is_active=True,
+                    is_available=True,
+                    price=first_price,
+                    variants=variants,
+                    images=product_data.get("images"),
+                    tags=product_data.get("tags"),
+                    external_data=product_data,
+                    last_synced_at=now,
+                    sync_status="synced",
+                )
+                self.db.add(ext)
+        except Exception as e:
+            logger.warning(" 写入 external_products 失败（不影响 printify_products 同步）", error=str(e))
+
     async def get_product_by_printify_id(self, tenant_id: int, external_system_id: int, printify_product_id: str) -> Optional[PrintifyProduct]:
         """根据 Printify 商品 ID 获取商品"""
         try:
@@ -219,20 +310,34 @@ class PrintifyProductService:
                         printify_product_id=printify_product_id)
             raise
     
-    async def get_products_by_tenant(self, tenant_id: int, external_system_id: Optional[int] = None, 
-                                   limit: int = 100, offset: int = 0) -> List[PrintifyProduct]:
-        """获取租户的 Printify 商品列表"""
+    async def get_products_by_tenant(
+        self,
+        tenant_id: int,
+        external_system_id: Optional[int] = None,
+        limit: int = 100,
+        offset: int = 0,
+        published_only: Optional[bool] = None,
+        printify_shop_id: Optional[str] = None,
+    ) -> List[PrintifyProduct]:
+        """获取租户的 Printify 商品列表。published_only: True=仅已发布, False=仅未发布, None=全部。printify_shop_id 有值时只返回该店铺商品（避免多店铺混显）。"""
         try:
-            logger.info(" 开始获取 Printify 商品列表", 
+            shop_id_normalized = str(printify_shop_id).strip() if printify_shop_id else None
+            logger.info(" 开始获取 Printify 商品列表",
                        tenant_id=tenant_id,
                        external_system_id=external_system_id,
                        limit=limit,
-                       offset=offset)
+                       offset=offset,
+                       published_only=published_only,
+                       printify_shop_id=shop_id_normalized)
             
             stmt = select(PrintifyProduct).where(PrintifyProduct.tenant_id == tenant_id)
             
             if external_system_id:
                 stmt = stmt.where(PrintifyProduct.external_system_id == external_system_id)
+            if published_only is not None:
+                stmt = stmt.where(PrintifyProduct.is_published == published_only)
+            if shop_id_normalized:
+                stmt = stmt.where(PrintifyProduct.printify_shop_id == shop_id_normalized)
             
             stmt = stmt.offset(offset).limit(limit).order_by(PrintifyProduct.created_at.desc())
             
@@ -273,6 +378,7 @@ class PrintifyProductService:
                 'tags': product_data.get('tags', product.tags),
                 'visible': product_data.get('visible', product.visible),
                 'is_locked': product_data.get('is_locked', product.is_locked),
+                'is_published': _is_published_from_api_data(product_data),
                 'external': product_data.get('external', product.external),
                 'user_id': product_data.get('user_id', product.user_id),
                 'print_provider_id': product_data.get('print_provider_id', product.print_provider_id),
@@ -299,6 +405,9 @@ class PrintifyProductService:
             if product_data.get('variants'):
                 await self._update_variants(product_id, product_data['variants'], product.tenant_id)
             
+            await self._upsert_external_product(
+                product.tenant_id, product.external_system_id, product_data
+            )
             await self.db.commit()
             
             logger.info(" Printify 商品更新成功", 
@@ -432,4 +541,67 @@ class PrintifyProductService:
             logger.error("同步 Printify 商品失败", 
                         error=str(e),
                         tenant_id=tenant_id)
+            raise
+
+    async def clear_products_by_external_system(
+        self, tenant_id: int, external_system_id: int
+    ) -> Dict[str, Any]:
+        """
+        清空该外部系统下所有 Printify 本地数据（便于先删后重新同步）。
+        删除：printify_variants、printify_products、该 external_system 的 external_products。
+        """
+        try:
+            # 1. 删除该租户+外部系统下所有 Printify 商品的变体
+            stmt = select(PrintifyProduct.id).where(
+                and_(
+                    PrintifyProduct.tenant_id == tenant_id,
+                    PrintifyProduct.external_system_id == external_system_id,
+                )
+            )
+            result = await self.db.execute(stmt)
+            product_ids = [row[0] for row in result.all()]
+            if product_ids:
+                await self.db.execute(
+                    delete(PrintifyVariant).where(
+                        PrintifyVariant.printify_product_id.in_(product_ids)
+                    )
+                )
+            # 2. 删除 Printify 商品
+            stmt = delete(PrintifyProduct).where(
+                and_(
+                    PrintifyProduct.tenant_id == tenant_id,
+                    PrintifyProduct.external_system_id == external_system_id,
+                )
+            )
+            pp_result = await self.db.execute(stmt)
+            deleted_products = pp_result.rowcount
+            # 3. 删除该外部系统对应的 external_products（同步时会重新写入）
+            stmt = delete(ExternalProduct).where(
+                and_(
+                    ExternalProduct.tenant_id == tenant_id,
+                    ExternalProduct.external_system_id == external_system_id,
+                )
+            )
+            ep_result = await self.db.execute(stmt)
+            deleted_external = ep_result.rowcount
+            await self.db.commit()
+            logger.info(
+                "清空 Printify 数据完成",
+                tenant_id=tenant_id,
+                external_system_id=external_system_id,
+                deleted_products=deleted_products,
+                deleted_external_products=deleted_external,
+            )
+            return {
+                "deleted_printify_products": deleted_products,
+                "deleted_external_products": deleted_external,
+            }
+        except Exception as e:
+            await self.db.rollback()
+            logger.error(
+                "清空 Printify 数据失败",
+                error=str(e),
+                tenant_id=tenant_id,
+                external_system_id=external_system_id,
+            )
             raise

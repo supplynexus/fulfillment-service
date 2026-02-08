@@ -34,6 +34,7 @@ import {
   Divider,
   Badge,
   Avatar,
+  Checkbox,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -46,7 +47,10 @@ import {
   AttachMoney as MoneyIcon,
   CalendarToday as CalendarIcon,
   FilterList as FilterIcon,
+  OpenInNew as OpenInNewIcon,
+  Link as LinkIcon,
 } from '@mui/icons-material';
+import Link from 'next/link';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { frontendApi } from '@/lib/api';
@@ -137,6 +141,11 @@ const ShopifyOrdersPage: React.FC = () => {
   const [loadingJson, setLoadingJson] = useState(false);
   const [savingToDatabase, setSavingToDatabase] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  /** 列表勾选的订单 id（用于在列表页直接导入，无需进详情） */
+  const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
+  const [batchImporting, setBatchImporting] = useState(false);
+  /** 已导入到本系统的 Shopify 订单 id 集合（gid 格式），用于显示「已导入」与跳转链接 */
+  const [syncedOrderIds, setSyncedOrderIds] = useState<Set<string>>(new Set());
 
   // 获取 Shopify 店铺列表
   const fetchStores = useCallback(async () => {
@@ -266,6 +275,26 @@ const ShopifyOrdersPage: React.FC = () => {
       fetchOrders(selectedStore, 1);
     }
   }, [selectedStore, fetchOrders]);
+
+  // 拉取已导入订单 id 集合，用于显示「已导入」与跳转
+  const fetchSyncedOrderIds = useCallback(async () => {
+    try {
+      const res = await frontendApi.get('/api/shopify-orders', {
+        params: { page: 1, limit: 500 },
+      });
+      const list = res.data?.orders || [];
+      const ids = new Set(list.map((o: { shopify_order_id: string }) => o.shopify_order_id));
+      setSyncedOrderIds(ids);
+    } catch {
+      setSyncedOrderIds(new Set());
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchSyncedOrderIds();
+  }, [fetchSyncedOrderIds]);
+  // 导入成功后刷新已导入集合
+  const refreshSyncedOrderIds = () => fetchSyncedOrderIds();
 
   // 搜索处理
   const handleSearch = useCallback(() => {
@@ -458,120 +487,118 @@ const ShopifyOrdersPage: React.FC = () => {
     [selectedStore]
   );
 
-  // 保存订单到数据库
+  /** 将单个订单保存到数据库（拉取 JSON + 构建 payload + POST），供详情「保存到数据库」与列表「导入选中」复用 */
+  const saveOneOrderToDb = useCallback(
+    async (order: ShopifyOrder): Promise<boolean> => {
+      if (!selectedStore) return false;
+      const numericOrderId = order.id.includes('gid://shopify/Order/')
+        ? order.id.replace('gid://shopify/Order/', '')
+        : order.id;
+      let fullOrderJson: any;
+      try {
+        const jsonResponse = await frontendApi.get(
+          `/api/external-systems/shopify/${selectedStore.id_hashid}/orders/${numericOrderId}/json`
+        );
+        fullOrderJson = jsonResponse.data;
+      } catch {
+        fullOrderJson = {
+          id: order.id,
+          name: order.name,
+          financial_status: order.financial_status,
+          fulfillment_status: order.fulfillment_status,
+          total_price: order.total_price,
+          currency: order.currency,
+          customer: order.customer,
+          line_items: order.line_items,
+          shipping_address: order.shipping_address,
+          billing_address: order.billing_address,
+          created_at: order.created_at,
+          updated_at: order.updated_at,
+        };
+      }
+      const orderData = {
+        shopify_order_id: order.id,
+        name: order.name,
+        confirmation_number: order.name,
+        financial_status: order.financial_status,
+        fulfillment_status: order.fulfillment_status,
+        confirmed: true,
+        closed: order.fulfillment_status === 'fulfilled',
+        cancelled: order.financial_status === 'cancelled',
+        currency_code: order.currency,
+        total_price: parseFloat(order.total_price) || 0,
+        subtotal_price: parseFloat(order.total_price) || 0,
+        total_tax: 0,
+        total_shipping: 0,
+        tags: [],
+        note: '',
+        customer_data: {
+          id: order.customer?.id,
+          name: order.customer?.name,
+          email: order.customer?.email || order.email,
+          phone: order.phone,
+        },
+        billing_address: order.billing_address,
+        shipping_address: order.shipping_address,
+        line_items: order.line_items || [],
+        fulfillments: order.fulfillments || [],
+        refunds: order.refunds || [],
+        raw_data: fullOrderJson,
+      };
+      try {
+        await frontendApi.post('/api/shopify-orders/', orderData);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [selectedStore]
+  );
+
+  // 保存订单到数据库（详情弹窗内）
   const handleSaveToDatabase = useCallback(async () => {
     if (!selectedOrder || !selectedStore) return;
-
     try {
       setSavingToDatabase(true);
-
-      frontendLogger.info('🔄 保存 Shopify 订单到数据库', {
-        orderId: selectedOrder.id,
-        orderName: selectedOrder.name,
-        storeId: selectedStore.external_system_id,
-      });
-
-      // 如果没有获取过完整的 JSON 数据，先获取它
-      let fullOrderJson = orderJson;
-      if (!fullOrderJson || Object.keys(fullOrderJson).length === 0) {
-        frontendLogger.info('📥 获取完整的 Shopify 订单 JSON 数据');
-        try {
-          // 从 GraphQL ID 中提取纯数字 ID
-          const numericOrderId = selectedOrder.id.includes(
-            'gid://shopify/Order/'
-          )
-            ? selectedOrder.id.replace('gid://shopify/Order/', '')
-            : selectedOrder.id;
-
-          const jsonResponse = await frontendApi.get(
-            `/api/external-systems/shopify/${selectedStore.id_hashid}/orders/${numericOrderId}/json`
-          );
-          fullOrderJson = jsonResponse.data;
-          frontendLogger.info('✅ 完整 JSON 数据获取成功', {
-            hasData: !!fullOrderJson,
-          });
-        } catch (error: any) {
-          frontendLogger.warn('⚠️ 获取完整 JSON 数据失败，使用订单基本信息', {
-            error: error.message,
-          });
-          // 如果获取失败，使用订单的基本信息构建 raw_data
-          fullOrderJson = {
-            id: selectedOrder.id,
-            name: selectedOrder.name,
-            financial_status: selectedOrder.financial_status,
-            fulfillment_status: selectedOrder.fulfillment_status,
-            total_price: selectedOrder.total_price,
-            currency: selectedOrder.currency,
-            customer: selectedOrder.customer,
-            line_items: selectedOrder.line_items,
-            shipping_address: selectedOrder.shipping_address,
-            billing_address: selectedOrder.billing_address,
-            created_at: selectedOrder.created_at,
-            updated_at: selectedOrder.updated_at,
-          };
-        }
+      const ok = await saveOneOrderToDb(selectedOrder);
+      if (ok) {
+        setError(null);
+        setSaveSuccess(true);
+        refreshSyncedOrderIds();
+        setTimeout(() => setSaveSuccess(false), 3000);
+      } else {
+        setError('保存订单到数据库失败');
       }
-
-      // 构建保存到数据库的订单数据
-      const orderData = {
-        shopify_order_id: selectedOrder.id,
-        name: selectedOrder.name,
-        confirmation_number: selectedOrder.name, // 使用订单名称作为确认号
-        financial_status: selectedOrder.financial_status,
-        fulfillment_status: selectedOrder.fulfillment_status,
-        confirmed: true, // 假设已确认
-        closed: selectedOrder.fulfillment_status === 'fulfilled',
-        cancelled: selectedOrder.financial_status === 'cancelled',
-        currency_code: selectedOrder.currency,
-        total_price: parseFloat(selectedOrder.total_price) || 0,
-        subtotal_price: parseFloat(selectedOrder.total_price) || 0, // 简化处理
-        total_tax: 0, // 简化处理
-        total_shipping: 0, // 简化处理
-        tags: [], // 简化处理
-        note: '', // 简化处理
-        customer_data: {
-          id: selectedOrder.customer?.id,
-          name: selectedOrder.customer?.name,
-          email: selectedOrder.customer?.email || selectedOrder.email,
-          phone: selectedOrder.phone,
-        },
-        billing_address: selectedOrder.billing_address,
-        shipping_address: selectedOrder.shipping_address,
-        line_items: selectedOrder.line_items || [],
-        fulfillments: selectedOrder.fulfillments || [],
-        refunds: selectedOrder.refunds || [],
-        raw_data: fullOrderJson, // 使用完整的 JSON 数据
-      };
-
-      // 调用后端 API 保存订单
-      const response = await frontendApi.post(
-        '/api/shopify-orders/',
-        orderData
-      );
-
-      frontendLogger.info('✅ Shopify 订单保存到数据库成功', {
-        orderId: selectedOrder.id,
-        savedOrderId: response.data.id,
-      });
-
-      // 显示成功消息
-      setError(null);
-      setSaveSuccess(true);
-
-      // 3秒后自动隐藏成功消息
-      setTimeout(() => {
-        setSaveSuccess(false);
-      }, 3000);
-    } catch (error: any) {
-      frontendLogger.error('❌ 保存订单到数据库失败', {
-        error: error.message,
-        orderId: selectedOrder.id,
-      });
-      setError(error.message || '保存订单到数据库失败');
+    } catch (e: any) {
+      setError(e?.message || '保存订单到数据库失败');
     } finally {
       setSavingToDatabase(false);
     }
-  }, [selectedOrder, selectedStore, orderJson]);
+  }, [selectedOrder, selectedStore, saveOneOrderToDb, refreshSyncedOrderIds]);
+
+  /** 列表页：导入选中的订单到数据库 */
+  const handleBatchImportSelected = useCallback(async () => {
+    if (!selectedStore || selectedOrderIds.length === 0) return;
+    setBatchImporting(true);
+    setError(null);
+    let success = 0;
+    let fail = 0;
+    const list = orders.filter(o => selectedOrderIds.includes(o.id));
+    for (let i = 0; i < list.length; i++) {
+      const ok = await saveOneOrderToDb(list[i]);
+      if (ok) success++;
+      else fail++;
+    }
+    setBatchImporting(false);
+    setSelectedOrderIds([]);
+    if (success > 0) refreshSyncedOrderIds();
+    if (fail === 0) {
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } else {
+      setError(`导入完成：成功 ${success} 个，失败 ${fail} 个`);
+    }
+  }, [selectedStore, selectedOrderIds, orders, saveOneOrderToDb, refreshSyncedOrderIds]);
 
   // 格式化金额
   const formatPrice = (price: string | number, currency: string) => {
@@ -773,6 +800,8 @@ const ShopifyOrdersPage: React.FC = () => {
                       justifyContent: 'space-between',
                       alignItems: 'center',
                       mb: 2,
+                      flexWrap: 'wrap',
+                      gap: 1,
                     }}
                   >
                     <Typography variant='h6'>
@@ -786,6 +815,25 @@ const ShopifyOrdersPage: React.FC = () => {
                         />
                       )}
                     </Typography>
+                    {selectedOrderIds.length > 0 && (
+                      <Button
+                        variant='contained'
+                        color='primary'
+                        startIcon={
+                          batchImporting ? (
+                            <CircularProgress size={18} color='inherit' />
+                          ) : (
+                            <SyncIcon />
+                          )
+                        }
+                        onClick={handleBatchImportSelected}
+                        disabled={batchImporting}
+                      >
+                        {batchImporting
+                          ? `导入中…`
+                          : `导入选中订单 (${selectedOrderIds.length})`}
+                      </Button>
+                    )}
                   </Box>
 
                   {loading && (
@@ -832,6 +880,24 @@ const ShopifyOrdersPage: React.FC = () => {
                         <Table>
                           <TableHead>
                             <TableRow>
+                              <TableCell padding='checkbox'>
+                                <Checkbox
+                                  indeterminate={
+                                    selectedOrderIds.length > 0 &&
+                                    selectedOrderIds.length < orders.length
+                                  }
+                                  checked={
+                                    orders.length > 0 &&
+                                    selectedOrderIds.length === orders.length
+                                  }
+                                  onChange={() => {
+                                    if (selectedOrderIds.length === orders.length)
+                                      setSelectedOrderIds([]);
+                                    else
+                                      setSelectedOrderIds(orders.map(o => o.id));
+                                  }}
+                                />
+                              </TableCell>
                               <TableCell>订单号</TableCell>
                               <TableCell>客户</TableCell>
                               <TableCell>金额</TableCell>
@@ -844,6 +910,18 @@ const ShopifyOrdersPage: React.FC = () => {
                           <TableBody>
                             {orders.map(order => (
                               <TableRow key={order.id} hover>
+                                <TableCell padding='checkbox'>
+                                  <Checkbox
+                                    checked={selectedOrderIds.includes(order.id)}
+                                    onChange={() => {
+                                      setSelectedOrderIds(prev =>
+                                        prev.includes(order.id)
+                                          ? prev.filter(id => id !== order.id)
+                                          : [...prev, order.id]
+                                      );
+                                    }}
+                                  />
+                                </TableCell>
                                 <TableCell>
                                   <Typography
                                     variant='body2'
@@ -914,14 +992,45 @@ const ShopifyOrdersPage: React.FC = () => {
                                   </Typography>
                                 </TableCell>
                                 <TableCell>
-                                  <Tooltip title='查看详情'>
-                                    <IconButton
-                                      size='small'
-                                      onClick={() => handleViewOrder(order)}
-                                    >
-                                      <ViewIcon />
-                                    </IconButton>
-                                  </Tooltip>
+                                  <Stack direction='row' alignItems='center' spacing={0.5} flexWrap='wrap'>
+                                    {syncedOrderIds.has(order.id) && (
+                                      <Chip label='已导入' size='small' color='success' sx={{ mr: 0.5 }} />
+                                    )}
+                                    {syncedOrderIds.has(order.id) && (
+                                      <Tooltip title='在同步订单页按订单号筛选'>
+                                        <Link
+                                          href={`/external-systems/shopify/synced-orders?search=${encodeURIComponent(order.name.replace(/^#/, ''))}`}
+                                          passHref
+                                          legacyBehavior
+                                        >
+                                          <Button size='small' startIcon={<LinkIcon />} component='a'>
+                                            同步订单
+                                          </Button>
+                                        </Link>
+                                      </Tooltip>
+                                    )}
+                                    {selectedStore && (
+                                      <Tooltip title='在 Shopify 后台打开（新标签页）'>
+                                        <IconButton
+                                          size='small'
+                                          component='a'
+                                          href={`https://admin.shopify.com/store/${selectedStore.external_id || (selectedStore.shop_domain || '').replace(/\.myshopify\.com.*$/, '')}/orders/${order.id.replace('gid://shopify/Order/', '')}`}
+                                          target='_blank'
+                                          rel='noopener noreferrer'
+                                        >
+                                          <OpenInNewIcon fontSize='small' />
+                                        </IconButton>
+                                      </Tooltip>
+                                    )}
+                                    <Tooltip title='查看详情'>
+                                      <IconButton
+                                        size='small'
+                                        onClick={() => handleViewOrder(order)}
+                                      >
+                                        <ViewIcon />
+                                      </IconButton>
+                                    </Tooltip>
+                                  </Stack>
                                 </TableCell>
                               </TableRow>
                             ))}
