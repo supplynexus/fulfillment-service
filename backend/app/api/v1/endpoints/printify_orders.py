@@ -1016,6 +1016,123 @@ async def update_printify_order_tracking(
         raise HTTPException(status_code=500, detail=f"更新物流信息失败: {str(e)}")
 
 
+@router.post("/{printify_order_id}/create-scm-and-bind", response_model=dict)
+async def create_scm_from_printify_and_bind(
+    printify_order_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
+) -> dict:
+    """
+    从 Printify 同步订单创建 SCM 订单并绑定（用于「未关联」的 Printify 订单）。
+    """
+    from app.core.logging import RequestLogger
+    from app.models.scm_order import SCMOrder
+    from app.services.order_number_service import OrderNumberService
+    from app.core.hashids_utils import encode_id
+    from sqlalchemy import and_
+
+    logger = RequestLogger("printify_orders.create_scm_and_bind")
+    tenant, user = auth
+
+    printify_result = await db.execute(
+        select(PrintifyOrder).where(
+            and_(
+                PrintifyOrder.id == printify_order_id,
+                PrintifyOrder.tenant_id == tenant.id
+            )
+        )
+    )
+    printify_order = printify_result.scalar_one_or_none()
+    if not printify_order:
+        raise HTTPException(status_code=404, detail="Printify order not found")
+    if printify_order.scm_order_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Printify order is already bound to an SCM order"
+        )
+
+    # Build line_items from Printify order (external_data or printify_data)
+    raw = printify_order.external_data or printify_order.printify_data or {}
+    raw_items = raw.get("line_items") or []
+    line_items = []
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        meta = item.get("metadata") or {}
+        line_items.append({
+            "core_product_id": None,
+            "core_variant_id": None,
+            "quantity": int(item.get("quantity") or 1),
+            "metadata": {
+                "title": meta.get("title"),
+                "sku": meta.get("sku"),
+                "variant_label": meta.get("variant_label"),
+                "source_line_item_id": item.get("id"),
+            },
+        })
+    if not line_items:
+        line_items = [{"core_product_id": None, "core_variant_id": None, "quantity": 1, "metadata": {}}]
+
+    scm_order_number = await OrderNumberService.generate_scm_order_number(db, tenant.id)
+    routing_metadata = {
+        "target_system_type": "PRINTIFY",
+        "target_system_id": None,
+        "created_from_printify_order_id": printify_order_id,
+        "created_from_printify_external_id": printify_order.external_order_id,
+        "created_at": datetime.utcnow().isoformat(),
+        "created_by": user.email,
+    }
+    shipping_address = printify_order.shipping_address if isinstance(printify_order.shipping_address, dict) else {}
+    if not shipping_address:
+        shipping_address = {"country": "US"}
+
+    scm_order = SCMOrder(
+        tenant_id=tenant.id,
+        source_order_id=None,
+        scm_order_number=scm_order_number,
+        status="created",
+        routing_strategy="manual",
+        line_items=line_items,
+        currency=printify_order.currency or "USD",
+        customer_email=printify_order.customer_email or "",
+        customer_name=printify_order.customer_name,
+        customer_phone=None,
+        shipping_address=shipping_address,
+        billing_address=printify_order.billing_address if isinstance(printify_order.billing_address, dict) else None,
+        routing_metadata=routing_metadata,
+    )
+    db.add(scm_order)
+    await db.flush()
+
+    # Bind
+    printify_order.scm_order_id = scm_order.id
+    scm_order.printify_order_id = printify_order.external_order_id
+    scm_order.printify_shop_id = str(printify_order.external_system_id)
+    if not scm_order.routing_metadata:
+        scm_order.routing_metadata = {}
+    scm_order.routing_metadata["printify_order_id"] = printify_order.external_order_id
+    scm_order.routing_metadata["printify_bind_at"] = datetime.utcnow().isoformat()
+    scm_order.routing_metadata["printify_bind_by"] = user.email
+
+    await db.commit()
+    await db.refresh(scm_order)
+
+    logger.info(
+        "create_scm_and_bind success",
+        scm_order_id=scm_order.id,
+        printify_order_id=printify_order_id,
+    )
+    return {
+        "success": True,
+        "message": "SCM order created and bound to Printify order",
+        "scm_order_id": scm_order.id,
+        "scm_order_hashid": encode_id(scm_order.id),
+        "scm_order_number": scm_order.scm_order_number,
+        "printify_order_id": printify_order_id,
+        "printify_external_order_id": printify_order.external_order_id,
+    }
+
+
 @router.post("/{printify_order_id}/bind-scm-order", response_model=dict)
 async def bind_scm_order_to_printify(
     printify_order_id: int,

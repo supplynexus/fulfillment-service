@@ -434,6 +434,7 @@ class OrderRoutingService:
         
         scm_order = SCMOrder(
             tenant_id=tenant_id,
+            source_order_id=order.id,  # 兼容：单订单创建时保留，多对多以 ScmOrderSource 为准
             scm_order_number=scm_order_number,
             status=SCMOrderStatus.CREATED.value,
             routing_strategy=decision["routing_metadata"].get("strategy") if decision.get("routing_metadata") else None,

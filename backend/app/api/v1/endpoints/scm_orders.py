@@ -86,10 +86,18 @@ async def get_scm_orders(
                 status_code=500, detail=f"Failed to get SCM orders count: {str(e)}"
             )
 
-        # 分页查询
+        # 分页查询（加载 source_order 与 printify_orders 供列表展示/链接用）
         logger.info(f"🔍 执行分页查询: skip={skip}, limit={limit}")
         try:
-            query = query.order_by(SCMOrder.created_at.desc()).offset(skip).limit(limit)
+            from sqlalchemy.orm import selectinload
+            query = (
+                query.order_by(SCMOrder.created_at.desc())
+                .offset(skip).limit(limit)
+                .options(
+                    selectinload(SCMOrder.source_order),
+                    selectinload(SCMOrder.printify_orders),
+                )
+            )
             result = await db.execute(query)
             scm_orders = result.scalars().all()
             logger.info(f"✅ 分页查询成功: 找到 {len(scm_orders)} 个SCM订单")
@@ -113,6 +121,21 @@ async def get_scm_orders(
                 # 处理 shipping_address 可能为 None 的情况（旧数据兼容）
                 shipping_address = scm_order.shipping_address if scm_order.shipping_address is not None else {}
                 
+                # 核心订单号（用于列表展示）
+                source_order_number = None
+                if scm_order.source_order:
+                    source_order_number = getattr(scm_order.source_order, "order_number", None) or getattr(scm_order.source_order, "external_order_number", None)
+                # Printify 链接用 shop_id（从关联的 Printify 订单取）
+                printify_shop_id = None
+                if getattr(scm_order, "printify_orders", None):
+                    for po in scm_order.printify_orders:
+                        pd = (po.printify_data or po.external_data) if hasattr(po, "printify_data") else None
+                        if isinstance(pd, dict) and pd.get("shop_id") is not None:
+                            printify_shop_id = str(pd.get("shop_id"))
+                            break
+                if not printify_shop_id and getattr(scm_order, "printify_shop_id", None):
+                    printify_shop_id = str(scm_order.printify_shop_id)
+
                 response = SCMOrderResponse(
                     id_hashid=encode_id(scm_order.id),
                     source_order_id_hashid=encode_id(scm_order.source_order_id) if scm_order.source_order_id else None,
@@ -140,6 +163,9 @@ async def get_scm_orders(
                     created_at=scm_order.created_at,
                     updated_at=scm_order.updated_at,
                     fulfilled_at=scm_order.fulfilled_at,
+                    source_order_number=source_order_number,
+                    printify_order_id=scm_order.printify_order_id,
+                    printify_shop_id=printify_shop_id or None,
                 )
                 scm_order_responses.append(response)
             
@@ -637,11 +663,13 @@ async def create_scm_order(
             shopify_order_id=scm_order_data.shopify_order_id,
         )
 
+        if decoded_source_ids:
+            scm_order.source_order_id = decoded_source_ids[0]  # 兼容：多对多以 ScmOrderSource 为准，此处仅保留“首个”来源
         db.add(scm_order)
         await db.flush()
         logger.info(f"✅ SCM 订单对象创建成功: scm_order_id={scm_order.id}")
 
-        # 写入多来源关联表
+        # 写入多来源关联表（order ↔ scm_order 多对多唯一真相来源）
         logger.info(f"🔍 开始写入多来源关联表: source_order_ids={decoded_source_ids}")
         for oid in decoded_source_ids:
             db.add(
@@ -1955,27 +1983,30 @@ async def bind_core_order_to_scm(
             logger.error(f"❌ 核心订单不存在: core_order_id={core_order_id}, tenant_id={tenant.id}")
             raise HTTPException(status_code=404, detail="Core order not found")
 
-        # 检查 SCM 订单是否已绑定到其他核心订单
-        if scm_order.source_order_id and scm_order.source_order_id != core_order_id:
-            logger.warning(f"⚠️ SCM 订单已绑定到其他核心订单: scm_order_id={scm_order_id}, existing_source_order_id={scm_order.source_order_id}")
-            raise HTTPException(status_code=400, detail="SCM order is already bound to another core order")
-
-        # 检查核心订单是否已绑定到其他 SCM 订单
-        existing_scm_order = await db.execute(
-            select(SCMOrder).where(
-                SCMOrder.source_order_id == core_order_id,
-                SCMOrder.tenant_id == tenant.id,
-                SCMOrder.id != scm_order_id
+        # 多对多：检查是否已在 scm_order_sources 中存在（避免重复）
+        existing_link = await db.execute(
+            select(ScmOrderSource).where(
+                ScmOrderSource.tenant_id == tenant.id,
+                ScmOrderSource.scm_order_id == scm_order_id,
+                ScmOrderSource.source_order_id == core_order_id,
             )
         )
-        existing_scm_order = existing_scm_order.scalar_one_or_none()
-        if existing_scm_order:
-            logger.warning(f"⚠️ 核心订单已绑定到其他 SCM 订单: core_order_id={core_order_id}, existing_scm_order_id={existing_scm_order.id}")
-            raise HTTPException(status_code=400, detail="Core order is already bound to another SCM order")
+        if existing_link.scalar_one_or_none():
+            logger.warning(f"⚠️ 该核心订单已绑定此 SCM 订单: core_order_id={core_order_id}, scm_order_id={scm_order_id}")
+            raise HTTPException(status_code=400, detail="This core order is already bound to this SCM order")
 
-        # 执行绑定
-        scm_order.source_order_id = core_order_id
-        
+        # 执行绑定：写入多对多关联表（orders ↔ scm_orders 唯一真相来源）
+        db.add(
+            ScmOrderSource(
+                tenant_id=tenant.id,
+                scm_order_id=scm_order_id,
+                source_order_id=core_order_id,
+            )
+        )
+        # 兼容旧逻辑：若 SCM 尚无 source_order_id，设为当前订单（用于部分仍读该字段的代码）
+        if scm_order.source_order_id is None:
+            scm_order.source_order_id = core_order_id
+
         # 更新 Shopify 订单 ID（从核心订单复制）
         if core_order.external_order_id:
             scm_order.shopify_order_id = core_order.external_order_id
@@ -2036,17 +2067,50 @@ async def unbind_core_order_from_scm(
             logger.error(f"❌ SCM 订单不存在: scm_order_id={scm_order_id}, tenant_id={tenant.id}")
             raise HTTPException(status_code=404, detail="SCM order not found")
 
-        if not scm_order.source_order_id:
+        # 多对多：从 scm_order_sources 删除该 SCM 与所有关联 core 订单的链接（或仅删除当前 source_order_id 对应的链接）
+        from sqlalchemy import delete as sql_delete
+        order_id_to_unbind = scm_order.source_order_id  # 解绑当前记录的“主”订单
+        if order_id_to_unbind is None:
+            # 若 legacy 字段为空，从关联表取任意一个 source_order_id 作为解绑对象
+            remaining = await db.execute(
+                select(ScmOrderSource.source_order_id).where(
+                    ScmOrderSource.scm_order_id == scm_order_id,
+                    ScmOrderSource.tenant_id == tenant.id,
+                ).limit(1)
+            )
+            order_id_to_unbind = remaining.scalar_one_or_none()
+        if order_id_to_unbind is None:
             logger.warning(f"⚠️ SCM 订单未绑定核心订单: scm_order_id={scm_order_id}")
             raise HTTPException(status_code=400, detail="SCM order is not bound to any core order")
 
-        # 执行解绑
-        scm_order.source_order_id = None
-        
-        # 清理 Shopify 订单 ID（因为不再与核心订单关联）
+        await db.execute(
+            sql_delete(ScmOrderSource).where(
+                ScmOrderSource.tenant_id == tenant.id,
+                ScmOrderSource.scm_order_id == scm_order_id,
+                ScmOrderSource.source_order_id == order_id_to_unbind,
+            )
+        )
+        # 兼容：若解绑的正是 source_order_id，清空或改为关联表中剩余的第一个
+        if scm_order.source_order_id == order_id_to_unbind:
+            rest = await db.execute(
+                select(ScmOrderSource.source_order_id).where(
+                    ScmOrderSource.scm_order_id == scm_order_id,
+                    ScmOrderSource.tenant_id == tenant.id,
+                ).limit(1)
+            )
+            scm_order.source_order_id = rest.scalar_one_or_none()
+
+        # 仅当没有任何 core 订单关联时清理 Shopify 订单 ID
         if scm_order.shopify_order_id:
-            logger.info(f"✅ 清理 SCM 订单 Shopify 订单 ID: {scm_order.shopify_order_id}")
-            scm_order.shopify_order_id = None
+            has_any = await db.execute(
+                select(ScmOrderSource).where(
+                    ScmOrderSource.scm_order_id == scm_order_id,
+                    ScmOrderSource.tenant_id == tenant.id,
+                ).limit(1)
+            )
+            if not has_any.scalar_one_or_none():
+                logger.info(f"✅ 清理 SCM 订单 Shopify 订单 ID: {scm_order.shopify_order_id}")
+                scm_order.shopify_order_id = None
 
         # 更新路由元数据
         if scm_order.routing_metadata:

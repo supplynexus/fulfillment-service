@@ -27,6 +27,12 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Stack,
+  Link,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -37,6 +43,8 @@ import {
   Delete as DeleteIcon,
   Sync as SyncIcon,
   LinkOff as LinkOffIcon,
+  Add as AddIcon,
+  OpenInNew as OpenInNewIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
 import { frontendApi } from '@/lib/api';
@@ -59,6 +67,8 @@ interface ScmOrder {
   billing_address?: any;
   routing_metadata?: any;
   printify_order_id?: string;
+  printify_shop_id?: string;
+  source_order_number?: string;
   tracking_number?: string;
   tracking_url?: string;
   carrier?: string;
@@ -93,6 +103,13 @@ export function ScmOrdersList() {
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
   const [updateFeedback, setUpdateFeedback] = useState<{ message: string; severity: 'success' | 'info' | 'error' } | null>(null);
+
+  // 从 Printify 同步订单创建 SCM
+  const [createFromPrintifyOpen, setCreateFromPrintifyOpen] = useState(false);
+  const [printifyUnboundOrders, setPrintifyUnboundOrders] = useState<Array<{ id: number; displayLabel: string }>>([]);
+  const [selectedPrintifyId, setSelectedPrintifyId] = useState<number | ''>('');
+  const [createFromPrintifyLoading, setCreateFromPrintifyLoading] = useState(false);
+  const [createFromPrintifyError, setCreateFromPrintifyError] = useState<string | null>(null);
 
   console.log('🔍 ScmOrdersList 组件渲染，当前状态:', {
     orders: orders.length,
@@ -143,6 +160,46 @@ export function ScmOrdersList() {
     fetchScmOrders();
   };
 
+  const handleOpenCreateFromPrintify = () => {
+    setCreateFromPrintifyOpen(true);
+    setCreateFromPrintifyError(null);
+    setSelectedPrintifyId('');
+    frontendApi.get('/api/printify-orders/?limit=200')
+      .then((res) => {
+        const list = res.data?.orders || [];
+        const unbound = list.filter((o: any) => !o.scm_order_id && !o.scm_order);
+        setPrintifyUnboundOrders(unbound.map((o: any) => {
+          const meta = o.printify_data?.metadata || o.external_data?.metadata || {};
+          const shopOrderLabel = meta.shop_order_label;
+          const customer = (o.customer_name || o.customer_email || '').trim();
+          const displayLabel = shopOrderLabel
+            ? `${shopOrderLabel} — ${customer}`
+            : `ID:${o.id} — ${customer}`;
+          return { id: o.id, displayLabel };
+        }));
+      })
+      .catch(() => setPrintifyUnboundOrders([]));
+  };
+
+  const handleCreateScmFromPrintify = async () => {
+    if (selectedPrintifyId === '') return;
+    setCreateFromPrintifyLoading(true);
+    setCreateFromPrintifyError(null);
+    try {
+      const res = await frontendApi.post(`/api/printify-orders/${selectedPrintifyId}/create-scm-and-bind`);
+      if (res.data?.success) {
+        setCreateFromPrintifyOpen(false);
+        setSelectedPrintifyId('');
+        await fetchScmOrders();
+      } else {
+        setCreateFromPrintifyError(res.data?.detail || '创建失败');
+      }
+    } catch (err: any) {
+      setCreateFromPrintifyError(err.response?.data?.error || err.response?.data?.detail || '创建并绑定失败');
+    } finally {
+      setCreateFromPrintifyLoading(false);
+    }
+  };
 
   const handleViewOrder = (orderHashid: string) => {
     router.push(`/scm-orders/${orderHashid}`);
@@ -335,6 +392,14 @@ export function ScmOrdersList() {
         </Typography>
         <Box display='flex' gap={2}>
           <Button
+            variant='contained'
+            startIcon={<AddIcon />}
+            onClick={handleOpenCreateFromPrintify}
+            disabled={loading}
+          >
+            从 Printify 创建
+          </Button>
+          <Button
             variant='outlined'
             startIcon={<RefreshIcon />}
             onClick={handleRefresh}
@@ -431,8 +496,8 @@ export function ScmOrdersList() {
                     />
                   </TableCell>
                   <TableCell>SCM 订单ID</TableCell>
-                  <TableCell>目标系统</TableCell>
-                  <TableCell>目标系统ID</TableCell>
+                  <TableCell>Core 订单</TableCell>
+                  <TableCell>Printify 订单</TableCell>
                   <TableCell>状态</TableCell>
                   <TableCell>履行状态</TableCell>
                   <TableCell>客户信息</TableCell>
@@ -473,18 +538,61 @@ export function ScmOrdersList() {
                         )}
                       </TableCell>
                       <TableCell>
-                        <Typography variant='body2' fontWeight='medium'>
-                          CORE
-                        </Typography>
+                        {order.source_order_id_hashid ? (
+                          <Link
+                            href={`/orders/${order.source_order_id_hashid}`}
+                            variant="body2"
+                            fontWeight="medium"
+                            sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}
+                          >
+                            {order.source_order_number ? `#${order.source_order_number}` : '查看订单'}
+                            <OpenInNewIcon sx={{ fontSize: 14 }} />
+                          </Link>
+                        ) : (
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <Typography variant='body2' color='text.secondary'>—</Typography>
+                            <Link
+                              component="button"
+                              variant="body2"
+                              onClick={() => router.push(`/scm-orders/${order.id_hashid}`)}
+                            >
+                              去绑定
+                            </Link>
+                          </Box>
+                        )}
                       </TableCell>
                       <TableCell>
-                        <Typography variant='body2' fontWeight='medium' fontFamily="monospace">
-                          N/A
-                        </Typography>
-                        {order.routing_metadata?.printify_order_id && (
-                          <Typography variant='caption' color='text.secondary'>
-                            Printify: {order.routing_metadata.printify_order_id}
-                          </Typography>
+                        {order.printify_order_id && order.printify_shop_id ? (
+                          <Link
+                            href={`https://printify.com/app/store/${order.printify_shop_id}/order/${order.printify_order_id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            variant="body2"
+                            fontWeight="medium"
+                            sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}
+                          >
+                            Printify 订单
+                            <OpenInNewIcon sx={{ fontSize: 14 }} />
+                          </Link>
+                        ) : order.printify_order_id || order.routing_metadata?.printify_order_id ? (
+                          <Link
+                            component="button"
+                            variant="body2"
+                            onClick={() => router.push(`/scm-orders/${order.id_hashid}`)}
+                          >
+                            已关联，查看详情
+                          </Link>
+                        ) : (
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <Typography variant='body2' color='text.secondary'>—</Typography>
+                            <Link
+                              component="button"
+                              variant="body2"
+                              onClick={() => router.push(`/scm-orders/${order.id_hashid}`)}
+                            >
+                              去绑定
+                            </Link>
+                          </Box>
                         )}
                       </TableCell>
                       <TableCell>
@@ -724,6 +832,59 @@ export function ScmOrdersList() {
             disabled={bulkUpdating}
           >
             {bulkUpdating ? '更新中...' : '确认更新'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 从 Printify 同步订单创建 SCM 并绑定 */}
+      <Dialog
+        open={createFromPrintifyOpen}
+        onClose={() => setCreateFromPrintifyOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>从 Printify 同步订单创建 SCM 订单</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 0.5 }}>
+            <Typography variant="body2" color="text.secondary">
+              选择一条未关联 SCM 的 Printify 同步订单，将为其创建 SCM 订单并自动绑定。
+            </Typography>
+            {createFromPrintifyError && (
+              <Alert severity="error" onClose={() => setCreateFromPrintifyError(null)}>
+                {createFromPrintifyError}
+              </Alert>
+            )}
+            <FormControl fullWidth size="small">
+              <InputLabel>Printify 同步订单</InputLabel>
+              <Select
+                value={selectedPrintifyId}
+                label="Printify 同步订单"
+                onChange={(e) => setSelectedPrintifyId(e.target.value as number | '')}
+              >
+                <MenuItem value="">请选择</MenuItem>
+                {printifyUnboundOrders.map((o) => (
+                  <MenuItem key={o.id} value={o.id}>
+                    {o.displayLabel}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            {printifyUnboundOrders.length === 0 && (
+              <Typography variant="body2" color="text.secondary">
+                暂无未关联的 Printify 同步订单，请先在「Printify → 同步订单」中保存订单。
+              </Typography>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCreateFromPrintifyOpen(false)}>取消</Button>
+          <Button
+            variant="contained"
+            startIcon={createFromPrintifyLoading ? <CircularProgress size={16} /> : <AddIcon />}
+            onClick={handleCreateScmFromPrintify}
+            disabled={createFromPrintifyLoading || selectedPrintifyId === ''}
+          >
+            {createFromPrintifyLoading ? '创建中...' : '创建 SCM 并绑定'}
           </Button>
         </DialogActions>
       </Dialog>

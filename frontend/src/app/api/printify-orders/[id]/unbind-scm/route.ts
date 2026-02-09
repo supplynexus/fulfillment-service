@@ -30,15 +30,15 @@ export async function POST(
     // 生成后端签名
     const timestamp = Math.floor(Date.now() / 1000);
     const nonce = Math.random().toString(36).substring(2, 15);
-    const signatureString = `POST/api/v1/printify-orders/${printifyOrderId}/unbind-scm-order${timestamp}${nonce}${tenantName}`;
+    const signatureString = `POST/api/v1/printify/${printifyOrderId}/unbind-scm-order${timestamp}${nonce}${tenantName}`;
 
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
     const signature = generateBackendSignature(privateKey, signatureString, timestamp, nonce, tenantName);
 
     frontendLogger.info('✅ 后端签名生成成功', { timestamp, nonce });
 
-    // 构建后端URL
-    const backendUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/printify-orders/${printifyOrderId}/unbind-scm-order`;
+    // 构建后端URL（后端路由前缀为 /printify）
+    const backendUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/printify/${printifyOrderId}/unbind-scm-order`;
 
     // 调用后端API
     const backendResponse = await fetch(backendUrl, {

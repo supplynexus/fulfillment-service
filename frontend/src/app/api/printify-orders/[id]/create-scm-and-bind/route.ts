@@ -4,17 +4,21 @@ import { keyLoader } from '@/lib/key-loader';
 import { generateBackendSignature } from '@/lib/signature';
 import { frontendLogger } from '@/lib/frontend-logger';
 
+/**
+ * POST: 从 Printify 同步订单创建 SCM 订单并绑定（无请求体）
+ */
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   const startTime = Date.now();
   const printifyOrderId = params.id;
-  
-  try {
-    frontendLogger.info('🚀 开始处理 Printify 订单绑定 SCM 订单请求', { printifyOrderId });
 
-    // 验证JWT token
+  try {
+    frontendLogger.info('🚀 开始处理「从 Printify 订单创建 SCM 并绑定」请求', {
+      printifyOrderId,
+    });
+
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       frontendLogger.error('❌ 缺少认证头');
@@ -25,27 +29,22 @@ export async function POST(
     const decodedToken = jwtUtilsServer.verifyToken(token);
     const { tenant_name: tenantName, sub: userId } = decodedToken;
 
-    frontendLogger.info('✅ JWT验证成功', { tenantName, userId });
-
-    // 读取请求体
-    const requestBody = await request.json();
-    frontendLogger.info('📝 请求体内容', { requestBody });
-
-    // 生成后端签名
     const timestamp = Math.floor(Date.now() / 1000);
     const nonce = Math.random().toString(36).substring(2, 15);
-    const bodyString = JSON.stringify(requestBody);
-    const signatureString = `POST/api/v1/printify/${printifyOrderId}/bind-scm-order${timestamp}${nonce}${tenantName}${bodyString}`;
+    const bodyString = '';
+    const signatureString = `POST/api/v1/printify/${printifyOrderId}/create-scm-and-bind${timestamp}${nonce}${tenantName}${bodyString}`;
 
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
-    const signature = generateBackendSignature(privateKey, signatureString, timestamp, nonce, tenantName);
+    const signature = generateBackendSignature(
+      privateKey,
+      signatureString,
+      timestamp,
+      nonce,
+      tenantName
+    );
 
-    frontendLogger.info('✅ 后端签名生成成功', { timestamp, nonce });
+    const backendUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/printify/${printifyOrderId}/create-scm-and-bind`;
 
-    // 构建后端URL（后端路由前缀为 /printify）
-    const backendUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/printify/${printifyOrderId}/bind-scm-order`;
-
-    // 调用后端API
     const backendResponse = await fetch(backendUrl, {
       method: 'POST',
       headers: {
@@ -56,16 +55,15 @@ export async function POST(
         'X-Nonce': nonce,
         'X-Signature': signature,
       },
-      body: bodyString,
+      body: bodyString || undefined,
     });
 
     const responseData = await backendResponse.json();
     const duration = Date.now() - startTime;
 
     if (!backendResponse.ok) {
-      frontendLogger.error('❌ 后端API调用失败', {
+      frontendLogger.error('❌ 后端 create-scm-and-bind 失败', {
         status: backendResponse.status,
-        statusText: backendResponse.statusText,
         responseData,
         duration,
       });
@@ -75,30 +73,28 @@ export async function POST(
       );
     }
 
-    frontendLogger.info('✅ Printify 订单绑定 SCM 订单成功', {
+    frontendLogger.info('✅ 从 Printify 订单创建 SCM 并绑定成功', {
       printifyOrderId,
-      status: backendResponse.status,
       duration,
     });
-
     return NextResponse.json(responseData);
-
   } catch (error: any) {
     const duration = Date.now() - startTime;
-    frontendLogger.error('❌ Printify 订单绑定 SCM 订单失败', {
+    frontendLogger.error('❌ create-scm-and-bind 失败', {
       printifyOrderId,
       error: error.message,
       duration,
     });
-
-    // JWT 相关错误返回 401
-    if (error.message.includes('JWT') || error.message.includes('token') || error.message.includes('signature')) {
+    if (
+      error.message?.includes('JWT') ||
+      error.message?.includes('token') ||
+      error.message?.includes('signature')
+    ) {
       return NextResponse.json(
         { error: error.message || 'Authentication error' },
         { status: 401 }
       );
     }
-
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

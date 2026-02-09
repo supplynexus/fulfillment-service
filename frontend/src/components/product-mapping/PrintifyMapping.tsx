@@ -37,10 +37,12 @@ import {
   Divider,
   CardMedia,
   Pagination,
+  Link,
 } from '@mui/material';
 import {
   Search as SearchIcon,
   Refresh as RefreshIcon,
+  OpenInNew as OpenInNewIcon,
   Link as LinkIcon,
   LinkOff as UnlinkIcon,
   Visibility as ViewIcon,
@@ -1433,9 +1435,23 @@ export function PrintifyMapping({ initialCoreProductIdHashid }: PrintifyMappingP
                           />
                         </TableCell>
                         <TableCell>
-                          <Typography variant='body2' fontWeight='medium'>
-                            {product.title}
-                          </Typography>
+                          {product.printify_product_id ? (
+                            <Link
+                              href={`https://printify.com/app/product-details/${product.printify_product_id}?fromProductsPage=1`}
+                              target='_blank'
+                              rel='noopener noreferrer'
+                              variant='body2'
+                              fontWeight='medium'
+                              sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}
+                            >
+                              {product.title}
+                              <OpenInNewIcon sx={{ fontSize: 14 }} />
+                            </Link>
+                          ) : (
+                            <Typography variant='body2' fontWeight='medium'>
+                              {product.title}
+                            </Typography>
+                          )}
                         </TableCell>
                         <TableCell>
                           <Typography variant='body2'>

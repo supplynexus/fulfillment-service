@@ -85,6 +85,10 @@ class SCMOrderResponse(BaseModel):
     fulfilled_at: Optional[datetime] = None
     # 源订单信息
     source_orders: List[SourceOrderInfo] = []
+    # 列表用：核心订单号、Printify 链接用
+    source_order_number: Optional[str] = None
+    printify_order_id: Optional[str] = None
+    printify_shop_id: Optional[str] = None
 
     class Config:
         from_attributes = True

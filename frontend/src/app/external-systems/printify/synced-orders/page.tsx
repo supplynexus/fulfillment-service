@@ -36,6 +36,7 @@ import {
   Badge,
   Avatar,
   Checkbox,
+  Link,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -53,6 +54,8 @@ import {
   Info as InfoIcon,
   LocalShipping as ShippingIcon,
   Delete as DeleteIcon,
+  Link as LinkIcon,
+  OpenInNew as OpenInNewIcon,
 } from '@mui/icons-material';
 import { frontendApi } from '@/lib/api';
 import { frontendLogger } from '@/lib/frontend-logger';
@@ -118,6 +121,16 @@ function PrintifySyncedOrdersPage() {
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // 关联 SCM 对话框
+  const [scmBindDialogOpen, setScmBindDialogOpen] = useState(false);
+  const [scmBindOrder, setScmBindOrder] = useState<PrintifySyncedOrder | null>(null);
+  const [createScmAndBindLoading, setCreateScmAndBindLoading] = useState(false);
+  const [bindExistingScmLoading, setBindExistingScmLoading] = useState(false);
+  const [scmOrdersForBind, setScmOrdersForBind] = useState<Array<{ id_hashid: string; scm_order_number: string }>>([]);
+  const [selectedScmHashid, setSelectedScmHashid] = useState<string>('');
+  const [scmBindError, setScmBindError] = useState<string | null>(null);
+  const [scmBindSuccess, setScmBindSuccess] = useState<string | null>(null);
 
   // 获取同步订单列表
   const fetchOrders = useCallback(async (page: number = 1) => {
@@ -209,6 +222,79 @@ function PrintifySyncedOrdersPage() {
   const handleViewOrder = (order: PrintifySyncedOrder) => {
     setSelectedOrder(order);
     setOpenOrderDialog(true);
+  };
+
+  // 打开「关联 SCM」对话框
+  const handleOpenScmBindDialog = (order: PrintifySyncedOrder) => {
+    setScmBindOrder(order);
+    setScmBindError(null);
+    setScmBindSuccess(null);
+    setSelectedScmHashid('');
+    setScmBindDialogOpen(true);
+    // 拉取 SCM 订单列表（用于「选择已有 SCM 订单并绑定」）
+    frontendApi.get('/api/scm-orders/?limit=200')
+      .then((res) => {
+        const list = res.data?.scm_orders || [];
+        setScmOrdersForBind(list.map((o: any) => ({ id_hashid: o.id_hashid, scm_order_number: o.scm_order_number || o.id_hashid })));
+      })
+      .catch(() => setScmOrdersForBind([]));
+  };
+
+  const handleCloseScmBindDialog = () => {
+    setScmBindDialogOpen(false);
+    setScmBindOrder(null);
+    setScmBindError(null);
+    setScmBindSuccess(null);
+    setSelectedScmHashid('');
+  };
+
+  // 创建 SCM 订单并绑定
+  const handleCreateScmAndBind = async () => {
+    if (!scmBindOrder) return;
+    setCreateScmAndBindLoading(true);
+    setScmBindError(null);
+    setScmBindSuccess(null);
+    try {
+      const res = await frontendApi.post(`/api/printify-orders/${scmBindOrder.id}/create-scm-and-bind`);
+      if (res.data?.success) {
+        setScmBindSuccess(`已创建 SCM 订单 ${res.data.scm_order_number} 并完成绑定`);
+        await fetchOrders(currentPage);
+        setTimeout(() => { handleCloseScmBindDialog(); }, 1500);
+      } else {
+        setScmBindError(res.data?.detail || '操作失败');
+      }
+    } catch (err: any) {
+      setScmBindError(err.response?.data?.error || err.response?.data?.detail || '创建并绑定失败');
+    } finally {
+      setCreateScmAndBindLoading(false);
+    }
+  };
+
+  // 选择已有 SCM 订单并绑定
+  const handleBindExistingScm = async () => {
+    if (!scmBindOrder || !selectedScmHashid) {
+      setScmBindError('请选择一个 SCM 订单');
+      return;
+    }
+    setBindExistingScmLoading(true);
+    setScmBindError(null);
+    setScmBindSuccess(null);
+    try {
+      const res = await frontendApi.post(`/api/printify-orders/${scmBindOrder.id}/bind-scm`, {
+        scm_order_hashid: selectedScmHashid,
+      });
+      if (res.data?.success) {
+        setScmBindSuccess('绑定成功');
+        await fetchOrders(currentPage);
+        setTimeout(() => { handleCloseScmBindDialog(); }, 1500);
+      } else {
+        setScmBindError(res.data?.detail || '绑定失败');
+      }
+    } catch (err: any) {
+      setScmBindError(err.response?.data?.error || err.response?.data?.detail || '绑定失败');
+    } finally {
+      setBindExistingScmLoading(false);
+    }
   };
 
   // 多选处理函数
@@ -345,6 +431,28 @@ function PrintifySyncedOrdersPage() {
       'on_hold': <InfoIcon />,
     };
     return statusIcons[status.toLowerCase()] || <InfoIcon />;
+  };
+
+  // 易读的订单标识：优先店铺订单号（如 #1037），否则 ID:1
+  const getOrderDisplayLabel = (order: PrintifySyncedOrder) => {
+    const meta = order.printify_data?.metadata || order.external_data?.metadata || {};
+    const shopLabel = meta.shop_order_label;
+    return shopLabel ? String(shopLabel) : `ID:${order.id}`;
+  };
+
+  // Printify app_order_id 展示（如 #24981565.17），与 Printify 后台 Order 列第二行一致
+  const getOrderAppOrderIdDisplay = (order: PrintifySyncedOrder): string | null => {
+    const raw = order.printify_data?.app_order_id ?? order.external_data?.app_order_id;
+    if (raw == null || String(raw).trim() === '') return null;
+    const s = String(raw).trim();
+    return s.startsWith('#') ? s : `#${s}`;
+  };
+
+  // Printify 后台订单页 URL（需有 shop_id）
+  const getPrintifyOrderUrl = (order: PrintifySyncedOrder): string | null => {
+    const shopId = order.printify_data?.shop_id ?? order.external_data?.shop_id;
+    if (shopId == null || shopId === '') return null;
+    return `https://printify.com/app/store/${shopId}/order/${order.external_order_id}`;
   };
 
   // 格式化日期
@@ -567,11 +675,35 @@ function PrintifySyncedOrdersPage() {
                               />
                             </TableCell>
                             <TableCell>
-                              <Typography variant="body2" fontFamily="monospace">
+                              {getPrintifyOrderUrl(order) ? (
+                                <Link
+                                  href={getPrintifyOrderUrl(order)!}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  variant="body2"
+                                  fontWeight="medium"
+                                  sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}
+                                >
+                                  {getOrderDisplayLabel(order)}
+                                  {getOrderAppOrderIdDisplay(order) && (
+                                    <Typography component="span" variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
+                                      {' · '}{getOrderAppOrderIdDisplay(order)}
+                                    </Typography>
+                                  )}
+                                  <OpenInNewIcon sx={{ fontSize: 14 }} />
+                                </Link>
+                              ) : (
+                                <Typography variant="body2" fontWeight="medium">
+                                  {getOrderDisplayLabel(order)}
+                                  {getOrderAppOrderIdDisplay(order) && (
+                                    <Typography component="span" variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
+                                      {' · '}{getOrderAppOrderIdDisplay(order)}
+                                    </Typography>
+                                  )}
+                                </Typography>
+                              )}
+                              <Typography variant="caption" color="text.secondary" component="span" sx={{ fontFamily: 'monospace', display: 'block' }}>
                                 {order.external_order_id}
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                ID: {order.id}
                               </Typography>
                             </TableCell>
                             <TableCell>
@@ -651,6 +783,18 @@ function PrintifySyncedOrdersPage() {
                               </Typography>
                             </TableCell>
                             <TableCell>
+                              {!order.scm_order && (
+                                <Tooltip title="关联 SCM 订单">
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    onClick={() => handleOpenScmBindDialog(order)}
+                                    sx={{ mr: 0.5 }}
+                                  >
+                                    关联 SCM
+                                  </Button>
+                                </Tooltip>
+                              )}
                               <Tooltip title="查看详情">
                                 <IconButton
                                   size="small"
@@ -874,6 +1018,74 @@ function PrintifySyncedOrdersPage() {
               <Button onClick={() => setOpenOrderDialog(false)}>
                 关闭
               </Button>
+            </DialogActions>
+          </Dialog>
+
+          {/* 关联 SCM 对话框 */}
+          <Dialog open={scmBindDialogOpen} onClose={handleCloseScmBindDialog} maxWidth="sm" fullWidth>
+            <DialogTitle>关联 SCM 订单</DialogTitle>
+            <DialogContent>
+              {scmBindOrder && (
+                <Box>
+                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                    当前 Printify 订单：{getOrderDisplayLabel(scmBindOrder)}
+                    {getOrderAppOrderIdDisplay(scmBindOrder) && ` · ${getOrderAppOrderIdDisplay(scmBindOrder)}`}
+                    {' — '}{scmBindOrder.customer_name}
+                  </Typography>
+                  {scmBindError && (
+                    <Alert severity="error" sx={{ mt: 1 }} onClose={() => setScmBindError(null)}>
+                      {scmBindError}
+                    </Alert>
+                  )}
+                  {scmBindSuccess && (
+                    <Alert severity="success" sx={{ mt: 1 }}>{scmBindSuccess}</Alert>
+                  )}
+                  <Stack spacing={2} sx={{ mt: 2 }}>
+                    <Box>
+                      <Typography variant="subtitle2" gutterBottom>方式一：创建新的 SCM 订单并绑定</Typography>
+                      <Button
+                        variant="contained"
+                        onClick={handleCreateScmAndBind}
+                        disabled={createScmAndBindLoading}
+                        startIcon={createScmAndBindLoading ? <CircularProgress size={16} /> : <LinkIcon />}
+                      >
+                        {createScmAndBindLoading ? '创建中...' : '创建 SCM 订单并绑定'}
+                      </Button>
+                    </Box>
+                    <Divider />
+                    <Box>
+                      <Typography variant="subtitle2" gutterBottom>方式二：选择已有 SCM 订单并绑定</Typography>
+                      <FormControl fullWidth size="small" sx={{ mt: 0.5 }}>
+                        <InputLabel>选择 SCM 订单</InputLabel>
+                        <Select
+                          value={selectedScmHashid}
+                          label="选择 SCM 订单"
+                          onChange={(e) => setSelectedScmHashid(e.target.value)}
+                        >
+                          <MenuItem value="">请选择</MenuItem>
+                          {scmOrdersForBind.map((o) => (
+                            <MenuItem key={o.id_hashid} value={o.id_hashid}>
+                              {o.scm_order_number || o.id_hashid}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                      <Button
+                        variant="outlined"
+                        sx={{ mt: 1 }}
+                        onClick={handleBindExistingScm}
+                        disabled={bindExistingScmLoading || !selectedScmHashid}
+                        startIcon={bindExistingScmLoading ? <CircularProgress size={16} /> : null}
+                      >
+                        {bindExistingScmLoading ? '绑定中...' : '绑定选中 SCM'}
+                      </Button>
+                    </Box>
+                  </Stack>
+                </Box>
+              )}
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={handleCloseScmBindDialog}>关闭</Button>
             </DialogActions>
           </Dialog>
         </Box>
