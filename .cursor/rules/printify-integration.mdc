@@ -1,115 +1,20 @@
 ---
-description: Printify API integration, products sync, orders, 商品同步
+description: Printify API integration, products sync, limit 50, sales_channel, 商品同步
 globs: ["app/**/printify*", "frontend/src/**/printify*", "scripts/**/printify*"]
 ---
+# Printify 集成要点
 
-# Printify API 集成规范
+- **凭据**：现以 **external_systems** 与 `get_decrypted_credentials` 为主；历史脚本可能仍用 `tenants/{tenant}/printify/` 文件，新功能用外部系统配置。
 
-## API Token 管理
+## API 约束
 
-### Token 位置
-- **路径**: `tenants/{tenant_name}/printify/api_token.token`
-- Token 有效期通常为 1 年
-
-### Token 获取方式
-1. 登录 https://printify.com/app/dashboard
-2. 进入 My Profile → Connections
-3. 生成 Personal Access Token
-4. 保存到 `tenants/{tenant_name}/printify/api_token.token`
-
-## 店铺识别
-
-### 绿色店铺（已连接）
-- **识别方式**: `sales_channel` 字段不等于 `"disconnected"`
-
-### 店铺列表 API
-```python
-GET https://api.printify.com/v1/shops.json
-Headers:
-  Authorization: Bearer {api_token}
-```
-
-返回格式：
-```json
-[
-  {
-    "id": 12345678,
-    "title": "Shop Name",
-    "sales_channel": "shopify"  // 或 "disconnected"
-  }
-]
-```
-
-## 商品获取
-
-### API 限制
-- **分页限制**: 每页最多 50 个商品（不是 100）
-- **分页参数**: `limit=50&page={page_number}`
-
-### 商品列表 API
-```python
-GET https://api.printify.com/v1/shops/{shop_id}/products.json?limit=50&page=1
-Headers:
-  Authorization: Bearer {api_token}
-  User-Agent: SupplyNexus/1.0
-```
-
-### 分页处理
-```python
-page = 1
-limit = 50  # Printify API 限制：最大 50
-all_products = []
-
-while True:
-    response = await client.get(
-        f"{base_url}/shops/{shop_id}/products.json",
-        params={"limit": limit, "page": page}
-    )
-    data = response.json()
-    products = data.get("data", [])
-    
-    if not products or len(products) < limit:
-        break
-    
-    all_products.extend(products)
-    page += 1
-```
-
-## 脚本使用
-
-```bash
-# 使用 tenant 配置
-python scripts/get_printify_green_store_products.py --tenant {tenant_name}
-
-# 指定店铺 ID
-python scripts/get_printify_green_store_products.py --tenant {tenant_name} --shop-id {shop_id}
-
-# 仅列出店铺
-python scripts/get_printify_green_store_products.py --tenant {tenant_name} --list-shops-only
-```
-
-## 数据格式
-
-### 商品数据结构
-```json
-{
-  "id": "product_id",
-  "title": "Product Title",
-  "description": "HTML description",
-  "tags": ["tag1", "tag2"],
-  "options": [...],
-  "is_visible": false,
-  "variants": [...]
-}
-```
+- **分页**：商品列表每页最多 **50** 条（`limit=50&page={n}`），不可用 100，否则 400。
+- **店铺**：已连接店铺的 `sales_channel` ≠ `"disconnected"`（绿色店铺）。店铺列表：`GET https://api.printify.com/v1/shops.json`，Header `Authorization: Bearer {token}`。
 
 ## 常见问题
 
-### 1. API 返回 400 错误：limit 不能大于 50
-- **解决**: 将 `limit` 参数改为 50 或更小
+1. **400 limit 过大**：改为 `limit=50`。
+2. **绿色店铺**：看 `sales_channel` 是否非 `disconnected`。
+3. **Token 过期**：在 Printify 后台重新生成，在外部系统配置中更新凭据（或若仍用文件则更新对应 tenant 下 token 文件）。
 
-### 2. 如何识别绿色店铺
-- **方法**: 检查 `sales_channel` 字段，不等于 `"disconnected"` 即为已连接
-
-### 3. Token 过期
-- **处理**: 重新生成 token 并更新 `tenants/{tenant}/printify/api_token.token`
+详细 API 示例与脚本用法见 `scripts/` 下 Printify 相关脚本及后端 `printify_service`。

@@ -1,7 +1,7 @@
 ---
-description: Git workflow, branch strategy, pull request, commit, 分支, PR
+description: Git workflow, branch strategy, pull request, commit, 分支, PR, 提PR, 部署 dev
 globs: [".git/**/*", ".github/**/*"]
-alwaysApply: true
+alwaysApply: false
 ---
 # Git 工作流规则
 
