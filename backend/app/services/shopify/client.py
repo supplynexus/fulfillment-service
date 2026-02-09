@@ -199,6 +199,17 @@ class ShopifyGraphQLClient:
                 }}
                 note
                 tags
+                confirmationNumber
+                closed
+                confirmed
+                cancelledAt
+                cancelReason
+                totalShippingPriceSet {{
+                  shopMoney {{
+                    amount
+                    currencyCode
+                  }}
+                }}
                 metafields(first: 10) {{
                   edges {{
                     node {{

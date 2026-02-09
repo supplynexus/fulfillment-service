@@ -3,6 +3,7 @@ Celery application configuration
 """
 
 import os
+import sys
 from celery import Celery
 from app.core.config import settings
 from app.core.logging import get_logger
@@ -89,10 +90,12 @@ celery_app.conf.update(
     # Windows 兼容性配置
     # 1. 强制使用 dbm.dumb 格式（Beat 调度文件）
     beat_schedule_filename="celerybeat-schedule",
-    # 2. Windows 上使用 solo 池（单进程模式），避免 prefork 权限问题
-    # 注意：在 Linux/Mac 上会自动使用 prefork，Windows 上使用 solo
-    # 可以通过环境变量 CELERY_WORKER_POOL 覆盖（solo/threads/prefork）
-    worker_pool=os.getenv("CELERY_WORKER_POOL", "solo" if os.name == "nt" else "prefork"),
+    # 2. Windows/macOS 使用 solo 池，避免 prefork 导致的 SIGSEGV（macOS 上常见）
+    # Linux 使用 prefork。可通过环境变量 CELERY_WORKER_POOL 覆盖（solo/threads/prefork）
+    worker_pool=os.getenv(
+        "CELERY_WORKER_POOL",
+        "solo" if (os.name == "nt" or sys.platform == "darwin") else "prefork",
+    ),
 )
 
 # Auto-discover tasks

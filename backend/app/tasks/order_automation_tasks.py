@@ -4,6 +4,7 @@
 """
 
 import asyncio
+import threading
 from app.core.logging import get_logger
 from app.models.order import Order
 from app.models.scm_order import SCMOrder, ScmOrderSource
@@ -761,14 +762,6 @@ def sync_shopify_orders_to_core(self, tenant_id: int, limit: int = 50, ignore_fl
             and_(*filter_conditions)
         ).limit(limit).all()
 
-        if not unsynced_shopify_orders:
-            logger.info("ℹ️ 没有未同步的Shopify订单", tenant_id=tenant_id)
-            return {
-                "success": True,
-                "message": "没有未同步的订单需要处理",
-                "processed_count": 0,
-            }
-
         processed_count = 0
         errors = []
 
@@ -794,6 +787,25 @@ def sync_shopify_orders_to_core(self, tenant_id: int, limit: int = 50, ignore_fl
                 logger.error(f"❌ {error_msg}")
                 import traceback
                 logger.error(f"   异常堆栈: {traceback.format_exc()}")
+
+        # 定时任务下顺带刷新「已同步但已在 Shopify 取消」的订单，使核心订单 status 与 Shopify 一致
+        if not ignore_flags:
+            cancelled_already_synced = db.query(ShopifyOrder).filter(
+                ShopifyOrder.tenant_id == tenant_id,
+                ShopifyOrder.auto_synced_to_core == True,
+                ShopifyOrder.cancelled == True,
+            ).limit(limit).all()
+            for shopify_order in cancelled_already_synced:
+                try:
+                    result = sync_shopify_order_to_core_sync(db, shopify_order, tenant)
+                    if result.get("success"):
+                        db.commit()
+                        processed_count += 1
+                        logger.info(
+                            f"✅ 已刷新取消状态: {shopify_order.name} -> core_order_id={result.get('core_order_id')}"
+                        )
+                except Exception as e:
+                    logger.warning(f"刷新取消状态失败 {shopify_order.name}: {e}")
 
         logger.info(
             f"✅ Shopify订单同步完成: 成功={processed_count}, 失败={len(errors)}, tenant_id={tenant_id}"
@@ -1071,7 +1083,7 @@ def create_printify_orders_from_scm(self, tenant_id: int, limit: int = 50, ignor
 
 
 @celery_app.task(bind=True)
-def sync_printify_orders_to_local(self, tenant_id: int, limit: int = 100, ignore_flags: bool = False):
+def sync_printify_orders_to_local(self, tenant_id: int, limit: int = 50, ignore_flags: bool = False):
     """
     从Printify API同步订单到printify_orders本地表
     对应步骤: sync_printify_orders_to_local
@@ -1081,17 +1093,35 @@ def sync_printify_orders_to_local(self, tenant_id: int, limit: int = 100, ignore
         limit: 每次处理的订单数量限制
         ignore_flags: 是否忽略处理标志（手动处理时使用，此任务通常每次都会更新，所以标志主要用于标记）
     """
-    try:
-        logger.info("🔍 开始从Printify API同步订单到本地表", tenant_id=tenant_id, limit=limit)
+    result_container = {}
+    exception_container = {}
+
+    def run_in_thread():
+        """在独立线程中运行异步任务，使用本线程内创建的 engine/session，避免复用全局 async_engine 导致 Future attached to a different loop"""
+        from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+        from app.core.config import settings
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        thread_engine = create_async_engine(
+            settings.DATABASE_URL,
+            echo=False,
+            pool_pre_ping=True,
+            pool_size=2,
+            max_overflow=2,
+        )
+        ThreadAsyncSessionLocal = async_sessionmaker(
+            thread_engine,
+            class_=AsyncSession,
+            expire_on_commit=False,
+        )
 
         async def _sync_printify_orders():
-            from app.core.database import AsyncSessionLocal
             from app.models.printify_order import PrintifyOrder
-            from app.models.external_system import ExternalSystem, ExternalSystemType
             from app.services.external_system_service import ExternalSystemService
             from datetime import datetime, timedelta, timezone
 
-            async with AsyncSessionLocal() as db:
+            async with ThreadAsyncSessionLocal() as db:
                 # 获取Printify外部系统
                 service = ExternalSystemService(db)
                 printify_systems = await service.get_external_systems_by_type(
@@ -1196,8 +1226,9 @@ def sync_printify_orders_to_local(self, tenant_id: int, limit: int = 100, ignore
 
                         if shipments and len(shipments) > 0:
                             shipment = shipments[0]
-                            tracking_number = shipment.get("tracking_number")
-                            tracking_url = shipment.get("tracking_url")
+                            # Printify API uses "number"/"url"; some sources use "tracking_number"/"tracking_url"
+                            tracking_number = shipment.get("tracking_number") or shipment.get("number")
+                            tracking_url = shipment.get("tracking_url") or shipment.get("url")
                             carrier = shipment.get("carrier")
                             if shipment.get("shipped_at"):
                                 try:
@@ -1273,10 +1304,49 @@ def sync_printify_orders_to_local(self, tenant_id: int, limit: int = 100, ignore
                     "errors": errors,
                 }
 
-        # 运行异步函数
-        result = asyncio.run(_sync_printify_orders())
-        return result
+        try:
+            result_container["result"] = loop.run_until_complete(_sync_printify_orders())
+        except Exception as e:
+            import traceback
+            exception_container["error_type"] = type(e).__name__
+            exception_container["error_message"] = str(e)
+            exception_container["error_traceback"] = traceback.format_exc()
+            exception_container["error"] = e
+        finally:
+            try:
+                pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
+                if pending:
+                    for task in pending:
+                        task.cancel()
+                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+            except Exception:
+                pass
+            try:
+                if not loop.is_closed():
+                    loop.run_until_complete(thread_engine.dispose())
+            except Exception:
+                pass
+            try:
+                if not loop.is_closed():
+                    loop.close()
+            except Exception:
+                pass
 
+    try:
+        logger.info("🔍 开始从Printify API同步订单到本地表", tenant_id=tenant_id, limit=limit)
+        thread = threading.Thread(target=run_in_thread)
+        thread.start()
+        thread.join(timeout=300)
+        if thread.is_alive():
+            logger.error("Printify 同步任务执行超时")
+            raise TimeoutError("Printify 同步任务执行超时")
+        if "error" in exception_container:
+            e = exception_container["error"]
+            logger.error(f"❌ 从Printify API同步订单到本地表失败: {e}")
+            if self:
+                self.update_state(state="FAILURE", meta={"error": str(e)})
+            raise e
+        return result_container.get("result", {"success": False, "message": "无返回结果", "orders_synced": 0, "orders_updated": 0, "errors": []})
     except Exception as e:
         logger.error(f"❌ 从Printify API同步订单到本地表失败: {e}")
         if self:
@@ -1284,6 +1354,171 @@ def sync_printify_orders_to_local(self, tenant_id: int, limit: int = 100, ignore
                 state="FAILURE",
                 meta={"error": str(e)}
             )
+        raise
+
+
+@celery_app.task(bind=True)
+def auto_create_scm_from_unbound_printify_orders(self, tenant_id: int, limit: int = 20, ignore_flags: bool = False):
+    """
+    对「未绑定 SCM」的 Printify 同步订单自动创建 SCM 订单并绑定。
+    补全流程：Printify 订单同步到本地后，无需再手动点「从 PRINTIFY 创建」。
+    对应步骤: auto_create_scm_from_unbound_printify_orders
+
+    Args:
+        tenant_id: 租户ID
+        limit: 每次处理的未绑定订单数量限制
+        ignore_flags: 未使用，保留接口一致
+    """
+    from datetime import datetime, timezone
+    from app.models.printify_order import PrintifyOrder
+    from app.services.order_number_service import OrderNumberService
+
+    result_container = {}
+    exception_container = {}
+
+    def run_in_thread():
+        from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+        from app.core.config import settings
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        thread_engine = create_async_engine(
+            settings.DATABASE_URL,
+            echo=False,
+            pool_pre_ping=True,
+            pool_size=2,
+            max_overflow=2,
+        )
+        ThreadAsyncSessionLocal = async_sessionmaker(
+            thread_engine,
+            class_=AsyncSession,
+            expire_on_commit=False,
+        )
+
+        async def _run():
+            async with ThreadAsyncSessionLocal() as db:
+                result = await db.execute(
+                    select(PrintifyOrder)
+                    .where(
+                        and_(
+                            PrintifyOrder.tenant_id == tenant_id,
+                            PrintifyOrder.scm_order_id.is_(None),
+                        )
+                    )
+                    .order_by(PrintifyOrder.created_at.desc())
+                    .limit(limit)
+                )
+                unbound = result.scalars().all()
+                if not unbound:
+                    return {"success": True, "created": 0, "errors": []}
+
+                created = 0
+                errors = []
+                for printify_order in unbound:
+                    try:
+                        raw = printify_order.external_data or printify_order.printify_data or {}
+                        raw_items = raw.get("line_items") or []
+                        line_items = []
+                        for item in raw_items:
+                            if not isinstance(item, dict):
+                                continue
+                            meta = item.get("metadata") or {}
+                            line_items.append({
+                                "core_product_id": None,
+                                "core_variant_id": None,
+                                "quantity": int(item.get("quantity") or 1),
+                                "metadata": {
+                                    "title": meta.get("title"),
+                                    "sku": meta.get("sku"),
+                                    "variant_label": meta.get("variant_label"),
+                                    "source_line_item_id": item.get("id"),
+                                },
+                            })
+                        if not line_items:
+                            line_items = [{"core_product_id": None, "core_variant_id": None, "quantity": 1, "metadata": {}}]
+
+                        scm_order_number = await OrderNumberService.generate_scm_order_number(db, tenant_id)
+                        routing_metadata = {
+                            "target_system_type": "PRINTIFY",
+                            "target_system_id": None,
+                            "created_from_printify_order_id": printify_order.id,
+                            "created_from_printify_external_id": printify_order.external_order_id,
+                            "created_at": datetime.now(timezone.utc).isoformat(),
+                            "created_by": "automation",
+                        }
+                        shipping_address = printify_order.shipping_address if isinstance(printify_order.shipping_address, dict) else {}
+                        if not shipping_address:
+                            shipping_address = {"country": "US"}
+
+                        scm_order = SCMOrder(
+                            tenant_id=tenant_id,
+                            source_order_id=None,
+                            scm_order_number=scm_order_number,
+                            status="created",
+                            routing_strategy="manual",
+                            line_items=line_items,
+                            currency=printify_order.currency or "USD",
+                            customer_email=printify_order.customer_email or "",
+                            customer_name=printify_order.customer_name,
+                            customer_phone=None,
+                            shipping_address=shipping_address,
+                            billing_address=printify_order.billing_address if isinstance(printify_order.billing_address, dict) else None,
+                            routing_metadata=routing_metadata,
+                        )
+                        db.add(scm_order)
+                        await db.flush()
+
+                        printify_order.scm_order_id = scm_order.id
+                        scm_order.printify_order_id = printify_order.external_order_id
+                        scm_order.printify_shop_id = str(printify_order.external_system_id)
+                        scm_order.routing_metadata["printify_order_id"] = printify_order.external_order_id
+                        scm_order.routing_metadata["printify_bind_at"] = datetime.now(timezone.utc).isoformat()
+                        scm_order.routing_metadata["printify_bind_by"] = "automation"
+                        await db.commit()
+                        created += 1
+                        logger.info(
+                            "✅ 自动为 Printify 订单创建 SCM 并绑定",
+                            printify_external_id=printify_order.external_order_id,
+                            scm_order_number=scm_order_number,
+                        )
+                    except Exception as e:
+                        await db.rollback()
+                        errors.append(f"printify_order_id={printify_order.id}: {str(e)}")
+                        logger.warning(f"⚠️ 自动创建 SCM 失败: printify_order_id={printify_order.id}, error={e}")
+
+            return {"success": True, "created": created, "errors": errors}
+
+        try:
+            result_container["result"] = loop.run_until_complete(_run())
+        except Exception as e:
+            exception_container["error"] = e
+        finally:
+            try:
+                if not loop.is_closed():
+                    loop.run_until_complete(thread_engine.dispose())
+            except Exception:
+                pass
+            try:
+                if not loop.is_closed():
+                    loop.close()
+            except Exception:
+                pass
+
+    try:
+        logger.info("🔍 开始为未绑定的 Printify 订单自动创建 SCM", tenant_id=tenant_id, limit=limit)
+        thread = threading.Thread(target=run_in_thread)
+        thread.start()
+        thread.join(timeout=120)
+        if thread.is_alive():
+            logger.error("自动创建 SCM 任务执行超时")
+            raise TimeoutError("auto_create_scm_from_unbound_printify_orders timeout")
+        if "error" in exception_container:
+            raise exception_container["error"]
+        return result_container.get("result", {"success": True, "created": 0, "errors": []})
+    except Exception as e:
+        logger.error(f"❌ 为未绑定 Printify 订单自动创建 SCM 失败: {e}")
+        if self:
+            self.update_state(state="FAILURE", meta={"error": str(e)})
         raise
 
 
@@ -1579,20 +1814,20 @@ def sync_shopify_local_fulfillment_to_core(self, tenant_id: int, limit: int = 10
 
         from app.core.database import get_sync_db
         from app.models.shopify_order import ShopifyOrder
-        from app.models.order import Order
+        from app.models.order import Order, OrderStatus
         from datetime import datetime
 
         db = next(get_sync_db())
 
-        # 查询有发货信息且关联了核心订单的Shopify订单，且 auto_synced_fulfillment_to_core=False（避免重复处理）
-        shopify_orders = db.query(ShopifyOrder).filter(
-            and_(
-                ShopifyOrder.tenant_id == tenant_id,
-                ShopifyOrder.fulfillments.isnot(None),  # 有发货信息
-                ShopifyOrder.shopify_order_id.isnot(None),
-                ShopifyOrder.auto_synced_fulfillment_to_core == False  # 只处理未自动同步的订单
-            )
-        ).limit(limit).all()
+        # 查询有发货信息且关联了核心订单的 Shopify 订单；ignore_flags=True 时也处理已同步过的（用于补刷 core status）
+        filter_conditions = [
+            ShopifyOrder.tenant_id == tenant_id,
+            ShopifyOrder.fulfillments.isnot(None),
+            ShopifyOrder.shopify_order_id.isnot(None),
+        ]
+        if not ignore_flags:
+            filter_conditions.append(ShopifyOrder.auto_synced_fulfillment_to_core == False)
+        shopify_orders = db.query(ShopifyOrder).filter(and_(*filter_conditions)).limit(limit).all()
 
         if not shopify_orders:
             logger.info("ℹ️ 没有需要同步发货信息的Shopify订单", tenant_id=tenant_id)
@@ -1649,6 +1884,12 @@ def sync_shopify_local_fulfillment_to_core(self, tenant_id: int, limit: int = 10
                 if fulfillment_status and core_order.fulfillment_status != fulfillment_status:
                     core_order.fulfillment_status = fulfillment_status
                     needs_update = True
+
+                # 当 Shopify 已发货/履约成功时，将 core 的 status 从 pending 更新为 fulfilled，与 Shopify 已付款/已发货/已归档一致
+                if fulfillment_status and str(fulfillment_status).upper() in ("SUCCESS", "FULFILLED"):
+                    if core_order.status != OrderStatus.FULFILLED.value:
+                        core_order.status = OrderStatus.FULFILLED.value
+                        needs_update = True
 
                 # 更新external_data中的fulfillments
                 if not core_order.external_data:

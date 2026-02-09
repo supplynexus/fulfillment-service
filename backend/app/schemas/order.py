@@ -65,6 +65,8 @@ class OrderResponse(BaseModel):
     scm_orders_count: int = 0  # 关联的 SCM 订单数量
     # 列表用：关联的 SCM 订单预览（含 Printify 出口链接）
     scm_orders_preview: Optional[List[Dict[str, Any]]] = None  # [{ id_hashid, scm_order_number, printify_order_id, printify_shop_id }]
+    # 列表用：当订单来自 Shopify 时，可跳转的外部后台订单详情 URL
+    external_order_admin_url: Optional[str] = None
 
     class Config:
         from_attributes = True

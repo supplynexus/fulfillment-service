@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Box,
   Card,
@@ -33,6 +33,7 @@ import {
   MenuItem,
   Stack,
   Link,
+  Autocomplete,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -68,7 +69,9 @@ interface ScmOrder {
   routing_metadata?: any;
   printify_order_id?: string;
   printify_shop_id?: string;
+  printify_order_display?: string;
   source_order_number?: string;
+  source_external_order_number?: string;
   tracking_number?: string;
   tracking_url?: string;
   carrier?: string;
@@ -105,9 +108,13 @@ export function ScmOrdersList() {
   const [updateFeedback, setUpdateFeedback] = useState<{ message: string; severity: 'success' | 'info' | 'error' } | null>(null);
 
   // 从 Printify 同步订单创建 SCM
+  type PrintifyOption = { id: number; displayLabel: string; external_order_id?: string };
   const [createFromPrintifyOpen, setCreateFromPrintifyOpen] = useState(false);
-  const [printifyUnboundOrders, setPrintifyUnboundOrders] = useState<Array<{ id: number; displayLabel: string }>>([]);
-  const [selectedPrintifyId, setSelectedPrintifyId] = useState<number | ''>('');
+  const [printifyUnboundOrders, setPrintifyUnboundOrders] = useState<PrintifyOption[]>([]);
+  const [selectedPrintifyOption, setSelectedPrintifyOption] = useState<PrintifyOption | null>(null);
+  const [printifySearchInput, setPrintifySearchInput] = useState('');
+  const [printifyOptionsLoading, setPrintifyOptionsLoading] = useState(false);
+  const printifySearchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [createFromPrintifyLoading, setCreateFromPrintifyLoading] = useState(false);
   const [createFromPrintifyError, setCreateFromPrintifyError] = useState<string | null>(null);
 
@@ -160,36 +167,57 @@ export function ScmOrdersList() {
     fetchScmOrders();
   };
 
+  const mapPrintifyOrderToOption = useCallback((o: any) => {
+    const meta = o.printify_data?.metadata || o.external_data?.metadata || {};
+    const shopOrderLabel = meta.shop_order_label;
+    const customer = (o.customer_name || o.customer_email || '').trim();
+    const printifyId = (o.external_order_id != null && o.external_order_id !== '') ? String(o.external_order_id) : '';
+    const idPart = printifyId ? `${printifyId}` : `ID:${o.id}`;
+    const displayLabel = shopOrderLabel
+      ? `${idPart} · ${shopOrderLabel} — ${customer}`
+      : `${idPart} — ${customer}`;
+    return { id: o.id, displayLabel, external_order_id: printifyId || undefined };
+  }, []);
+
+  const fetchPrintifyUnboundOptions = useCallback((search: string) => {
+    setPrintifyOptionsLoading(true);
+    const params = new URLSearchParams({ limit: '20', page: '1', unbound_only: 'true' });
+    if (search.trim()) params.set('search', search.trim());
+    frontendApi.get(`/api/printify-orders/?${params.toString()}`)
+      .then((res) => {
+        const list = res.data?.orders || [];
+        setPrintifyUnboundOrders(list.map((o: any) => mapPrintifyOrderToOption(o)));
+      })
+      .catch(() => setPrintifyUnboundOrders([]))
+      .finally(() => setPrintifyOptionsLoading(false));
+  }, [mapPrintifyOrderToOption]);
+
   const handleOpenCreateFromPrintify = () => {
     setCreateFromPrintifyOpen(true);
     setCreateFromPrintifyError(null);
-    setSelectedPrintifyId('');
-    frontendApi.get('/api/printify-orders/?limit=200')
-      .then((res) => {
-        const list = res.data?.orders || [];
-        const unbound = list.filter((o: any) => !o.scm_order_id && !o.scm_order);
-        setPrintifyUnboundOrders(unbound.map((o: any) => {
-          const meta = o.printify_data?.metadata || o.external_data?.metadata || {};
-          const shopOrderLabel = meta.shop_order_label;
-          const customer = (o.customer_name || o.customer_email || '').trim();
-          const displayLabel = shopOrderLabel
-            ? `${shopOrderLabel} — ${customer}`
-            : `ID:${o.id} — ${customer}`;
-          return { id: o.id, displayLabel };
-        }));
-      })
-      .catch(() => setPrintifyUnboundOrders([]));
+    setSelectedPrintifyOption(null);
+    setPrintifySearchInput('');
+    fetchPrintifyUnboundOptions('');
+  };
+
+  const handlePrintifySearchInputChange = (_e: React.SyntheticEvent, value: string) => {
+    setPrintifySearchInput(value);
+    if (printifySearchDebounceRef.current) clearTimeout(printifySearchDebounceRef.current);
+    printifySearchDebounceRef.current = setTimeout(() => {
+      fetchPrintifyUnboundOptions(value);
+      printifySearchDebounceRef.current = null;
+    }, 300);
   };
 
   const handleCreateScmFromPrintify = async () => {
-    if (selectedPrintifyId === '') return;
+    if (!selectedPrintifyOption) return;
     setCreateFromPrintifyLoading(true);
     setCreateFromPrintifyError(null);
     try {
-      const res = await frontendApi.post(`/api/printify-orders/${selectedPrintifyId}/create-scm-and-bind`);
+      const res = await frontendApi.post(`/api/printify-orders/${selectedPrintifyOption.id}/create-scm-and-bind`);
       if (res.data?.success) {
         setCreateFromPrintifyOpen(false);
-        setSelectedPrintifyId('');
+        setSelectedPrintifyOption(null);
         await fetchScmOrders();
       } else {
         setCreateFromPrintifyError(res.data?.detail || '创建失败');
@@ -529,13 +557,8 @@ export function ScmOrdersList() {
                       </TableCell>
                       <TableCell>
                         <Typography variant='body2' fontWeight='medium'>
-                          {order.scm_order_number || order.id_hashid}
+                          {order.scm_order_number ?? '—'}
                         </Typography>
-                        {order.scm_order_number && (
-                          <Typography variant='caption' color='text.secondary'>
-                            ID: {order.id_hashid}
-                          </Typography>
-                        )}
                       </TableCell>
                       <TableCell>
                         {order.source_order_id_hashid ? (
@@ -571,7 +594,14 @@ export function ScmOrdersList() {
                             fontWeight="medium"
                             sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}
                           >
-                            Printify 订单
+                            {(() => {
+                              const prDisplay = order.printify_order_display;
+                              if (!prDisplay) return 'Printify 订单';
+                              const ext = order.source_external_order_number?.trim();
+                              const extLabel = ext && !ext.startsWith('#') ? `#${ext}` : ext || '';
+                              const prLabel = prDisplay.startsWith('#') ? prDisplay : `#${prDisplay}`;
+                              return extLabel ? `${extLabel} Order ${prLabel}` : prLabel;
+                            })()}
                             <OpenInNewIcon sx={{ fontSize: 14 }} />
                           </Link>
                         ) : order.printify_order_id || order.routing_metadata?.printify_order_id ? (
@@ -839,7 +869,10 @@ export function ScmOrdersList() {
       {/* 从 Printify 同步订单创建 SCM 并绑定 */}
       <Dialog
         open={createFromPrintifyOpen}
-        onClose={() => setCreateFromPrintifyOpen(false)}
+        onClose={() => {
+          if (printifySearchDebounceRef.current) clearTimeout(printifySearchDebounceRef.current);
+          setCreateFromPrintifyOpen(false);
+        }}
         maxWidth="sm"
         fullWidth
       >
@@ -854,22 +887,26 @@ export function ScmOrdersList() {
                 {createFromPrintifyError}
               </Alert>
             )}
-            <FormControl fullWidth size="small">
-              <InputLabel>Printify 同步订单</InputLabel>
-              <Select
-                value={selectedPrintifyId}
-                label="Printify 同步订单"
-                onChange={(e) => setSelectedPrintifyId(e.target.value as number | '')}
-              >
-                <MenuItem value="">请选择</MenuItem>
-                {printifyUnboundOrders.map((o) => (
-                  <MenuItem key={o.id} value={o.id}>
-                    {o.displayLabel}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            {printifyUnboundOrders.length === 0 && (
+            <Autocomplete<PrintifyOption>
+              size="small"
+              options={printifyUnboundOrders}
+              getOptionLabel={(opt) => opt.displayLabel}
+              value={selectedPrintifyOption}
+              onChange={(_e, val) => setSelectedPrintifyOption(val ?? null)}
+              onInputChange={handlePrintifySearchInputChange}
+              loading={printifyOptionsLoading}
+              filterOptions={(x) => x}
+              isOptionEqualToValue={(a, b) => a.id === b.id}
+              noOptionsText={printifySearchInput.trim() ? '无匹配的未关联 Printify 订单' : '输入单号/客户等模糊检索（如 1036）'}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Printify 同步订单"
+                  placeholder="输入 1036、客户名等模糊检索"
+                />
+              )}
+            />
+            {!printifyOptionsLoading && printifyUnboundOrders.length === 0 && !printifySearchInput.trim() && (
               <Typography variant="body2" color="text.secondary">
                 暂无未关联的 Printify 同步订单，请先在「Printify → 同步订单」中保存订单。
               </Typography>
@@ -882,7 +919,7 @@ export function ScmOrdersList() {
             variant="contained"
             startIcon={createFromPrintifyLoading ? <CircularProgress size={16} /> : <AddIcon />}
             onClick={handleCreateScmFromPrintify}
-            disabled={createFromPrintifyLoading || selectedPrintifyId === ''}
+            disabled={createFromPrintifyLoading || !selectedPrintifyOption}
           >
             {createFromPrintifyLoading ? '创建中...' : '创建 SCM 并绑定'}
           </Button>

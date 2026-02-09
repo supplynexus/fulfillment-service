@@ -6,6 +6,8 @@ export interface Order {
   external_order_id?: string;
   external_order_name?: string;
   external_order_number?: string;
+  /** 当订单来自 Shopify 等可打开后台时，跳转 URL（列表接口返回） */
+  external_order_admin_url?: string | null;
   shopify_order_number?: string;
   shopify_order_name?: string;
   printify_order_id?: string;

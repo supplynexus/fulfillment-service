@@ -74,6 +74,17 @@ AUTOMATION_STEPS_SEED = [
         "is_manual_only": False,
     },
     {
+        "step_key": "auto_create_scm_from_unbound_printify_orders",
+        "name": "未绑定Printify订单自动创建SCM",
+        "description": "对未绑定SCM的Printify同步订单自动创建SCM订单并绑定，补全「Printify→SCM」流程",
+        "category": "order_processing",
+        "required_external_systems": ["PRINTIFY"],
+        "celery_task_name": "app.tasks.order_automation_tasks.auto_create_scm_from_unbound_printify_orders",
+        "default_schedule": "*/30 * * * *",
+        "default_enabled": True,
+        "is_manual_only": False,
+    },
+    {
         "step_key": "sync_fulfillment_status",
         "name": "履约订单状态同步到SCM",
         "description": "从printify_orders本地表同步发货信息到SCM订单",

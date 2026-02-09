@@ -79,6 +79,14 @@ except Exception:
 - **401**：检查签名和鉴权
 - **500**：检查异常处理和日志
 
+## 运行 Python / 脚本（智能应用必读）
+
+- **运行本仓库任何 Python 程序或后端脚本前**，必须先：
+  1. `cd` 到后端目录：`/Volumes/WDC2T/supplynexus/fulfillment-service/backend`（或项目内的 `backend`）
+  2. 激活虚拟环境：`source .venv/bin/activate`
+- 在终端中执行 Python 命令时，应写成：`cd backend && source .venv/bin/activate && python ...`，或先进入 backend 并激活 venv 再执行。
+- 这样可避免模块找不到、依赖版本不一致等问题。
+
 ## 日志与调试（合并自 logging）
 
 - 出错时**先看日志**再改代码；关键步骤记录：请求/参数、认证、查询、异常与堆栈。

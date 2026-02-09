@@ -13,6 +13,7 @@ from datetime import datetime
 from app.core.database import get_async_db
 from app.core.tenant_auth_dependency import verify_tenant_auth
 from app.core.logging import get_logger
+from app.core.hashids_utils import encode_id
 from app.core.security import decrypt_data
 from app.models.tenant import Tenant
 from app.models.user import User
@@ -248,11 +249,14 @@ async def get_printify_orders_from_db(
     limit: int = 20,
     status: Optional[str] = None,
     search: Optional[str] = None,
+    unbound_only: bool = False,
     db: AsyncSession = Depends(get_async_db),
     auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
 ) -> Any:
     """
-    获取数据库中的 Printify 订单列表（从 SCM 订单创建的）
+    获取数据库中的 Printify 订单列表。
+    unbound_only: 仅返回未关联 SCM 的订单（用于「从 Printify 创建」弹窗的自动完成）。
+    search: 模糊匹配 external_order_id、customer_email、customer_name、metadata.shop_order_label（如 #1036）。
     """
     tenant, user = auth
     
@@ -263,10 +267,13 @@ async def get_printify_orders_from_db(
         page=page,
         limit=limit,
         status=status,
-        search=search
+        search=search,
+        unbound_only=unbound_only,
     )
 
     try:
+        from sqlalchemy import or_, text
+
         # 构建查询
         query = select(PrintifyOrder).where(
             PrintifyOrder.tenant_id == tenant.id
@@ -275,30 +282,47 @@ async def get_printify_orders_from_db(
             selectinload(PrintifyOrder.scm_order)
         ).order_by(desc(PrintifyOrder.created_at))
 
+        if unbound_only:
+            query = query.where(PrintifyOrder.scm_order_id.is_(None))
+
         # 添加状态过滤
         if status and status != 'all':
             query = query.where(PrintifyOrder.status == status)
 
-        # 添加搜索过滤（搜索外部订单ID或客户邮箱）
-        if search:
-            search_term = f"%{search}%"
-            query = query.where(
-                (PrintifyOrder.external_order_id.ilike(search_term)) |
-                (PrintifyOrder.customer_email.ilike(search_term))
-            )
+        # 搜索：external_order_id、customer_email、customer_name、metadata.shop_order_label（如 #1036）
+        search_term = f"%{search}%" if search else None
+        if search_term:
+            search_conditions = [
+                PrintifyOrder.external_order_id.ilike(search_term),
+                PrintifyOrder.customer_email.ilike(search_term),
+                PrintifyOrder.customer_name.ilike(search_term),
+            ]
+            # metadata.shop_order_label（PostgreSQL JSON 路径，如 #1036）
+            st_label = text(
+                "COALESCE(printify_orders.printify_data->'metadata'->>'shop_order_label', "
+                "printify_orders.external_data->'metadata'->>'shop_order_label', '') ILIKE :search_term"
+            ).bindparams(search_term=search_term)
+            query = query.where(or_(*search_conditions, st_label))
 
         # 计算总数
         count_query = select(PrintifyOrder.id).where(
             PrintifyOrder.tenant_id == tenant.id
         )
+        if unbound_only:
+            count_query = count_query.where(PrintifyOrder.scm_order_id.is_(None))
         if status and status != 'all':
             count_query = count_query.where(PrintifyOrder.status == status)
-        if search:
-            search_term = f"%{search}%"
-            count_query = count_query.where(
-                (PrintifyOrder.external_order_id.ilike(search_term)) |
-                (PrintifyOrder.customer_email.ilike(search_term))
-            )
+        if search_term:
+            count_search_conditions = [
+                PrintifyOrder.external_order_id.ilike(search_term),
+                PrintifyOrder.customer_email.ilike(search_term),
+                PrintifyOrder.customer_name.ilike(search_term),
+            ]
+            st_label_count = text(
+                "COALESCE(printify_orders.printify_data->'metadata'->>'shop_order_label', "
+                "printify_orders.external_data->'metadata'->>'shop_order_label', '') ILIKE :search_term"
+            ).bindparams(search_term=search_term)
+            count_query = count_query.where(or_(*count_search_conditions, st_label_count))
 
         total_result = await db.execute(count_query)
         total_count = len(total_result.fetchall())
@@ -347,6 +371,7 @@ async def get_printify_orders_from_db(
                 } if order.external_system else None,
                 "scm_order": {
                     "id": order.scm_order.id,
+                    "id_hashid": encode_id(order.scm_order.id),
                     "scm_order_number": order.scm_order.scm_order_number,
                     "status": order.scm_order.status
                 } if order.scm_order else None,
@@ -438,6 +463,7 @@ async def get_printify_order_details(
             } if order.external_system else None,
             "scm_order": {
                 "id": order.scm_order.id,
+                "id_hashid": encode_id(order.scm_order.id),
                 "scm_order_number": order.scm_order.scm_order_number,
                 "status": order.scm_order.status
             } if order.scm_order else None,

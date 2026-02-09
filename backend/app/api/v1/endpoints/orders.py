@@ -162,6 +162,56 @@ async def get_orders(
                     })
                 scm_preview_by_order[oid] = preview
 
+        # Shopify 订单：批量解析 external_order_id 并查外部系统，生成后台订单链接
+        import re
+        from app.models.external_system import ExternalSystem
+
+        shopify_gid_re = re.compile(r"^gid://shopify/Order/(\d+)$")
+        order_id_to_shopify_admin_url: dict[int, str] = {}
+        es_ids = list({o.external_system_id for o in orders if getattr(o, "external_system_id", None) is not None})
+        shopify_orders = [(o.id, o.external_order_id, getattr(o, "external_system_id", None)) for o in orders if o.external_order_id and shopify_gid_re.match(o.external_order_id.strip())]
+        if shopify_orders:
+            store_handle_by_es_id: dict[int, str] = {}
+            if es_ids:
+                es_result = await db.execute(
+                    select(ExternalSystem.id, ExternalSystem.external_id, ExternalSystem.base_url, ExternalSystem.external_system_id).where(
+                        ExternalSystem.id.in_(es_ids),
+                        ExternalSystem.tenant_id == tenant.id,
+                        ExternalSystem.system_type == ExternalSystemType.SHOPIFY,
+                    )
+                )
+                for row in es_result.fetchall():
+                    handle = (row.external_id or "").strip()
+                    if not handle and (row.base_url or row.external_system_id):
+                        url_or_domain = (row.base_url or row.external_system_id or "").strip()
+                        if ".myshopify.com" in url_or_domain:
+                            handle = url_or_domain.replace("https://", "").replace("http://", "").split(".myshopify.com")[0].strip()
+                    if handle:
+                        store_handle_by_es_id[row.id] = handle
+            fallback_handle = None
+            fallback_result = await db.execute(
+                select(ExternalSystem.external_id, ExternalSystem.base_url, ExternalSystem.external_system_id).where(
+                    ExternalSystem.tenant_id == tenant.id,
+                    ExternalSystem.system_type == ExternalSystemType.SHOPIFY,
+                    ExternalSystem.is_active == True,
+                ).limit(1)
+            )
+            fallback_row = fallback_result.fetchone()
+            if fallback_row and (fallback_row.external_id or fallback_row.base_url or fallback_row.external_system_id):
+                fallback_handle = (fallback_row.external_id or "").strip()
+                if not fallback_handle and (fallback_row.base_url or fallback_row.external_system_id):
+                    url_or_domain = (fallback_row.base_url or fallback_row.external_system_id or "").strip()
+                    if ".myshopify.com" in url_or_domain:
+                        fallback_handle = url_or_domain.replace("https://", "").replace("http://", "").split(".myshopify.com")[0].strip()
+            for oid, ext_oid, es_id in shopify_orders:
+                match = shopify_gid_re.match(ext_oid.strip())
+                if not match:
+                    continue
+                numeric_id = match.group(1)
+                handle = (es_id and store_handle_by_es_id.get(es_id)) or fallback_handle
+                if handle:
+                    order_id_to_shopify_admin_url[oid] = f"https://admin.shopify.com/store/{handle}/orders/{numeric_id}"
+
         # 转换为响应格式
         logger.info(f"🔍 转换订单响应格式...")
         try:
@@ -169,6 +219,7 @@ async def get_orders(
             for order in orders:
                 # 获取该订单的 SCM 订单数量
                 scm_orders_count = scm_counts_map.get(order.id, 0)
+                external_order_admin_url = order_id_to_shopify_admin_url.get(order.id)
 
                 order_data = {
                     "id_hashid": encode_id(order.id),
@@ -176,6 +227,7 @@ async def get_orders(
                     "external_order_id": order.external_order_id,
                     "external_order_number": order.external_order_number,
                     "external_order_name": order.external_order_name,
+                    "external_order_admin_url": external_order_admin_url,
                     "status": order.status,
                     "total_amount": float(order.total_amount) if order.total_amount else 0.0,
                     "currency": order.currency,

@@ -87,8 +87,10 @@ class SCMOrderResponse(BaseModel):
     source_orders: List[SourceOrderInfo] = []
     # 列表用：核心订单号、Printify 链接用
     source_order_number: Optional[str] = None
+    source_external_order_number: Optional[str] = None  # 外部系统订单号，如 #1036，用于展示「#1036 Order #24981565.14」
     printify_order_id: Optional[str] = None
     printify_shop_id: Optional[str] = None
+    printify_order_display: Optional[str] = None  # 人类可读 Printify 单号，如 #24981565.14（来自 app_order_id）
 
     class Config:
         from_attributes = True

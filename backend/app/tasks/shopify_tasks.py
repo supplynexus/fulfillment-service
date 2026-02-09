@@ -142,82 +142,73 @@ def sync_shopify_orders_1min_task(self, tenant_id: int = None, ignore_flags: boo
         
         db.close()
         
-        # 使用单个事件循环处理所有租户，避免事件循环冲突
-        async def _sync_all_tenants():
-            from app.core.database import AsyncSessionLocal
-            from app.services.shopify.order_service import ShopifyOrderService
-            
-            results = []
-            for tenant_id in tenant_ids:
-                try:
-                    async with AsyncSessionLocal() as db:
-                        # 使用 ShopifyOrderService 同步到 shopify_orders 表（步骤1）
-                        order_service = ShopifyOrderService(db)
-                        result = await order_service.sync_orders_to_shopify_table(
-                            tenant_id=tenant_id,
-                            sync_recent_only=True,
-                            max_orders=100
-                        )
-                        results.append({
-                            'tenant_id': tenant_id,
-                            'result': result
-                        })
-                except Exception as e:
-                    logger.error(f"租户 {tenant_id} 订单同步失败: {e}")
-                    import traceback
-                    logger.error(f"异常堆栈: {traceback.format_exc()}")
-                    results.append({
-                        'tenant_id': tenant_id,
-                        'error': str(e)
-                    })
-            return results
-        
-        # 使用线程来隔离事件循环，避免连接池冲突
-        # 这是最可靠的方法，因为每个线程有独立的事件循环
+        # 使用线程内独立的 async engine/session，避免与全局 async_engine 连接池跨 event loop 复用导致 "Future attached to a different loop"
         result_container = {}
         exception_container = {}
         
         def run_in_thread():
-            """在线程中运行异步任务"""
-            # 在线程中创建新的事件循环
+            """在线程中运行异步任务，使用本线程内创建的 engine，不共享全局 async_engine"""
+            from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+            from app.core.config import settings
+            
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
+            # 本线程专用 engine，避免使用全局连接池（全局池可能含其它 loop 的 connection）
+            thread_engine = create_async_engine(
+                settings.DATABASE_URL,
+                echo=False,
+                pool_pre_ping=True,
+                pool_size=2,
+                max_overflow=2,
+            )
+            ThreadAsyncSessionLocal = async_sessionmaker(
+                thread_engine,
+                class_=AsyncSession,
+                expire_on_commit=False,
+            )
+            
+            async def _sync_all_tenants():
+                from app.services.shopify.order_service import ShopifyOrderService
+                results = []
+                for tid in tenant_ids:
+                    try:
+                        async with ThreadAsyncSessionLocal() as db:
+                            order_service = ShopifyOrderService(db)
+                            result = await order_service.sync_orders_to_shopify_table(
+                                tenant_id=tid,
+                                sync_recent_only=True,
+                                max_orders=100
+                            )
+                            results.append({'tenant_id': tid, 'result': result})
+                    except Exception as e:
+                        logger.error(f"租户 {tid} 订单同步失败: {e}")
+                        import traceback
+                        logger.error(f"异常堆栈: {traceback.format_exc()}")
+                        results.append({'tenant_id': tid, 'error': str(e)})
+                return results
+            
             try:
-                async def _sync_in_thread():
-                    return await _sync_all_tenants()
-                
-                result_container['result'] = loop.run_until_complete(_sync_in_thread())
+                result_container['result'] = loop.run_until_complete(_sync_all_tenants())
             except Exception as e:
-                # 保存异常的类型和消息，确保可以被正确序列化
                 import traceback
                 exception_container['error_type'] = type(e).__name__
                 exception_container['error_message'] = str(e)
                 exception_container['error_traceback'] = traceback.format_exc()
-                exception_container['error'] = e  # 保留原始异常用于日志
+                exception_container['error'] = e
             finally:
-                # 在关闭事件循环之前，确保所有数据库连接都被正确关闭
                 try:
-                    # 等待所有未完成的任务完成
                     pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
                     if pending:
-                        # 取消所有未完成的任务
                         for task in pending:
                             task.cancel()
-                        # 等待所有任务完成（包括被取消的任务）
                         loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
                 except Exception:
-                    pass  # 忽略清理过程中的错误
-                
-                # 关闭数据库引擎的连接池（确保所有连接都被关闭）
+                    pass
                 try:
-                    from app.core.database import async_engine
-                    # 在事件循环中关闭引擎
                     if not loop.is_closed():
-                        loop.run_until_complete(async_engine.dispose(close=True))
+                        loop.run_until_complete(thread_engine.dispose())
                 except Exception:
-                    pass  # 忽略清理过程中的错误
-                
-                # 最后关闭事件循环
+                    pass
                 try:
                     if not loop.is_closed():
                         loop.close()
