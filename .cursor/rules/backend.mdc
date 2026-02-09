@@ -60,39 +60,9 @@ except Exception:
     access_token = encrypted_access_token
 ```
 
-## Hashids 处理
+## Hashids / 主键
 
-### 返回数据时编码
-
-```python
-from app.core.hashids_utils import encode_id
-
-system_dict = {
-    "id_hashid": encode_id(system.id),  # ✅ 使用 hashids
-    # "id": system.id,  # ❌ 禁止暴露原始 ID
-    "name": system.name,
-}
-```
-
-### 接收数据时解码
-
-```python
-from app.core.hashids_utils import decode_id
-
-try:
-    external_system_id = decode_id(external_system_hashid)
-except Exception as e:
-    raise HTTPException(status_code=400, detail="Invalid ID")
-
-# 使用解码后的 ID 查询数据库
-external_system = await service.get(external_system_id, tenant.id)
-```
-
-## 数据库主键安全
-
-- **❌ 禁止**：返回 `id`, `tenant_id`, `user_id` 等主键字段
-- **✅ 必须**：使用 `id_hashid` 替代所有主键
-- **✅ 必须**：日志中不记录敏感数据
+- 约定与用法见 **api-id-hashid.mdc**。后端：`encode_id(id)` 返回、`decode_id(hashid)` 接收，禁止返回数字主键。
 
 ## API 开发流程
 
@@ -108,3 +78,8 @@ external_system = await service.get(external_system_id, tenant.id)
 - **400**：检查请求参数格式
 - **401**：检查签名和鉴权
 - **500**：检查异常处理和日志
+
+## 日志与调试（合并自 logging）
+
+- 出错时**先看日志**再改代码；关键步骤记录：请求/参数、认证、查询、异常与堆栈。
+- 禁止记录敏感数据与主键 ID；鉴权失败时检查签名生成与密钥配置。详见上方日志模板。
