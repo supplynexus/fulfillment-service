@@ -48,6 +48,7 @@ import {
   Info as InfoIcon,
   Save as SaveIcon,
 } from '@mui/icons-material';
+import toast from 'react-hot-toast';
 import { frontendApi } from '@/lib/api';
 import { frontendLogger } from '@/lib/frontend-logger';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
@@ -509,8 +510,8 @@ function PrintifyOrdersPage() {
         }
         // 清空选择
         setSelectedOrders(new Set());
-        // 显示成功消息
-        alert(`成功更新 ${successCount} 个订单的物流信息${failCount > 0 ? `，${failCount} 个失败` : ''}`);
+        // 显示成功消息（与项目其他页面一致的 toast 风格）
+        toast.success(`成功更新 ${successCount} 个订单的物流信息${failCount > 0 ? `，${failCount} 个失败` : ''}`);
       } else {
         setError('所有订单更新失败');
       }
@@ -619,9 +620,9 @@ function PrintifyOrdersPage() {
         }
       }
 
-      // 显示结果
+      // 显示结果（与项目其他页面一致的 toast 风格）
       if (successCount > 0) {
-        alert(`成功保存 ${successCount} 个订单到本地数据库${failCount > 0 ? `，${failCount} 个失败` : ''}`);
+        toast.success(`成功保存 ${successCount} 个订单到本地数据库${failCount > 0 ? `，${failCount} 个失败` : ''}`);
       } else {
         setError('所有订单保存失败');
       }

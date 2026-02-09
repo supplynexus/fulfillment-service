@@ -30,6 +30,7 @@ import {
   Checkbox,
   Collapse,
   Autocomplete,
+  Link,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -44,6 +45,7 @@ import {
   ExpandLess as ExpandLessIcon,
   LinkOff as LinkOffIcon,
   Clear as ClearIcon,
+  OpenInNew as OpenInNewIcon,
 } from '@mui/icons-material';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Order, OrderStatus } from '@/types/order';
@@ -798,6 +800,7 @@ export function OrdersList() {
                   <TableCell width={50}></TableCell>
                   <TableCell>订单ID</TableCell>
                   <TableCell>Shopify订单号</TableCell>
+                  <TableCell>SCM / Printify</TableCell>
                   <TableCell>客户</TableCell>
                   <TableCell>金额</TableCell>
                   <TableCell>状态</TableCell>
@@ -876,8 +879,45 @@ export function OrdersList() {
                           </TableCell>
                           <TableCell>
                             <Typography variant='body2'>
-                              {order.external_order_name || order.external_order_id}
+                              {order.external_order_name || order.external_order_number || order.external_order_id || '—'}
                             </Typography>
+                          </TableCell>
+                          <TableCell>
+                            {order.scm_orders_preview && order.scm_orders_preview.length > 0 ? (
+                              <Stack spacing={0.5}>
+                                {order.scm_orders_preview.slice(0, 2).map((scm: any) => (
+                                  <Link
+                                    key={scm.id_hashid}
+                                    component="button"
+                                    variant="body2"
+                                    sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, textAlign: 'left' }}
+                                    onClick={() => router.push(`/scm-orders/${scm.id_hashid}`)}
+                                  >
+                                    {scm.scm_order_number || scm.id_hashid}
+                                  </Link>
+                                ))}
+                                {(() => {
+                                  const withPrintify = order.scm_orders_preview?.find((s: any) => s.printify_order_id && s.printify_shop_id);
+                                  const printifyUrl = withPrintify
+                                    ? `https://printify.com/app/store/${withPrintify.printify_shop_id}/order/${withPrintify.printify_order_id}`
+                                    : null;
+                                  return printifyUrl ? (
+                                    <Link
+                                      href={printifyUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      variant="body2"
+                                      sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}
+                                    >
+                                      Printify 订单
+                                      <OpenInNewIcon sx={{ fontSize: 14 }} />
+                                    </Link>
+                                  ) : null;
+                                })()}
+                              </Stack>
+                            ) : (
+                              <Typography variant='body2' color='text.secondary'>—</Typography>
+                            )}
                           </TableCell>
                           <TableCell>
                             <Box>

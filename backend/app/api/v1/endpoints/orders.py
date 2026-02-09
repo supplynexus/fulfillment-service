@@ -111,21 +111,68 @@ async def get_orders(
         )
         scm_counts_map = {row[0]: row[1] for row in scm_counts_result.fetchall()}
         logger.info(f"✅ 查询到 {len(scm_counts_map)} 个订单有 SCM 订单")
-        
+
+        # 有 SCM 的订单：仅按多对多表 scm_order_sources 查 SCM 预览与 Printify 链接
+        from app.models.scm_order import SCMOrder, ScmOrderSource
+        from app.core.hashids_utils import encode_id
+        from sqlalchemy.orm import selectinload
+
+        order_ids_with_scm = [oid for oid in order_ids if scm_counts_map.get(oid, 0) > 0]
+        scm_preview_by_order: dict = {}
+        if order_ids_with_scm:
+            src_result = await db.execute(
+                select(ScmOrderSource.source_order_id, ScmOrderSource.scm_order_id).where(
+                    ScmOrderSource.source_order_id.in_(order_ids_with_scm),
+                    ScmOrderSource.tenant_id == tenant.id,
+                )
+            )
+            pairs = src_result.fetchall()
+            scm_ids = list({p[1] for p in pairs})
+            scm_result = await db.execute(
+                select(SCMOrder)
+                .where(SCMOrder.id.in_(scm_ids), SCMOrder.tenant_id == tenant.id)
+                .options(selectinload(SCMOrder.printify_orders))
+            )
+            scm_list = scm_result.scalars().all()
+            scm_by_id = {s.id: s for s in scm_list}
+            order_to_scm_ids: dict = {}
+            for src_oid, scm_id in pairs:
+                order_to_scm_ids.setdefault(src_oid, []).append(scm_id)
+            for oid in order_ids_with_scm:
+                scm_ids_for_order = order_to_scm_ids.get(oid, [])[:5]
+                preview = []
+                for sid in scm_ids_for_order:
+                    scm = scm_by_id.get(sid)
+                    if not scm:
+                        continue
+                    printify_shop_id = None
+                    if getattr(scm, "printify_orders", None):
+                        for po in scm.printify_orders:
+                            pd = (po.printify_data or getattr(po, "external_data", None)) if hasattr(po, "printify_data") else None
+                            if isinstance(pd, dict) and pd.get("shop_id") is not None:
+                                printify_shop_id = str(pd.get("shop_id"))
+                                break
+                    if not printify_shop_id and getattr(scm, "printify_shop_id", None):
+                        printify_shop_id = str(scm.printify_shop_id)
+                    preview.append({
+                        "id_hashid": encode_id(scm.id),
+                        "scm_order_number": scm.scm_order_number or "",
+                        "printify_order_id": scm.printify_order_id,
+                        "printify_shop_id": printify_shop_id,
+                    })
+                scm_preview_by_order[oid] = preview
+
         # 转换为响应格式
         logger.info(f"🔍 转换订单响应格式...")
         try:
-            from app.core.hashids_utils import encode_id
-            
             order_responses = []
             for order in orders:
                 # 获取该订单的 SCM 订单数量
                 scm_orders_count = scm_counts_map.get(order.id, 0)
-                
-                # 使用 hashids 替代原始 ID
+
                 order_data = {
                     "id_hashid": encode_id(order.id),
-                    "order_number": order.order_number or f"ORD-{order.id}",  # 如果 order_number 为 None，使用默认值
+                    "order_number": order.order_number or f"ORD-{order.id}",
                     "external_order_id": order.external_order_id,
                     "external_order_number": order.external_order_number,
                     "external_order_name": order.external_order_name,
@@ -137,7 +184,7 @@ async def get_orders(
                     "customer_phone": order.customer_phone,
                     "shipping_address": order.shipping_address,
                     "billing_address": order.billing_address,
-                    "line_items": [],  # 前端需要时二次查询
+                    "line_items": [],
                     "order_date": order.order_date,
                     "fulfillment_status": order.fulfillment_status,
                     "tracking_number": order.tracking_number,
@@ -148,7 +195,8 @@ async def get_orders(
                     "address_last_validated_at": getattr(order, "address_last_validated_at", None),
                     "created_at": order.created_at,
                     "updated_at": order.updated_at,
-                    "scm_orders_count": scm_orders_count,  # 添加 SCM 订单数量
+                    "scm_orders_count": scm_orders_count,
+                    "scm_orders_preview": scm_preview_by_order.get(order.id),
                 }
                 order_responses.append(order_data)
             logger.info(f"✅ 订单响应格式转换成功: {len(order_responses)} 个订单")

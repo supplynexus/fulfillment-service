@@ -36,7 +36,7 @@ logger = get_logger(__name__)
 @router.get("/", response_model=ShopifyOrderListResponse)
 async def get_shopify_orders(
     skip: int = Query(0, ge=0, description="跳过的记录数"),
-    limit: int = Query(10, ge=1, le=100, description="每页记录数"),
+    limit: int = Query(10, ge=1, le=500, description="每页记录数（最大500）"),
     page: int = Query(1, ge=1, description="页码"),
     financial_status: Optional[str] = Query(None, description="财务状态过滤"),
     fulfillment_status: Optional[str] = Query(None, description="履行状态过滤"),
