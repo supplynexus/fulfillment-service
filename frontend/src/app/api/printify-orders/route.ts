@@ -47,6 +47,7 @@ export async function GET(request: NextRequest) {
     const limit = searchParams.get('limit') || '20';
     const status = searchParams.get('status');
     const search = searchParams.get('search');
+    const unboundOnly = searchParams.get('unbound_only');
 
     // 构建后端请求参数
     const backendParams = new URLSearchParams({
@@ -59,6 +60,9 @@ export async function GET(request: NextRequest) {
     }
     if (search) {
       backendParams.append('search', search);
+    }
+    if (unboundOnly === 'true' || unboundOnly === '1') {
+      backendParams.append('unbound_only', 'true');
     }
 
     // 对于 GET 请求，签名字符串中的 body 应该是空字符串

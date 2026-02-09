@@ -798,15 +798,13 @@ const SyncedShopifyOrdersPage: React.FC = () => {
                               </IconButton>
                             </Tooltip>
                             <Tooltip title='在核心订单列表按订单号筛选'>
-                              <Link
+                              <IconButton
+                                component={Link}
                                 href={`/orders?search=${encodeURIComponent((order.name || order.confirmation_number || '').replace(/^#/, ''))}`}
-                                passHref
-                                legacyBehavior
+                                size='small'
                               >
-                                <IconButton size='small' component='a'>
-                                  <ListIcon />
-                                </IconButton>
-                              </Link>
+                                <ListIcon />
+                              </IconButton>
                             </Tooltip>
                             <Tooltip title='查看原始数据'>
                               <IconButton

@@ -9,10 +9,10 @@ import { frontendLogger } from '@/lib/frontend-logger';
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const startTime = Date.now();
-  const printifyOrderId = params.id;
+  const { id: printifyOrderId } = await params;
 
   try {
     frontendLogger.info('🚀 开始处理「从 Printify 订单创建 SCM 并绑定」请求', {

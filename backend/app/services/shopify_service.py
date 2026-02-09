@@ -798,6 +798,8 @@ class ShopifyService:
                             }
                             displayFulfillmentStatus
                             displayFinancialStatus
+                            cancelledAt
+                            cancelReason
                             shippingAddress {
                                 id
                                 firstName
@@ -930,6 +932,9 @@ class ShopifyService:
                         .get("currencyCode"),
                         "fulfillment_status": order.get("displayFulfillmentStatus"),
                         "financial_status": order.get("displayFinancialStatus"),
+                        "cancelled": bool(
+                            order.get("cancelledAt") or order.get("cancelReason")
+                        ),
                         "shipping_address": order.get("shippingAddress"),
                         "billing_address": order.get("billingAddress"),
                         "customer": (

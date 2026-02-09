@@ -830,11 +830,17 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
               <Button
                 variant='contained'
                 onClick={handleCreateScmOrder}
-                disabled={creatingScm || selectedItemIds.size === 0}
+                disabled={
+                  creatingScm ||
+                  selectedItemIds.size === 0 ||
+                  order.status === OrderStatus.CANCELLED
+                }
               >
                 {creatingScm
                   ? '创建中...'
-                  : `创建核心SCM订单（已选 ${selectedItemIds.size} 项）`}
+                  : order.status === OrderStatus.CANCELLED
+                    ? '已取消订单不可创建SCM订单'
+                    : `创建核心SCM订单（已选 ${selectedItemIds.size} 项）`}
               </Button>
             </Stack>
             <TableContainer component={Paper} variant='outlined'>
@@ -865,6 +871,7 @@ export function OrderDetails({ orderId }: OrderDetailsProps) {
                         <Checkbox
                           color='primary'
                           checked={selectedItemIds.has(item.id)}
+                          disabled={order.status === OrderStatus.CANCELLED}
                           onChange={() =>
                             toggleSelectItem(item.id, item.quantity)
                           }

@@ -79,6 +79,12 @@ source .venv/bin/activate
 2. **备选方案** Docker 容器访问
 3. **最后选择** Python 脚本（避免创建临时测试文件）
 
+### postgres-supplynexus-local 智能使用（本地测试）
+
+- **适用场景**：本地开发/调试需要查库时，优先用该 MCP 执行 **只读** SQL，无需起 psql 或写脚本。
+- **典型用途**：验证同步结果（如 `shopify_orders.cancelled`、`last_synced_at`）、核对订单/租户/外部系统数据、排查自动化任务写入是否生效。
+- **注意**：该工具仅支持只读查询；写操作或迁移请用 Alembic/脚本，不要依赖该工具执行 INSERT/UPDATE/DELETE/DDL。
+
 ## 安全注意事项
 
 ### 迁移安全

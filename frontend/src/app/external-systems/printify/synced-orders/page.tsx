@@ -36,8 +36,8 @@ import {
   Badge,
   Avatar,
   Checkbox,
-  Link,
 } from '@mui/material';
+import Link from 'next/link';
 import {
   Search as SearchIcon,
   Refresh as RefreshIcon,
@@ -90,6 +90,7 @@ interface PrintifySyncedOrder {
   // 关联的 SCM 订单信息
   scm_order?: {
     id: number;
+    id_hashid?: string;
     scm_order_number: string;
     status: string;
     fulfillment_status: string;
@@ -763,12 +764,28 @@ function PrintifySyncedOrdersPage() {
                             </TableCell>
                             <TableCell>
                               {order.scm_order ? (
-                                <Chip
-                                  label={order.scm_order.scm_order_number}
-                                  color="primary"
-                                  size="small"
-                                  icon={<CheckIcon />}
-                                />
+                                order.scm_order.id_hashid ? (
+                                  <Link
+                                    href={`/scm-orders/${order.scm_order.id_hashid}`}
+                                    style={{ textDecoration: 'none', color: 'inherit', display: 'inline-flex' }}
+                                  >
+                                    <Chip
+                                      label={order.scm_order.scm_order_number}
+                                      color="primary"
+                                      size="small"
+                                      icon={<CheckIcon />}
+                                      component="span"
+                                      clickable
+                                    />
+                                  </Link>
+                                ) : (
+                                  <Chip
+                                    label={order.scm_order.scm_order_number}
+                                    color="primary"
+                                    size="small"
+                                    icon={<CheckIcon />}
+                                  />
+                                )
                               ) : (
                                 <Chip
                                   label="未关联"

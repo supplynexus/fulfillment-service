@@ -67,6 +67,7 @@ interface ShopifyOrder {
   currency: string;
   fulfillment_status: string;
   financial_status: string;
+  cancelled?: boolean;
   shipping_address?: {
     firstName?: string;
     lastName?: string;
@@ -368,6 +369,7 @@ const ShopifyOrdersPage: React.FC = () => {
           currency: data.order.totalPriceSet?.shopMoney?.currencyCode || 'USD',
           fulfillment_status: data.order.displayFulfillmentStatus,
           financial_status: data.order.displayFinancialStatus,
+          cancelled: !!(data.order.cancelledAt || data.order.cancelReason),
           customer: data.order.customer
             ? {
                 id: data.order.customer.id,
@@ -524,7 +526,7 @@ const ShopifyOrdersPage: React.FC = () => {
         fulfillment_status: order.fulfillment_status,
         confirmed: true,
         closed: order.fulfillment_status === 'fulfilled',
-        cancelled: order.financial_status === 'cancelled',
+        cancelled: order.cancelled ?? order.financial_status === 'cancelled',
         currency_code: order.currency,
         total_price: parseFloat(order.total_price) || 0,
         subtotal_price: parseFloat(order.total_price) || 0,
@@ -969,22 +971,30 @@ const ShopifyOrdersPage: React.FC = () => {
                                   </Typography>
                                 </TableCell>
                                 <TableCell>
-                                  <Chip
-                                    label={order.financial_status || '未知'}
-                                    color={getStatusColor(
-                                      order.financial_status
-                                    )}
-                                    size='small'
-                                  />
+                                  {order.cancelled ? (
+                                    <Chip label='已取消' color='error' size='small' />
+                                  ) : (
+                                    <Chip
+                                      label={order.financial_status || '未知'}
+                                      color={getStatusColor(
+                                        order.financial_status
+                                      )}
+                                      size='small'
+                                    />
+                                  )}
                                 </TableCell>
                                 <TableCell>
-                                  <Chip
-                                    label={order.fulfillment_status || '未知'}
-                                    color={getStatusColor(
-                                      order.fulfillment_status
-                                    )}
-                                    size='small'
-                                  />
+                                  {order.cancelled ? (
+                                    <Chip label='已取消' color='error' size='small' />
+                                  ) : (
+                                    <Chip
+                                      label={order.fulfillment_status || '未知'}
+                                      color={getStatusColor(
+                                        order.fulfillment_status
+                                      )}
+                                      size='small'
+                                    />
+                                  )}
                                 </TableCell>
                                 <TableCell>
                                   <Typography variant='body2'>
@@ -998,15 +1008,14 @@ const ShopifyOrdersPage: React.FC = () => {
                                     )}
                                     {syncedOrderIds.has(order.id) && (
                                       <Tooltip title='在同步订单页按订单号筛选'>
-                                        <Link
+                                        <Button
+                                          component={Link}
                                           href={`/external-systems/shopify/synced-orders?search=${encodeURIComponent(order.name.replace(/^#/, ''))}`}
-                                          passHref
-                                          legacyBehavior
+                                          size='small'
+                                          startIcon={<LinkIcon />}
                                         >
-                                          <Button size='small' startIcon={<LinkIcon />} component='a'>
-                                            同步订单
-                                          </Button>
-                                        </Link>
+                                          同步订单
+                                        </Button>
                                       </Tooltip>
                                     )}
                                     {selectedStore && (
@@ -1148,13 +1157,17 @@ const ShopifyOrdersPage: React.FC = () => {
                           <Typography variant='body2' color='text.secondary'>
                             财务状态:
                           </Typography>
-                          <Chip
-                            label={selectedOrder.financial_status || '未知'}
-                            color={getStatusColor(
-                              selectedOrder.financial_status
-                            )}
-                            size='small'
-                          />
+                          {selectedOrder.cancelled ? (
+                            <Chip label='已取消' color='error' size='small' />
+                          ) : (
+                            <Chip
+                              label={selectedOrder.financial_status || '未知'}
+                              color={getStatusColor(
+                                selectedOrder.financial_status
+                              )}
+                              size='small'
+                            />
+                          )}
                         </Box>
                         <Box
                           sx={{
@@ -1165,13 +1178,17 @@ const ShopifyOrdersPage: React.FC = () => {
                           <Typography variant='body2' color='text.secondary'>
                             履行状态:
                           </Typography>
-                          <Chip
-                            label={selectedOrder.fulfillment_status || '未知'}
-                            color={getStatusColor(
-                              selectedOrder.fulfillment_status
-                            )}
-                            size='small'
-                          />
+                          {selectedOrder.cancelled ? (
+                            <Chip label='已取消' color='error' size='small' />
+                          ) : (
+                            <Chip
+                              label={selectedOrder.fulfillment_status || '未知'}
+                              color={getStatusColor(
+                                selectedOrder.fulfillment_status
+                              )}
+                              size='small'
+                            />
+                          )}
                         </Box>
                         <Box
                           sx={{

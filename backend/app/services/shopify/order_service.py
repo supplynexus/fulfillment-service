@@ -656,8 +656,9 @@ class ShopifyOrderService:
                         Order.customer_email.ilike(f"%{search}%"),
                         Order.external_order_id.ilike(f"%{search}%"),
                         Order.external_order_name.ilike(f"%{search}%"),
+                        Order.external_order_number.ilike(f"%{search}%"),
                         Order.shopify_order_id.ilike(f"%{search}%"),
-                        Order.shopify_order_number.ilike(f"%{search}%"),
+                        Order.order_number.ilike(f"%{search}%"),
                     )
                     order_ids_subq = order_ids_subq.where(search_filter)
                 count_result = await self.db.execute(
@@ -678,8 +679,9 @@ class ShopifyOrderService:
                         Order.customer_email.ilike(f"%{search}%"),
                         Order.external_order_id.ilike(f"%{search}%"),
                         Order.external_order_name.ilike(f"%{search}%"),
+                        Order.external_order_number.ilike(f"%{search}%"),
                         Order.shopify_order_id.ilike(f"%{search}%"),
-                        Order.shopify_order_number.ilike(f"%{search}%"),
+                        Order.order_number.ilike(f"%{search}%"),
                     )
                     query = query.where(search_filter)
                 count_result = await self.db.execute(
@@ -945,7 +947,9 @@ class ShopifyOrderService:
                 "fulfillment_status": fulfillment_status,
                 "confirmed": order_data.get("confirmed", False),
                 "closed": order_data.get("closed", False),
-                "cancelled": order_data.get("cancelled", False),
+                "cancelled": bool(
+                    order_data.get("cancelledAt") or order_data.get("cancelReason")
+                ),
                 "currency_code": currency,
                 "total_price": total_price,
                 "subtotal_price": subtotal_price,

@@ -183,7 +183,8 @@ class PrintifyService:
     async def get_orders(
         self, shop_id: str, limit: int = 50, page: int = 1
     ) -> Dict[str, Any]:
-        """Get orders list from Printify"""
+        """Get orders list from Printify. API max limit is 50."""
+        limit = min(int(limit), 50)
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
@@ -217,20 +218,21 @@ class PrintifyService:
             return {"success": False, "message": f"Failed to get orders: {str(e)}"}
 
     async def get_orders_batch(
-        self, shop_id: str, access_token: str, order_ids: List[str], limit: int = 100
+        self, shop_id: str, access_token: str, order_ids: List[str], limit: int = 50
     ) -> Dict[str, Any]:
         """
-        批量获取Printify订单状态
+        批量获取Printify订单状态。Printify API limit 最大 50。
 
         Args:
             shop_id: Printify店铺ID
             access_token: 访问令牌
             order_ids: 订单ID列表
-            limit: 每页限制
+            limit: 每页限制（API 最大 50）
 
         Returns:
             批量订单数据
         """
+        limit = min(int(limit), 50)
         try:
             logger.info(
                 f"📦 开始批量获取Printify订单状态: shop_id={shop_id}, order_count={len(order_ids)}"

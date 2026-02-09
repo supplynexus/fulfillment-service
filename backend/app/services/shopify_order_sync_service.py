@@ -10,7 +10,7 @@ from sqlalchemy import select, and_, or_
 
 from app.core.logging import get_logger
 from app.models.shopify_order import ShopifyOrder
-from app.models.order import Order, OrderItem
+from app.models.order import Order, OrderItem, OrderStatus
 from app.models.product import ProductVariant
 from app.models.tenant import Tenant
 from app.services.address_validation_service import validate_address
@@ -168,6 +168,14 @@ def sync_shopify_order_to_core_sync(
         if existing_core_order:
             logger.info(f"ℹ️ 核心订单已存在，更新现有订单: {existing_core_order.id}")
             core_order = existing_core_order
+            # 同步 Shopify 取消状态到核心订单
+            if shopify_order.cancelled:
+                core_order.status = OrderStatus.CANCELLED.value
+                logger.info(f"✅ 核心订单已更新为已取消: {core_order.id}")
+            # 同步金额（Shopify 可能因退款等变更）
+            core_order.total_amount = float(shopify_order.total_price) if shopify_order.total_price is not None else core_order.total_amount
+            core_order.subtotal_amount = float(shopify_order.subtotal_price) if shopify_order.subtotal_price is not None else core_order.subtotal_amount
+            core_order.tax_amount = float(shopify_order.total_tax) if shopify_order.total_tax is not None else core_order.tax_amount
             # 同步最新的地址和验证结果
             core_order.shipping_address = shipping_address_core
             core_order.billing_address = billing_address_core
@@ -202,7 +210,7 @@ def sync_shopify_order_to_core_sync(
                 external_order_number=shopify_order.name,
                 external_order_name=shopify_order.name,
                 order_number=order_number,
-                status="pending",
+                status=OrderStatus.CANCELLED.value if shopify_order.cancelled else OrderStatus.PENDING.value,
                 total_amount=float(shopify_order.total_price) if shopify_order.total_price else 0.0,
                 subtotal_amount=float(shopify_order.subtotal_price) if shopify_order.subtotal_price else None,
                 tax_amount=float(shopify_order.total_tax) if shopify_order.total_tax else None,

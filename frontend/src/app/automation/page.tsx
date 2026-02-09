@@ -3,8 +3,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
-  Card,
-  CardContent,
   Typography,
   Button,
   Alert,
@@ -20,8 +18,6 @@ import {
   DialogContent,
   DialogActions,
   Stack,
-  Divider,
-  Grid,
   Paper,
   Tabs,
   Tab,
@@ -31,11 +27,8 @@ import {
   Refresh as RefreshIcon,
   PlayArrow as PlayIcon,
   Settings as SettingsIcon,
-  Info as InfoIcon,
   CheckCircle as CheckCircleIcon,
   Error as ErrorIcon,
-  Schedule as ScheduleIcon,
-  Category as CategoryIcon,
 } from '@mui/icons-material';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -96,6 +89,48 @@ interface AutomationStepWithConfig extends AutomationStep {
   manual_buttons: AutomationManualButton[];
 }
 
+/** 配置弹窗内的草稿，仅点「保存」时提交 */
+interface ConfigDraft {
+  is_enabled: boolean;
+  schedule: string;
+  schedule_seconds: number | '';
+}
+
+/** 校验 5 段 cron（分 时 日 月 周），不合法返回错误文案 */
+function validateCron(schedule: string): string | null {
+  const t = schedule.trim();
+  if (!t) return null;
+  const parts = t.split(/\s+/);
+  if (parts.length !== 5) {
+    return 'Cron 应为 5 段：分 时 日 月 周，用空格分隔，例如：*/30 * * * *';
+  }
+  const partRe = /^(\*|\d+|\*\/\d+|\d+-\d+|\d+(\,\d+)*)$/;
+  for (let i = 0; i < 5; i++) {
+    if (!partRe.test(parts[i].trim())) {
+      return `第 ${i + 1} 段格式不正确，支持：* 、数字、*/n、n-m、n,m`;
+    }
+  }
+  return null;
+}
+
+/** 步骤的一行说明（更清晰、面向操作结果） */
+const STEP_SUMMARY: Record<string, string> = {
+  sync_external_orders: '从 Shopify 拉取订单到本地 shopify_orders 表，供后续同步到核心订单使用',
+  sync_to_core_orders: '把 shopify_orders 里未同步的订单写入核心 orders 表，并做地址验证',
+  create_scm_orders: '把核心订单中的商品生成 SCM 订单，用于后续发 Printify 等',
+  create_printify_orders_from_scm: '根据 SCM 订单在 Printify 侧批量创建生产订单',
+  sync_printify_orders_to_local: '从 Printify API 拉取订单到本地 printify_orders 表',
+  auto_create_scm_from_unbound_printify_orders: '对未绑定 SCM 的 Printify 订单自动创建 SCM 并绑定（补全 Printify→SCM）',
+  sync_fulfillment_status: '把 printify_orders 的发货/物流状态回写到 SCM 订单',
+  sync_to_external_fulfillment: '把 SCM 的发货状态同步回 Shopify 履约信息',
+  sync_shopify_fulfillment_to_local: '从 Shopify API 拉取履约/物流信息到 shopify_orders',
+  sync_shopify_local_fulfillment_to_core: '把 shopify_orders 的物流信息写入核心 orders 表',
+};
+
+function getStepSummary(step: AutomationStep): string {
+  return STEP_SUMMARY[step.step_key] || step.description || step.name;
+}
+
 const AutomationPage: React.FC = () => {
   const [steps, setSteps] = useState<AutomationStepWithConfig[]>([]);
   const [loading, setLoading] = useState(true);
@@ -106,6 +141,9 @@ const AutomationPage: React.FC = () => {
   const [triggerDialogOpen, setTriggerDialogOpen] = useState(false);
   const [updating, setUpdating] = useState<string | null>(null);
   const [triggering, setTriggering] = useState<string | null>(null);
+  /** 配置弹窗草稿，打开时从 selectedStep 初始化，仅保存时提交 */
+  const [configDraft, setConfigDraft] = useState<ConfigDraft | null>(null);
+  const [configDraftError, setConfigDraftError] = useState<string | null>(null);
 
   // 获取步骤列表
   const fetchSteps = useCallback(async () => {
@@ -135,6 +173,22 @@ const AutomationPage: React.FC = () => {
     fetchSteps();
   }, [fetchSteps]);
 
+  // 打开配置弹窗时，用当前步骤的配置初始化草稿
+  useEffect(() => {
+    if (configDialogOpen && selectedStep) {
+      const c = selectedStep.tenant_config;
+      setConfigDraft({
+        is_enabled: c?.is_enabled ?? false,
+        schedule: c?.schedule ?? selectedStep.default_schedule ?? '',
+        schedule_seconds: c?.schedule_seconds ?? '',
+      });
+      setConfigDraftError(null);
+    } else {
+      setConfigDraft(null);
+      setConfigDraftError(null);
+    }
+  }, [configDialogOpen, selectedStep]);
+
   // 更新配置
   const handleUpdateConfig = async (stepKey: string, updates: Partial<TenantAutomationConfig>) => {
     try {
@@ -143,14 +197,18 @@ const AutomationPage: React.FC = () => {
 
       const response = await frontendApi.put(`/api/automation/configs/${stepKey}`, updates);
 
-      // 更新本地状态
+      // 更新本地状态（列表 + 若当前打开的是该步骤则同步弹窗）
+      const updatedConfig = response.data;
       setSteps(prevSteps =>
         prevSteps.map(step =>
           step.step_key === stepKey
-            ? { ...step, tenant_config: response.data }
+            ? { ...step, tenant_config: updatedConfig }
             : step
         )
       );
+      if (selectedStep?.step_key === stepKey) {
+        setSelectedStep(prev => (prev ? { ...prev, tenant_config: updatedConfig } : null));
+      }
 
       frontendLogger.info('✅ 更新自动化配置成功', { stepKey });
       toast.success('配置更新成功');
@@ -163,10 +221,42 @@ const AutomationPage: React.FC = () => {
     }
   };
 
-  // 切换自动化开关
+  // 切换自动化开关（仅卡片上的开关，弹窗内用草稿+保存）
   const handleToggleAutomation = async (step: AutomationStepWithConfig) => {
     const newEnabled = !step.tenant_config?.is_enabled;
     await handleUpdateConfig(step.step_key, { is_enabled: newEnabled });
+  };
+
+  // 配置弹窗：保存草稿（校验 cron 后提交）
+  const handleSaveConfigDraft = async () => {
+    if (!selectedStep || !configDraft) return;
+    setConfigDraftError(null);
+    const useScheduleSeconds = configDraft.schedule_seconds !== '' && configDraft.schedule_seconds !== null;
+    const scheduleStr = configDraft.schedule.trim();
+    if (!useScheduleSeconds && scheduleStr) {
+      const err = validateCron(scheduleStr);
+      if (err) {
+        setConfigDraftError(err);
+        return;
+      }
+    }
+    if (useScheduleSeconds) {
+      const n = Number(configDraft.schedule_seconds);
+      if (!Number.isInteger(n) || n < 1) {
+        setConfigDraftError('计划秒数请填写正整数');
+        return;
+      }
+    }
+    try {
+      await handleUpdateConfig(selectedStep.step_key, {
+        is_enabled: configDraft.is_enabled,
+        schedule: scheduleStr || undefined,
+        schedule_seconds: useScheduleSeconds ? Number(configDraft.schedule_seconds) : undefined,
+      });
+      setConfigDialogOpen(false);
+    } catch {
+      // handleUpdateConfig 内部已 toast
+    }
   };
 
   // 手动触发
@@ -316,177 +406,109 @@ const AutomationPage: React.FC = () => {
               <CircularProgress />
             </Box>
           ) : (
-            /* 步骤列表 */
-            <Grid container spacing={3}>
-              {steps.map(step => (
-                <Grid item xs={12} md={6} lg={4} key={step.id}>
-                  <Card
-                    sx={{
-                      height: '100%',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      transition: 'box-shadow 0.3s',
-                      '&:hover': {
-                        boxShadow: 4,
-                      },
-                    }}
-                  >
-                    <CardContent sx={{ flexGrow: 1 }}>
-                      {/* 步骤头部 */}
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', mb: 2 }}>
-                        <Box sx={{ flex: 1 }}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                            <CategoryIcon color='primary' fontSize='small' />
-                            <Chip
-                              label={getCategoryLabel(step.category)}
-                              size='small'
-                              color='primary'
-                              variant='outlined'
-                            />
-                          </Box>
-                          <Typography variant='h6' component='h3' gutterBottom>
-                            {step.name}
-                          </Typography>
-                          {step.description && (
-                            <Typography variant='body2' color='text.secondary' sx={{ mb: 2 }}>
-                              {step.description}
-                            </Typography>
-                          )}
-                        </Box>
-                      </Box>
-
-                      {/* 所需外部系统 */}
+            /* 简洁列表：一行一项，左侧名称+说明，右侧定时/配置/开关 */
+            <Paper variant='outlined' sx={{ overflow: 'hidden' }}>
+              {steps.map((step, index) => (
+                <Box
+                  key={step.id}
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 2,
+                    px: 2,
+                    py: 1.5,
+                    borderBottom: index < steps.length - 1 ? '1px solid' : 'none',
+                    borderColor: 'divider',
+                    '&:hover': { bgcolor: 'action.hover' },
+                  }}
+                >
+                  {/* 左侧：名称 + 一行说明 + 分类 */}
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.25 }}>
+                      <Typography variant='subtitle1' fontWeight={600}>
+                        {step.name}
+                      </Typography>
+                      <Chip
+                        label={getCategoryLabel(step.category)}
+                        size='small'
+                        variant='outlined'
+                        sx={{ height: 20, fontSize: '0.7rem' }}
+                      />
                       {step.required_external_systems && step.required_external_systems.length > 0 && (
-                        <Box sx={{ mb: 2 }}>
-                          <Typography variant='caption' color='text.secondary' sx={{ display: 'block', mb: 0.5 }}>
-                            所需外部系统:
-                          </Typography>
-                          <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                            {step.required_external_systems.map(system => (
-                              <Chip key={system} label={system} size='small' variant='outlined' />
-                            ))}
-                          </Box>
-                        </Box>
+                        <Typography component='span' variant='caption' color='text.secondary'>
+                          ({step.required_external_systems.join(', ')})
+                        </Typography>
                       )}
+                    </Box>
+                    <Typography variant='body2' color='text.secondary' sx={{ lineHeight: 1.4 }}>
+                      {getStepSummary(step)}
+                    </Typography>
+                    {step.tenant_config?.last_run_at && (
+                      <Typography variant='caption' color='text.secondary' sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
+                        {step.tenant_config.last_run_status === 'success' && <CheckCircleIcon fontSize='inherit' color='success' sx={{ fontSize: 14 }} />}
+                        {step.tenant_config.last_run_status === 'failed' && <ErrorIcon fontSize='inherit' color='error' sx={{ fontSize: 14 }} />}
+                        最后运行: {new Date(step.tenant_config.last_run_at).toLocaleString('zh-CN')}
+                      </Typography>
+                    )}
+                  </Box>
 
-                      <Divider sx={{ my: 2 }} />
-
-                      {/* 自动化配置 */}
-                      <Box sx={{ mb: 2 }}>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                          <Typography variant='subtitle2'>自动化</Typography>
-                          <FormControlLabel
-                            control={
-                              <Switch
-                                checked={step.tenant_config?.is_enabled || false}
-                                onChange={() => handleToggleAutomation(step)}
-                                disabled={step.is_manual_only || updating === step.step_key}
-                                size='small'
-                              />
-                            }
-                            label={step.tenant_config?.is_enabled ? '已启用' : '未启用'}
-                            sx={{ m: 0 }}
-                          />
-                        </Box>
-
-                        {step.tenant_config?.is_enabled && (
-                          <Box sx={{ pl: 4 }}>
-                            <Typography variant='caption' color='text.secondary' sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                              <ScheduleIcon fontSize='inherit' />
-                              {formatSchedule(step.tenant_config.schedule, step.tenant_config.schedule_seconds)}
-                            </Typography>
-                          </Box>
-                        )}
-
-                        {/* 最后运行状态 */}
-                        {step.tenant_config?.last_run_at && (
-                          <Box sx={{ mt: 1, pl: 4 }}>
-                            <Typography variant='caption' color='text.secondary' sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                              {step.tenant_config.last_run_status === 'success' && <CheckCircleIcon fontSize='inherit' color='success' />}
-                              {step.tenant_config.last_run_status === 'failed' && <ErrorIcon fontSize='inherit' color='error' />}
-                              {step.tenant_config.last_run_status === 'running' && <CircularProgress size={12} />}
-                              最后运行: {new Date(step.tenant_config.last_run_at).toLocaleString('zh-CN')}
-                            </Typography>
-                          </Box>
-                        )}
-                      </Box>
-
-                      {/* 操作按钮 */}
-                      <Box sx={{ display: 'flex', gap: 1, mt: 'auto' }}>
-                        {!step.is_manual_only && (
-                          <Tooltip title='手动触发'>
-                            <IconButton
-                              size='small'
-                              color='primary'
-                              onClick={() => {
-                                setSelectedStep(step);
-                                setTriggerDialogOpen(true);
-                              }}
-                              disabled={triggering === step.step_key}
-                            >
-                              {triggering === step.step_key ? (
-                                <CircularProgress size={20} />
-                              ) : (
-                                <PlayIcon />
-                              )}
-                            </IconButton>
-                          </Tooltip>
-                        )}
-                        <Tooltip title='配置'>
-                          <IconButton
-                            size='small'
-                            onClick={() => {
-                              setSelectedStep(step);
-                              setConfigDialogOpen(true);
-                            }}
-                          >
-                            <SettingsIcon />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title='详情'>
-                          <IconButton
-                            size='small'
-                            onClick={() => {
-                              setSelectedStep(step);
-                              // 可以打开详情对话框
-                            }}
-                          >
-                            <InfoIcon />
-                          </IconButton>
-                        </Tooltip>
-                      </Box>
-
-                      {/* 手动按钮列表 */}
-                      {step.manual_buttons && step.manual_buttons.length > 0 && (
-                        <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid', borderColor: 'divider' }}>
-                          <Typography variant='caption' color='text.secondary' sx={{ display: 'block', mb: 1 }}>
-                            手动操作:
-                          </Typography>
-                          <Stack spacing={0.5}>
-                            {step.manual_buttons
-                              .filter(btn => !btn.is_deprecated)
-                              .sort((a, b) => a.order - b.order)
-                              .map(button => (
-                                <Chip
-                                  key={button.id}
-                                  label={button.button_label}
-                                  size='small'
-                                  color={button.is_recommended ? 'primary' : 'default'}
-                                  variant={button.is_recommended ? 'filled' : 'outlined'}
-                                  sx={{ fontSize: '0.75rem' }}
-                                />
-                              ))}
-                          </Stack>
-                        </Box>
-                      )}
-                    </CardContent>
-                  </Card>
-                </Grid>
+                  {/* 右侧：定时文案 + 配置 + 运行 + 开关 */}
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0 }}>
+                    {!step.is_manual_only && (
+                      <Typography variant='caption' color='text.secondary' sx={{ minWidth: 64, textAlign: 'right' }}>
+                        {step.tenant_config?.is_enabled
+                          ? formatSchedule(step.tenant_config.schedule, step.tenant_config.schedule_seconds)
+                          : '—'}
+                      </Typography>
+                    )}
+                    <Tooltip title='配置定时（Cron）'>
+                      <Button
+                        size='small'
+                        variant='outlined'
+                        startIcon={<SettingsIcon />}
+                        onClick={() => {
+                          setSelectedStep(step);
+                          setConfigDialogOpen(true);
+                        }}
+                      >
+                        配置
+                      </Button>
+                    </Tooltip>
+                    {!step.is_manual_only && (
+                      <Tooltip title='立即运行一次'>
+                        <IconButton
+                          size='small'
+                          color='primary'
+                          onClick={() => {
+                            setSelectedStep(step);
+                            setTriggerDialogOpen(true);
+                          }}
+                          disabled={triggering === step.step_key}
+                        >
+                          {triggering === step.step_key ? <CircularProgress size={20} /> : <PlayIcon />}
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={step.tenant_config?.is_enabled || false}
+                          onChange={() => handleToggleAutomation(step)}
+                          disabled={step.is_manual_only || updating === step.step_key}
+                          size='small'
+                        />
+                      }
+                      label={step.tenant_config?.is_enabled ? '已启用' : '未启用'}
+                      sx={{ m: 0 }}
+                    />
+                  </Box>
+                </Box>
               ))}
-            </Grid>
+            </Paper>
           )}
 
-          {/* 配置对话框 */}
+          {/* 配置对话框：草稿编辑，点「保存」才提交；cron 不合法会报错 */}
           <Dialog
             open={configDialogOpen}
             onClose={() => setConfigDialogOpen(false)}
@@ -495,7 +517,7 @@ const AutomationPage: React.FC = () => {
           >
             <DialogTitle>配置自动化步骤</DialogTitle>
             <DialogContent>
-              {selectedStep && (
+              {selectedStep && configDraft && (
                 <Box sx={{ pt: 2 }}>
                   <Typography variant='h6' gutterBottom>
                     {selectedStep.name}
@@ -507,58 +529,62 @@ const AutomationPage: React.FC = () => {
                   )}
 
                   <Stack spacing={3}>
-                    {/* 启用开关 */}
+                    {/* 启用开关（草稿） */}
                     <FormControlLabel
                       control={
                         <Switch
-                          checked={selectedStep.tenant_config?.is_enabled || false}
+                          checked={configDraft.is_enabled}
                           onChange={e =>
-                            handleUpdateConfig(selectedStep.step_key, {
-                              is_enabled: e.target.checked,
-                            })
+                            setConfigDraft(prev => (prev ? { ...prev, is_enabled: e.target.checked } : prev))
                           }
-                          disabled={selectedStep.is_manual_only || updating === selectedStep.step_key}
+                          disabled={selectedStep.is_manual_only}
                         />
                       }
                       label='启用自动化'
                     />
 
-                    {selectedStep.tenant_config?.is_enabled && !selectedStep.is_manual_only && (
+                    {configDraft.is_enabled && !selectedStep.is_manual_only && (
                       <>
-                        {/* 计划配置 */}
+                        {/* Cron（草稿）；未填秒数时保存会校验 */}
                         <TextField
                           label='Cron表达式'
-                          value={selectedStep.tenant_config?.schedule || selectedStep.default_schedule || ''}
-                          onChange={e =>
-                            handleUpdateConfig(selectedStep.step_key, {
-                              schedule: e.target.value,
-                            })
-                          }
+                          value={configDraft.schedule}
+                          onChange={e => {
+                            setConfigDraft(prev => (prev ? { ...prev, schedule: e.target.value } : prev));
+                            if (configDraftError) setConfigDraftError(null);
+                          }}
                           placeholder='*/30 * * * *'
-                          helperText='例如: */30 * * * * 表示每30分钟执行一次'
+                          helperText='例如: */30 * * * * 表示每30分钟，* * * * * 表示每分钟'
                           fullWidth
-                          disabled={updating === selectedStep.step_key}
+                          error={!!configDraftError}
                         />
+                        {configDraftError && (
+                          <Alert severity='error' onClose={() => setConfigDraftError(null)}>
+                            {configDraftError}
+                          </Alert>
+                        )}
 
-                        {/* 或使用秒数 */}
+                        {/* 计划秒数（可选）；填了则优先用秒数 */}
                         <TextField
                           label='计划秒数（可选）'
                           type='number'
-                          value={selectedStep.tenant_config?.schedule_seconds || ''}
-                          onChange={e =>
-                            handleUpdateConfig(selectedStep.step_key, {
-                              schedule_seconds: e.target.value ? parseInt(e.target.value) : null,
-                            })
-                          }
-                          placeholder='1800 (30分钟)'
-                          helperText='如果设置了秒数，将优先使用秒数而不是Cron表达式'
+                          value={configDraft.schedule_seconds === '' ? '' : configDraft.schedule_seconds}
+                          onChange={e => {
+                            const v = e.target.value;
+                            setConfigDraft(prev =>
+                              prev ? { ...prev, schedule_seconds: v === '' ? '' : parseInt(v, 10) || 0 } : prev
+                            );
+                            if (configDraftError) setConfigDraftError(null);
+                          }}
+                          placeholder='60=每分钟，1800=每30分钟'
+                          helperText='若填写，将优先按秒数执行，不再使用 Cron'
                           fullWidth
-                          disabled={updating === selectedStep.step_key}
+                          inputProps={{ min: 1 }}
                         />
                       </>
                     )}
 
-                    {/* 最后运行信息 */}
+                    {/* 最后运行信息（只读，来自已保存配置） */}
                     {selectedStep.tenant_config?.last_run_at && (
                       <Box>
                         <Typography variant='subtitle2' gutterBottom>
@@ -588,6 +614,14 @@ const AutomationPage: React.FC = () => {
             </DialogContent>
             <DialogActions>
               <Button onClick={() => setConfigDialogOpen(false)}>关闭</Button>
+              <Button
+                variant='contained'
+                onClick={handleSaveConfigDraft}
+                disabled={!configDraft || updating === selectedStep?.step_key}
+                startIcon={updating === selectedStep?.step_key ? <CircularProgress size={20} /> : null}
+              >
+                {updating === selectedStep?.step_key ? '保存中...' : '保存'}
+              </Button>
             </DialogActions>
           </Dialog>
 

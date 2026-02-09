@@ -13,7 +13,7 @@ from app.core.database import get_async_db
 from app.core.tenant_auth_dependency import verify_tenant_auth
 from app.models.tenant import Tenant
 from app.models.user import User
-from app.models.order import Order
+from app.models.order import Order, OrderStatus
 from app.models.product import Product, ProductVariant
 from app.models.scm_order import SCMOrder, ScmOrderSource
 from app.models.external_system import ExternalSystem, ExternalSystemType
@@ -123,18 +123,30 @@ async def get_scm_orders(
                 
                 # 核心订单号（用于列表展示）
                 source_order_number = None
+                source_external_order_number = None
                 if scm_order.source_order:
-                    source_order_number = getattr(scm_order.source_order, "order_number", None) or getattr(scm_order.source_order, "external_order_number", None)
-                # Printify 链接用 shop_id（从关联的 Printify 订单取）
+                    so = scm_order.source_order
+                    source_order_number = getattr(so, "order_number", None) or getattr(so, "external_order_number", None)
+                    source_external_order_number = getattr(so, "external_order_number", None) or getattr(so, "external_order_name", None)
+                # Printify 链接用 shop_id 与人类可读单号 app_order_id（如 #24981565.14）
                 printify_shop_id = None
+                printify_order_display = None
                 if getattr(scm_order, "printify_orders", None):
                     for po in scm_order.printify_orders:
-                        pd = (po.printify_data or po.external_data) if hasattr(po, "printify_data") else None
-                        if isinstance(pd, dict) and pd.get("shop_id") is not None:
-                            printify_shop_id = str(pd.get("shop_id"))
-                            break
+                        pd = (getattr(po, "printify_data", None) or getattr(po, "external_data", None)) if po else None
+                        if isinstance(pd, dict):
+                            if pd.get("shop_id") is not None and not printify_shop_id:
+                                printify_shop_id = str(pd.get("shop_id"))
+                            app_id = pd.get("app_order_id")
+                            if app_id and not printify_order_display:
+                                raw = str(app_id).strip()
+                                printify_order_display = f"#{raw}" if raw and not raw.startswith("#") else raw
                 if not printify_shop_id and getattr(scm_order, "printify_shop_id", None):
                     printify_shop_id = str(scm_order.printify_shop_id)
+                if not printify_order_display and getattr(scm_order, "routing_metadata", None) and isinstance(scm_order.routing_metadata, dict):
+                    raw = (scm_order.routing_metadata.get("app_order_id") or "").strip()
+                    if raw:
+                        printify_order_display = f"#{raw}" if not raw.startswith("#") else raw
 
                 response = SCMOrderResponse(
                     id_hashid=encode_id(scm_order.id),
@@ -164,8 +176,10 @@ async def get_scm_orders(
                     updated_at=scm_order.updated_at,
                     fulfilled_at=scm_order.fulfilled_at,
                     source_order_number=source_order_number,
+                    source_external_order_number=source_external_order_number or None,
                     printify_order_id=scm_order.printify_order_id,
                     printify_shop_id=printify_shop_id or None,
+                    printify_order_display=printify_order_display or None,
                 )
                 scm_order_responses.append(response)
             
@@ -428,6 +442,23 @@ async def create_scm_order(
         if missing:
             logger.error(f"❌ 源订单不存在: missing={missing}, found={found_ids}")
             raise HTTPException(status_code=404, detail=f"Source orders not found: {missing}")
+
+        # 禁止基于已取消订单创建 SCM 订单
+        cancelled_check = await db.execute(
+            select(Order.id, Order.order_number, Order.status).where(
+                Order.id.in_(decoded_source_ids),
+                Order.tenant_id == tenant.id,
+                Order.status == OrderStatus.CANCELLED.value,
+            )
+        )
+        cancelled_rows = cancelled_check.fetchall()
+        if cancelled_rows:
+            cancelled_numbers = [r[1] or str(r[0]) for r in cancelled_rows]
+            logger.error(f"❌ 源订单已取消，不可创建 SCM 订单: {cancelled_numbers}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot create SCM order from cancelled order(s): {', '.join(cancelled_numbers)}",
+            )
         
         logger.info(f"✅ 源订单验证成功: found={len(found_ids)} 个订单")
 

@@ -46,7 +46,9 @@ class Tenant(Base):
     automation_configs = relationship("TenantAutomationConfig", back_populates="tenant")
     
     # New Product System Relationships
-    products_new = relationship("Product", back_populates="tenant", foreign_keys="Product.tenant_id")
+    products_new = relationship(
+        "Product", back_populates="tenant", foreign_keys="Product.tenant_id", overlaps="products"
+    )
     product_dimensions = relationship("ProductDimension", back_populates="tenant")
     product_variants = relationship("ProductVariant", back_populates="tenant")
     variant_attributes = relationship("VariantAttribute", back_populates="tenant")

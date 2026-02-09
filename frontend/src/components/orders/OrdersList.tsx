@@ -799,7 +799,7 @@ export function OrdersList() {
                   </TableCell>
                   <TableCell width={50}></TableCell>
                   <TableCell>订单ID</TableCell>
-                  <TableCell>Shopify订单号</TableCell>
+                  <TableCell>外部系统订单号</TableCell>
                   <TableCell>SCM / Printify</TableCell>
                   <TableCell>客户</TableCell>
                   <TableCell>金额</TableCell>
@@ -878,9 +878,23 @@ export function OrdersList() {
                             </Typography>
                           </TableCell>
                           <TableCell>
-                            <Typography variant='body2'>
-                              {order.external_order_name || order.external_order_number || order.external_order_id || '—'}
-                            </Typography>
+                            {order.external_order_admin_url ? (
+                              <Link
+                                href={order.external_order_admin_url}
+                                target='_blank'
+                                rel='noopener noreferrer'
+                                sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}
+                              >
+                                <Typography variant='body2' component='span' color='primary'>
+                                  {order.external_order_name || order.external_order_number || order.external_order_id || '—'}
+                                </Typography>
+                                <OpenInNewIcon fontSize='small' sx={{ fontSize: 14 }} />
+                              </Link>
+                            ) : (
+                              <Typography variant='body2'>
+                                {order.external_order_name || order.external_order_number || order.external_order_id || '—'}
+                              </Typography>
+                            )}
                           </TableCell>
                           <TableCell>
                             {order.scm_orders_preview && order.scm_orders_preview.length > 0 ? (
