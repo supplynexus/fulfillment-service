@@ -37,7 +37,7 @@ class PrintifyProduct(Base):
     # 商品状态
     visible = Column(Boolean, nullable=False, default=True)  # 是否可见
     is_locked = Column(Boolean, nullable=False, default=False)  # 是否锁定
-    is_published = Column(Boolean, nullable=False, default=True)  # 是否已发布到销售渠道（sales_channel_properties 非空），用于列表筛选
+    is_published = Column(Boolean, nullable=False, default=True)  # 是否已发布（与 API visible 一致，用于列表「仅已发布」筛选）
     
     # 外部系统信息
     external = Column(JSON, nullable=True)  # 外部系统信息 {id, handle, sku}

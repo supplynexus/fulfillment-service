@@ -1,59 +1,11 @@
 ---
-description: API security, authentication, hashids, encryption, 鉴权, 签名, 加密
+description: 编辑前后端 API 鉴权/加密时参考——签名顺序、头、加解密
 globs: ["frontend/src/app/api/**/*", "app/api/**/*.py"]
+alwaysApply: false
 ---
 
-# API 安全规范
+# API 安全（按需参考）
 
-## 前后端鉴权机制
-
-Frontend Server API 调用 Backend API 时使用租户密钥对签名验证。
-
-### 签名生成流程
-
-1. 获取租户私钥：`await keyLoader.getTenantPrivateKey(tenantName)`
-2. 构建签名字符串：`{METHOD}{PATH}{timestamp}{nonce}{tenantName}{body}`
-3. 生成签名：`generateBackendSignature(...)`
-4. 添加请求头：`X-Tenant-Name`, `X-Timestamp`, `X-Nonce`, `X-Signature`, `X-User-ID`
-
-### 鉴权模板
-
-```typescript
-import { keyLoader } from '@/lib/key-loader';
-import { generateBackendSignature } from '@/lib/signature';
-
-const timestamp = Math.floor(Date.now() / 1000);
-const nonce = Math.random().toString(36).substring(2, 15);
-const signatureString = `POST${path}${timestamp}${nonce}${tenantName}${bodyString}`;
-
-const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
-const signature = generateBackendSignature(privateKey, signatureString, timestamp, nonce, tenantName);
-
-const response = await fetch(backendUrl, {
-  headers: {
-    'X-Tenant-Name': tenantName,
-    'X-User-ID': userId,
-    'X-Timestamp': timestamp.toString(),
-    'X-Nonce': nonce,
-    'X-Signature': signature,
-  },
-});
-```
-
-### 注意事项
-- 签名字符串严格按顺序构建
-- 时间戳使用 Unix 秒
-- GET 请求 body 为空字符串
-- 签名失败返回 401
-
-## 加密数据处理
-
-- 敏感凭据必须加密存储（`encrypt_data()` / `decrypt_data()`）
-- 前端获取的数据是加密的
-- 后端使用前必须解密
-- 日志中禁止记录敏感数据
-
-## Hashids / 主键暴露
-
-- 约定见 **api-id-hashid.mdc**（对外用 hashid、后端 decode_id/encode_id、禁止暴露数字主键）。
-- 鉴权与 API 层同样遵守：返回用 `id_hashid`，日志不记录主键。
+- **鉴权**：前后端用租户密钥签名。签名字符串顺序：`{METHOD}{PATH}{timestamp}{nonce}{tenantName}{body}`；头：`X-Tenant-Name`, `X-Timestamp`, `X-Nonce`, `X-Signature`, `X-User-ID`。时间戳 Unix 秒，GET body 空串。实现见 `@/lib/key-loader`、`@/lib/signature` 的 `generateBackendSignature`。
+- **加解密**：敏感凭据加解密存储与传输（`encrypt_data`/`decrypt_data`）；使用前解密，日志不记敏感数据。
+- **ID**：见 api-id-hashid.mdc；返回用 `id_hashid`，不暴露数字主键。

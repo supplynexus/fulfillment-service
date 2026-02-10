@@ -1,22 +1,10 @@
 ---
-description: Printify API integration, products sync, limit 50, sales_channel, 商品同步
-globs: ["app/**/printify*", "frontend/src/**/printify*", "scripts/**/printify*"]
+description: 编辑 Printify 相关代码时参考——凭据、limit 50、店铺
+globs: ["backend/app/**/printify*", "frontend/src/**/printify*", "scripts/**/printify*"]
+alwaysApply: false
 ---
-# Printify 集成要点
+# Printify 集成（按需参考）
 
-- **凭据**：现以 **external_systems** 与 `get_decrypted_credentials` 为主；历史脚本可能仍用 `tenants/{tenant}/printify/` 文件，新功能用外部系统配置。
-
-## API 约束（必须遵守，否则 400）
-
-- **商品列表**：`GET /v1/shops/{shop_id}/products.json` 每页 **limit 最大 50**（`limit=50&page={n}`），不可用 100。
-- **订单列表**：`GET /v1/shops/{shop_id}/orders.json` 每页 **limit 最大 50**，不可用 100（错误码 8150：`The limit may not be greater than 50`）。
-- **实现**：在 `PrintifyService.get_orders` / `get_orders_batch` 内对 `limit` 做 `min(limit, 50)`，任务默认参数也勿超过 50。
-- **店铺**：已连接店铺的 `sales_channel` ≠ `"disconnected"`（绿色店铺）。店铺列表：`GET https://api.printify.com/v1/shops.json`，Header `Authorization: Bearer {token}`。
-
-## 常见问题
-
-1. **400 limit 过大**：商品/订单列表均改为 **limit ≤ 50**，并在 service 层 cap。
-2. **绿色店铺**：看 `sales_channel` 是否非 `disconnected`。
-3. **Token 过期**：在 Printify 后台重新生成，在外部系统配置中更新凭据（或若仍用文件则更新对应 tenant 下 token 文件）。
-
-详细 API 示例与脚本用法见 `scripts/` 下 Printify 相关脚本及后端 `printify_service`。
+- 凭据：`external_systems` + `get_decrypted_credentials`；历史脚本或见 `tenants/{tenant}/printify/`。
+- API limit：商品/订单列表 limit 最大 50（否则 400/8150）；PrintifyService 内 `min(limit, 50)`。
+- 店铺：已连接即 sales_channel ≠ "disconnected"；列表 GET shops.json，Header Bearer token。Token 过期在外部系统/tenant 下更新。

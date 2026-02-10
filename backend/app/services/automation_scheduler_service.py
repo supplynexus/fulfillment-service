@@ -133,6 +133,7 @@ def get_dynamic_beat_schedule(db: Session) -> Dict[str, Any]:
                 "create_printify_orders_from_scm": "app.tasks.order_automation_tasks.create_printify_orders_from_scm",
                 "sync_external_orders": "sync_shopify_orders_1min",
                 "sync_printify_orders_to_local": "app.tasks.order_automation_tasks.sync_printify_orders_to_local",
+                "sync_printify_products_to_local": "app.tasks.order_automation_tasks.sync_printify_products_to_local",
                 "auto_create_scm_from_unbound_printify_orders": "app.tasks.order_automation_tasks.auto_create_scm_from_unbound_printify_orders",
                 "sync_shopify_fulfillment_to_local": "app.tasks.order_automation_tasks.sync_shopify_fulfillment_to_local",
                 "sync_shopify_local_fulfillment_to_core": "app.tasks.order_automation_tasks.sync_shopify_local_fulfillment_to_core",
@@ -211,11 +212,12 @@ def get_dynamic_beat_schedule_for_tenant(
             "create_printify_orders_from_scm": "app.tasks.order_automation_tasks.create_printify_orders_from_scm",
             "sync_external_orders": "sync_shopify_orders_1min",
             "sync_printify_orders_to_local": "app.tasks.order_automation_tasks.sync_printify_orders_to_local",
+            "sync_printify_products_to_local": "app.tasks.order_automation_tasks.sync_printify_products_to_local",
             "auto_create_scm_from_unbound_printify_orders": "app.tasks.order_automation_tasks.auto_create_scm_from_unbound_printify_orders",
             "sync_shopify_fulfillment_to_local": "app.tasks.order_automation_tasks.sync_shopify_fulfillment_to_local",
             "sync_shopify_local_fulfillment_to_core": "app.tasks.order_automation_tasks.sync_shopify_local_fulfillment_to_core",
         }
-        
+
         for config in enabled_configs:
             step = service.get_step_by_key(config.step_key)
             if not step or step.is_manual_only or not step.celery_task_name:
