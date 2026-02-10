@@ -1358,6 +1358,159 @@ def sync_printify_orders_to_local(self, tenant_id: int, limit: int = 50, ignore_
 
 
 @celery_app.task(bind=True)
+def sync_printify_products_to_local(self, tenant_id: int, ignore_flags: bool = False):
+    """
+    从 Printify API 全量同步商品到本地 printify_products 与 external_products，供「Printify 映射」使用。
+    对应步骤: sync_printify_products_to_local。建议每日 2 次（如 0:00、12:00）。
+
+    Args:
+        tenant_id: 租户 ID
+        ignore_flags: 保留参数，与其它自动化任务接口一致，本任务未使用
+    """
+    result_container = {}
+    exception_container = {}
+
+    def run_in_thread():
+        from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+        from app.core.config import settings
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        thread_engine = create_async_engine(
+            settings.DATABASE_URL,
+            echo=False,
+            pool_pre_ping=True,
+            pool_size=2,
+            max_overflow=2,
+        )
+        ThreadAsyncSessionLocal = async_sessionmaker(
+            thread_engine,
+            class_=AsyncSession,
+            expire_on_commit=False,
+        )
+
+        async def _sync_printify_products():
+            from app.services.external_system_service import ExternalSystemService
+            from app.services.printify_product_service import PrintifyProductService
+
+            async with ThreadAsyncSessionLocal() as db:
+                service = ExternalSystemService(db)
+                printify_systems = await service.get_external_systems_by_type(
+                    tenant_id, "PRINTIFY"
+                )
+                if not printify_systems:
+                    logger.warning("未找到 Printify 外部系统，跳过商品同步", tenant_id=tenant_id)
+                    return {
+                        "success": False,
+                        "message": "未找到 Printify 外部系统",
+                        "synced": 0,
+                        "created": 0,
+                        "updated": 0,
+                        "errors": 0,
+                    }
+
+                printify_system = printify_systems[0]
+                external_system_id = printify_system.id
+                credentials = printify_system.credentials or {}
+                access_token = decrypt_data(credentials.get("access_token", "")) if credentials.get("access_token") else None
+                shop_id = (printify_system.settings or {}).get("printify_shop_id")
+                if not shop_id and credentials.get("shop_id"):
+                    shop_id = decrypt_data(credentials.get("shop_id", ""))
+                if shop_id is not None:
+                    shop_id = str(shop_id).strip() or None
+
+                if not access_token or not shop_id:
+                    logger.warning("Printify 凭据不完整，跳过商品同步", tenant_id=tenant_id)
+                    return {
+                        "success": False,
+                        "message": "Printify 凭据不完整",
+                        "synced": 0,
+                        "created": 0,
+                        "updated": 0,
+                        "errors": 0,
+                    }
+
+                printify_service = PrintifyService(access_token)
+                api_products = await printify_service.get_products(shop_id, limit=0)
+                if not api_products:
+                    logger.info("Printify API 返回 0 个商品", tenant_id=tenant_id)
+                    return {
+                        "success": True,
+                        "message": "无商品需同步",
+                        "synced": 0,
+                        "created": 0,
+                        "updated": 0,
+                        "errors": 0,
+                    }
+
+                product_service = PrintifyProductService(db)
+                result = await product_service.sync_products_from_api(
+                    tenant_id, external_system_id, api_products
+                )
+                return {
+                    "success": True,
+                    "message": "同步完成",
+                    "synced": result.get("synced", 0),
+                    "created": result.get("created", 0),
+                    "updated": result.get("updated", 0),
+                    "errors": result.get("errors", 0),
+                    "total": result.get("total", 0),
+                }
+
+        try:
+            result_container["result"] = loop.run_until_complete(_sync_printify_products())
+        except Exception as e:
+            import traceback
+            exception_container["error_type"] = type(e).__name__
+            exception_container["error_message"] = str(e)
+            exception_container["error_traceback"] = traceback.format_exc()
+            exception_container["error"] = e
+        finally:
+            try:
+                pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
+                if pending:
+                    for task in pending:
+                        task.cancel()
+                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+            except Exception:
+                pass
+            try:
+                if not loop.is_closed():
+                    loop.run_until_complete(thread_engine.dispose())
+            except Exception:
+                pass
+            try:
+                if not loop.is_closed():
+                    loop.close()
+            except Exception:
+                pass
+
+    try:
+        logger.info("开始从 Printify API 全量同步商品到本地", tenant_id=tenant_id)
+        thread = threading.Thread(target=run_in_thread)
+        thread.start()
+        thread.join(timeout=600)
+        if thread.is_alive():
+            logger.error("Printify 商品同步任务执行超时")
+            raise TimeoutError("Printify 商品同步任务执行超时")
+        if "error" in exception_container:
+            e = exception_container["error"]
+            logger.error("从 Printify API 同步商品失败", tenant_id=tenant_id, error=str(e))
+            if self:
+                self.update_state(state="FAILURE", meta={"error": str(e)})
+            raise e
+        return result_container.get(
+            "result",
+            {"success": False, "message": "无返回结果", "synced": 0, "created": 0, "updated": 0, "errors": 0},
+        )
+    except Exception as e:
+        logger.error("从 Printify API 同步商品失败", tenant_id=tenant_id, error=str(e))
+        if self:
+            self.update_state(state="FAILURE", meta={"error": str(e)})
+        raise
+
+
+@celery_app.task(bind=True)
 def auto_create_scm_from_unbound_printify_orders(self, tenant_id: int, limit: int = 20, ignore_flags: bool = False):
     """
     对「未绑定 SCM」的 Printify 同步订单自动创建 SCM 订单并绑定。
@@ -1656,16 +1809,34 @@ def sync_shopify_fulfillment_to_local(self, tenant_id: int, limit: int = 100, ig
         limit: 每次处理的订单数量限制
         ignore_flags: 是否忽略处理标志（手动处理时使用）
     """
-    try:
-        logger.info("🔍 开始从Shopify API同步发货信息到本地表", tenant_id=tenant_id, limit=limit)
+    result_container = {}
+    exception_container = {}
+
+    def run_in_thread():
+        from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+        from app.core.config import settings
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        thread_engine = create_async_engine(
+            settings.DATABASE_URL,
+            echo=False,
+            pool_pre_ping=True,
+            pool_size=2,
+            max_overflow=2,
+        )
+        ThreadAsyncSessionLocal = async_sessionmaker(
+            thread_engine,
+            class_=AsyncSession,
+            expire_on_commit=False,
+        )
 
         async def _sync_fulfillment():
-            from app.core.database import AsyncSessionLocal
             from app.models.shopify_order import ShopifyOrder
             from app.services.shopify.order_service import ShopifyOrderService
             from datetime import datetime, timedelta, timezone
 
-            async with AsyncSessionLocal() as db:
+            async with ThreadAsyncSessionLocal() as db:
                 order_service = ShopifyOrderService(db)
 
                 # 获取Shopify凭据
@@ -1784,12 +1955,54 @@ def sync_shopify_fulfillment_to_local(self, tenant_id: int, limit: int = 100, ig
                     "errors": errors,
                 }
 
-        # 运行异步函数
-        result = asyncio.run(_sync_fulfillment())
-        return result
+        try:
+            result_container["result"] = loop.run_until_complete(_sync_fulfillment())
+        except Exception as e:
+            import traceback
+            exception_container["error_type"] = type(e).__name__
+            exception_container["error_message"] = str(e)
+            exception_container["error_traceback"] = traceback.format_exc()
+            exception_container["error"] = e
+        finally:
+            try:
+                pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
+                if pending:
+                    for task in pending:
+                        task.cancel()
+                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+            except Exception:
+                pass
+            try:
+                if not loop.is_closed():
+                    loop.run_until_complete(thread_engine.dispose())
+            except Exception:
+                pass
+            try:
+                if not loop.is_closed():
+                    loop.close()
+            except Exception:
+                pass
 
+    try:
+        logger.info("🔍 开始从Shopify API同步发货信息到本地表", tenant_id=tenant_id, limit=limit)
+        thread = threading.Thread(target=run_in_thread)
+        thread.start()
+        thread.join(timeout=300)
+        if thread.is_alive():
+            logger.error("Shopify 发货信息同步任务执行超时")
+            raise TimeoutError("Shopify 发货信息同步任务执行超时")
+        if "error" in exception_container:
+            e = exception_container["error"]
+            logger.error("从Shopify API同步发货信息到本地表失败", tenant_id=tenant_id, error=str(e))
+            if self:
+                self.update_state(state="FAILURE", meta={"error": str(e)})
+            raise e
+        return result_container.get(
+            "result",
+            {"success": False, "message": "无返回结果", "orders_updated": 0},
+        )
     except Exception as e:
-        logger.error(f"❌ 从Shopify API同步发货信息到本地表失败: {e}")
+        logger.error("从Shopify API同步发货信息到本地表失败", tenant_id=tenant_id, error=str(e))
         if self:
             self.update_state(
                 state="FAILURE",

@@ -1,72 +1,11 @@
 ---
-description: Git workflow, branch strategy, pull request, commit, 分支, PR, 提PR, 部署 dev
+description: 用户说 PR/部署 dev 时参考——从 develop 建分支、PR 到 develop；不自动建 develop→main
 globs: [".git/**/*", ".github/**/*"]
 alwaysApply: false
 ---
-# Git 工作流规则
 
-## 快捷指令
+# Git 工作流（按需参考）
 
-| 用户说 | AI 执行 |
-|-------|--------|
-| **PR** / **提PR** / **创建PR** | 从 develop 创建分支 → 提交变更 → 创建 PR 到 develop |
-| **部署 dev** / **deploy dev** | SSH 到服务器执行 `./scripts/dev/deploy-from-git.sh` |
-| **部署 prod** | SSH 到服务器执行 Production 部署流程 |
-
-### PR 快捷指令详细流程
-
-当用户说 "PR" 或 "提PR"，执行以下步骤：
-
-1. `git status` 检查当前变更
-2. `git diff develop` 查看与 develop 的差异
-3. 根据变更内容自动生成分支名（`feature/xxx` 或 `fix/xxx`）
-4. `git checkout develop && git pull origin develop`
-5. `git checkout -b <分支名>`
-6. `git add . && git commit -m "<提交信息>"`
-7. `git push -u origin <分支名>`
-8. `gh pr create --base develop`
-
----
-
-### 禁止直接提交到保护分支
-- 禁止直接提交到 `develop` 分支
-- 禁止直接提交到 `main` 分支
-- 所有更改必须通过 Pull Request 流程
-
-### 正确的 Git 工作流
-1. **始终从 `develop` 创建功能分支**
-   - 每次程序变更都必须从 `develop` 分支创建新的功能分支
-   - 分支命名规范：`feature/功能名称` 或 `fix/修复内容`
-   
-2. **在功能分支上进行更改**
-   - 在功能分支上提交所有更改
-   - 使用清晰的提交信息
-   
-3. **创建 PR 到 `develop`**
-   - 推送功能分支到远程仓库
-   - 创建 Pull Request 到 `develop` 分支
-   - 等待代码审核和合并
-   
-4. **develop -> main 的 PR**
-   - **重要**：`develop` -> `main` 的 PR 由用户手动创建，AI 不要自动创建
-   - 只有用户确认后才进行 `develop` 到 `main` 的合并
-
-### 分支与环境对应关系
-
-| 分支 | 环境 | 域名 | 说明 |
-|------|------|------|------|
-| `develop` | Dev 环境 | https://admin.dev.supplynexus.store | 开发测试环境 |
-| `main` | Prod 环境 | https://admin.supplynexus.store | 生产环境 |
-
-**重要规则**：
-- `develop` 分支的代码部署到 **dev 环境**
-- `main` 分支的代码部署到 **prod 环境**
-- 所有功能开发都在 `develop` 分支上进行
-- 只有经过测试验证的代码才能合并到 `main` 分支
-
-### 检查点
-- 在提交前检查当前分支
-- 确保不在 `develop` 或 `main` 分支上直接提交
-- 提醒用户创建功能分支
-- 创建 PR 时，目标分支必须是 `develop`（除非用户明确指定其他分支）
-- **绝对不要**自动创建 `develop` -> `main` 的 PR
+- **PR/提PR**：从 develop 拉分支（feature/xxx 或 fix/xxx）→ 提交 → push → `gh pr create --base develop`。禁止直接提交 develop/main；PR 目标为 develop；**不要**自动创建 develop→main 的 PR，由用户手动操作。
+- **部署 dev**：SSH 后执行 `./scripts/dev/deploy-from-git.sh`。**部署 prod**：见 production-deployment.mdc。
+- **分支**：develop → Dev 环境（admin.dev.supplynexus.store）；main → Prod。提交前确认不在 develop/main 上直接改。

@@ -18,15 +18,8 @@ logger = get_logger(__name__)
 
 
 def _is_published_from_api_data(product_data: Dict[str, Any]) -> bool:
-    """Printify 已发布 = 已发布到销售渠道，API 中 sales_channel_properties 非空。"""
-    scp = product_data.get("sales_channel_properties")
-    if scp is None:
-        return False
-    if isinstance(scp, list):
-        return len(scp) > 0
-    if isinstance(scp, dict):
-        return bool(scp)
-    return False
+    """Printify 已发布 = 前台 Published 状态，与 API 的 visible 一致（与 _upsert_external_product 逻辑统一）。"""
+    return bool(product_data.get("visible", False))
 
 
 class PrintifyProductService:
