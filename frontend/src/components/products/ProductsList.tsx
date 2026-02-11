@@ -1158,6 +1158,18 @@ export function ProductsList() {
                                   </IconButton>
                                 </Tooltip>
                               )}
+                              <Tooltip title='Printify 映射页'>
+                                <IconButton
+                                  size='small'
+                                  onClick={() =>
+                                    router.push(
+                                      `/product-mapping/printify?core_product_id=${encodeURIComponent(product.id_hashid)}`
+                                    )
+                                  }
+                                >
+                                  <LinkIcon />
+                                </IconButton>
+                              </Tooltip>
                               <Tooltip title='删除'>
                                 <IconButton
                                   size='small'
