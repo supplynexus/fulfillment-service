@@ -96,8 +96,8 @@ cd backend && source .venv/bin/activate && python -m uvicorn app.main:app --relo
 # 2. 启动 Celery Beat (定时任务调度器)
 cd backend && source .venv/bin/activate && celery -A app.tasks.celery_app beat --loglevel=info
 
-# 3. 启动 Celery Worker (任务执行器)
-cd backend && source .venv/bin/activate && celery -A app.tasks.celery_app worker --loglevel=info -Q shopify,default,orders
+# 3. 启动 Celery Worker (任务执行器，须含 order_automation 才能跑「自动化管理」里的任务)
+cd backend && source .venv/bin/activate && celery -A app.tasks.celery_app worker --loglevel=info -Q shopify,default,orders,order_automation
 ```
 
 ### 定时任务配置
@@ -112,6 +112,7 @@ cd backend && source .venv/bin/activate && celery -A app.tasks.celery_app worker
 - **shopify**: Shopify 相关任务（产品同步、订单同步）
 - **default**: 默认任务队列
 - **orders**: 订单处理任务
+- **order_automation**: 自动化管理（系统设置 → 自动化管理）中的定时/手动任务，如 Printify 商品同步、Printify–Shopify 商品自动绑定等
 
 ### 监控和调试
 
@@ -132,7 +133,7 @@ tail -f logs-local/celery-worker.log
 pkill -f celery
 cd backend && source .venv/bin/activate
 celery -A app.tasks.celery_app beat --loglevel=info &
-celery -A app.tasks.celery_app worker --loglevel=info -Q shopify,default,orders &
+celery -A app.tasks.celery_app worker --loglevel=info -Q shopify,default,orders,order_automation &
 ```
 
 ### 故障排除

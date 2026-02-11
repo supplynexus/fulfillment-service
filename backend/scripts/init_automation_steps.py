@@ -70,6 +70,17 @@ AUTOMATION_STEPS_SEED = [
         "default_enabled": True,
         "is_manual_only": False,
     },
+    {
+        "step_key": "auto_bind_printify_by_shopify",
+        "name": "Printify–Shopify 商品自动绑定",
+        "description": "按 Printify raw_data.external.id 与核心商品 Shopify 映射匹配，为「有 Shopify、无 Printify」的核心商品自动创建商品级映射。建议在「Printify 商品同步到本地」之后运行，如每日 2 次。",
+        "category": "product_sync",
+        "required_external_systems": ["PRINTIFY", "SHOPIFY"],
+        "celery_task_name": "app.tasks.order_automation_tasks.auto_bind_printify_by_shopify",
+        "default_schedule": "5 0,12 * * *",
+        "default_enabled": True,
+        "is_manual_only": False,
+    },
     # ----- 订单处理 -----
     {
         "step_key": "create_scm_orders",

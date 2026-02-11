@@ -47,7 +47,7 @@ read -p "请选择选项 (1-5): " choice
 case $choice in
     1)
         echo "🔄 启动 Celery Worker..."
-        celery -A app.tasks.celery_app worker --loglevel=info --concurrency=2 --queues=default,shopify,orders
+        celery -A app.tasks.celery_app worker --loglevel=info --concurrency=2 --queues=default,shopify,orders,order_automation
         ;;
     2)
         echo "⏰ 启动 Celery Beat..."
@@ -57,7 +57,7 @@ case $choice in
         echo "🚀 启动 Celery Worker + Beat (后台运行)..."
         
         # 启动 Worker
-        nohup celery -A app.tasks.celery_app worker --loglevel=info --concurrency=2 --queues=default,shopify,orders > logs-local/celery-worker.log 2>&1 &
+        nohup celery -A app.tasks.celery_app worker --loglevel=info --concurrency=2 --queues=default,shopify,orders,order_automation > logs-local/celery-worker.log 2>&1 &
         WORKER_PID=$!
         echo $WORKER_PID > logs-local/celery-worker.pid
         echo "✅ Worker 已启动 (PID: $WORKER_PID)"

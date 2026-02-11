@@ -1511,6 +1511,110 @@ def sync_printify_products_to_local(self, tenant_id: int, ignore_flags: bool = F
 
 
 @celery_app.task(bind=True)
+def auto_bind_printify_by_shopify(self, tenant_id: int, ignore_flags: bool = False):
+    """
+    按 Printify raw_data.external.id 与核心商品 Shopify 映射匹配，为「有 Shopify、无 Printify」的核心商品自动创建商品级映射。
+    对应步骤: auto_bind_printify_by_shopify。建议在「Printify 商品同步到本地」之后定时运行（如每日 2 次）。
+
+    Args:
+        tenant_id: 租户 ID
+        ignore_flags: 保留参数，与其它自动化任务接口一致，本任务未使用
+    """
+    result_container = {}
+    exception_container = {}
+
+    def run_in_thread():
+        from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+        from app.core.config import settings
+        from app.services.printify_shopify_binding_service import auto_bind_printify_by_shopify as run_bind
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        thread_engine = create_async_engine(
+            settings.DATABASE_URL,
+            echo=False,
+            pool_pre_ping=True,
+            pool_size=2,
+            max_overflow=2,
+        )
+        ThreadAsyncSessionLocal = async_sessionmaker(
+            thread_engine,
+            class_=AsyncSession,
+            expire_on_commit=False,
+        )
+
+        async def _run():
+            async with ThreadAsyncSessionLocal() as db:
+                return await run_bind(db, tenant_id, dry_run=False)
+
+        try:
+            result_container["result"] = loop.run_until_complete(_run())
+        except Exception as e:
+            import traceback
+            exception_container["error_type"] = type(e).__name__
+            exception_container["error_message"] = str(e)
+            exception_container["error_traceback"] = traceback.format_exc()
+            exception_container["error"] = e
+        finally:
+            try:
+                pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
+                if pending:
+                    for t in pending:
+                        t.cancel()
+                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+            except Exception:
+                pass
+            try:
+                if not loop.is_closed():
+                    loop.run_until_complete(thread_engine.dispose())
+            except Exception:
+                pass
+            try:
+                if not loop.is_closed():
+                    loop.close()
+            except Exception:
+                pass
+
+    try:
+        logger.info("开始执行 Printify–Shopify 商品自动绑定", tenant_id=tenant_id)
+        thread = threading.Thread(target=run_in_thread)
+        thread.start()
+        thread.join(timeout=120)
+        if thread.is_alive():
+            logger.error("Printify–Shopify 自动绑定任务执行超时", tenant_id=tenant_id)
+            raise TimeoutError("Printify–Shopify 自动绑定任务执行超时")
+        if "error" in exception_container:
+            e = exception_container["error"]
+            logger.error("Printify–Shopify 自动绑定失败", tenant_id=tenant_id, error=str(e))
+            if self:
+                self.update_state(state="FAILURE", meta={"error": str(e)})
+            raise e
+        out = result_container.get("result", {})
+        if out.get("error"):
+            logger.warning(
+                "Printify–Shopify 自动绑定未创建映射",
+                tenant_id=tenant_id,
+                error=out["error"],
+                created=out.get("created_count", 0),
+                skipped=out.get("skipped_already_mapped", 0),
+            )
+        else:
+            logger.info(
+                "Printify–Shopify 自动绑定完成",
+                tenant_id=tenant_id,
+                created=out.get("created_count", 0),
+                skipped=out.get("skipped_already_mapped", 0),
+                candidates=len(out.get("candidates", [])),
+            )
+        return out
+    except Exception as e:
+        logger.error("Printify–Shopify 自动绑定失败", tenant_id=tenant_id, error=str(e))
+        if self:
+            self.update_state(state="FAILURE", meta={"error": str(e)})
+        raise
+
+
+@celery_app.task(bind=True)
 def auto_create_scm_from_unbound_printify_orders(self, tenant_id: int, limit: int = 20, ignore_flags: bool = False):
     """
     对「未绑定 SCM」的 Printify 同步订单自动创建 SCM 订单并绑定。

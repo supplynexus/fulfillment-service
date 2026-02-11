@@ -21,6 +21,7 @@ from app.models.product import (
     Product, ProductDimension, ProductVariant, VariantAttribute,
     ProductTag, Tag, ProductMapping, ExternalProduct
 )
+from app.models.printify_product import PrintifyProduct
 from app.models.order import OrderItem
 from app.schemas.product import (
     ProductResponse, ProductListResponse, ProductCreateRequest, 
@@ -1993,6 +1994,54 @@ async def create_product_mapping(
         raise HTTPException(status_code=500, detail=f"Failed to create product mapping: {str(e)}")
 
 
+class AutoBindPrintifyByShopifyResponse(BaseModel):
+    """按 Printify raw_data.external.id 与 Shopify 映射自动绑定：预览或执行结果"""
+    dry_run: bool
+    candidates: List[dict]  # [{ "core_product_id", "core_title", "printify_product_id", "printify_title", "shopify_product_id" }]
+    created_count: int = 0
+    skipped_already_mapped: int = 0
+    error: Optional[str] = None
+
+
+@router.post("/mappings/auto-bind-printify-by-shopify", response_model=AutoBindPrintifyByShopifyResponse)
+async def auto_bind_printify_by_shopify(
+    dry_run: bool = Query(True, description="True=仅预览不写入，False=执行创建"),
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth)
+):
+    """
+    根据 Printify 商品 raw_data.external.id（= Shopify product id）与核心商品已有的 Shopify 映射，
+    自动为「有 Shopify 映射、无 Printify 映射」的核心商品创建与 Printify 的商品级映射（仅商品级，变体依赖 SKU/options 回退）。
+    详见: docs/integrations/printify/printify-shopify-binding-from-api.md
+    同一逻辑已接入「自动化管理」商品同步步骤，可定时或手动触发。
+    """
+    from app.services.printify_shopify_binding_service import auto_bind_printify_by_shopify as run_auto_bind
+
+    tenant, user = auth
+    try:
+        result = await run_auto_bind(db, tenant.id, dry_run=dry_run)
+        return AutoBindPrintifyByShopifyResponse(
+            dry_run=result.get("dry_run", dry_run),
+            candidates=result.get("candidates", []),
+            created_count=result.get("created_count", 0),
+            skipped_already_mapped=result.get("skipped_already_mapped", 0),
+            error=result.get("error"),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ auto_bind_printify_by_shopify 失败: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        await db.rollback()
+        return AutoBindPrintifyByShopifyResponse(
+            dry_run=dry_run,
+            candidates=[],
+            created_count=0,
+            error=str(e),
+        )
+
+
 @router.get("/mappings/", response_model=dict)
 async def get_product_mappings(
     page: int = Query(1, ge=1, description="页码"),
@@ -2000,6 +2049,9 @@ async def get_product_mappings(
     core_product_id: Optional[int] = Query(None, description="核心商品ID"),
     core_product_title: Optional[str] = Query(None, description="核心商品标题模糊搜索"),
     external_system_id: Optional[int] = Query(None, description="外部系统ID"),
+    external_product_ids: Optional[str] = Query(
+        None, description="外部商品ID列表，逗号分隔（用于按外部商品批量过滤映射）"
+    ),
     sync_status: Optional[str] = Query(None, description="同步状态"),
     mapping_type: Optional[str] = Query(None, description="映射类型"),
     system_type: Optional[str] = Query(None, description="外部系统类型，如 SHOPIFY/PRINTIFY"),
@@ -2036,6 +2088,15 @@ async def get_product_mappings(
         if external_system_id:
             base = base.where(ProductMapping.external_system_id == external_system_id)
             count_stmt = count_stmt.where(ProductMapping.external_system_id == external_system_id)
+        if external_product_ids and external_product_ids.strip():
+            external_product_id_list = [
+                pid.strip() for pid in external_product_ids.split(",") if pid.strip()
+            ]
+            if external_product_id_list:
+                base = base.where(ProductMapping.external_product_id.in_(external_product_id_list))
+                count_stmt = count_stmt.where(
+                    ProductMapping.external_product_id.in_(external_product_id_list)
+                )
         if sync_status:
             base = base.where(ProductMapping.sync_status == sync_status)
             count_stmt = count_stmt.where(ProductMapping.sync_status == sync_status)
