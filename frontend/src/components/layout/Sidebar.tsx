@@ -223,9 +223,22 @@ const menuItems: MenuItem[] = [
           },
           {
             id: 'printify-products',
-            label: '商品列表',
+            label: '商品管理',
             icon: <ProductsIcon />,
-            path: '/external-systems/printify/products',
+            children: [
+              {
+                id: 'printify-products-realtime',
+                label: '实时商品（外部）',
+                icon: <ProductsIcon />,
+                path: '/external-systems/printify/products',
+              },
+              {
+                id: 'printify-products-local',
+                label: '本地商品（数据库）',
+                icon: <DatabaseIcon />,
+                path: '/external-systems/printify/local-products',
+              },
+            ],
           },
           {
             id: 'printify-orders',

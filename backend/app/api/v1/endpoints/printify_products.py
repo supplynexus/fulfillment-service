@@ -84,6 +84,7 @@ class PrintifyProductListResponse(BaseModel):
 async def get_printify_products(
     external_system_id_hashid: Optional[str] = Query(None, description="外部系统 ID (hashid)"),
     external_system_id: Optional[str] = Query(None, description="外部系统 ID (hashid)，与 external_system_id_hashid 同义，前端常用"),
+    printify_product_id: Optional[str] = Query(None, description="按 Printify Product ID 精确筛选"),
     limit: int = Query(50, ge=1, le=100, description="每页数量"),
     offset: int = Query(0, ge=0, description="偏移量"),
     visible_only: bool = Query(True, description="只显示可见商品"),
@@ -140,6 +141,7 @@ async def get_printify_products(
             offset=offset,
             published_only=published_only,
             printify_shop_id=printify_shop_id,
+            printify_product_id=printify_product_id,
         )
         
         # 过滤可见商品

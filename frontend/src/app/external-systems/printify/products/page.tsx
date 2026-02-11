@@ -768,10 +768,10 @@ function PrintifyProductsPage() {
           >
             <Box>
               <Typography variant='h4' component='h1' gutterBottom>
-                Printify 商品管理
+                Printify 实时商品（外部）
               </Typography>
               <Typography variant='body1' color='text.secondary'>
-                管理和查看 Printify 店铺中的商品
+                直接读取并管理 Printify 外部店铺中的商品
               </Typography>
             </Box>
             <Button
@@ -1610,6 +1610,22 @@ function PrintifyProductsPage() {
                 sx={{ mr: 1 }}
               >
                 打开 Printify 商品页
+              </Button>
+              <Button
+                variant='outlined'
+                startIcon={<ViewIcon />}
+                onClick={() => {
+                  if (!selectedProduct || !selectedStore) return;
+                  window.open(
+                    `/external-systems/printify/products/${selectedStore.id_hashid}/${selectedProduct.id}`,
+                    '_blank',
+                    'noopener,noreferrer'
+                  );
+                }}
+                disabled={!selectedProduct || !selectedStore}
+                sx={{ mr: 1 }}
+              >
+                打开系统详情页
               </Button>
               <Button
                 variant='outlined'
