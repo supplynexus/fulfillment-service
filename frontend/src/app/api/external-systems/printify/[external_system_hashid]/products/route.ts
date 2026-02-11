@@ -42,7 +42,9 @@ export async function GET(
 
     const timestamp = Math.floor(Date.now() / 1000);
     const nonce = Math.random().toString(36).substring(2, 15);
-    const signatureString = `GET/api/v1/external-systems/printify/${external_system_hashid}/products${timestamp}${nonce}${tenantName}`;
+    const search = request.nextUrl.search || '';
+    const backendPathWithQuery = `/api/v1/external-systems/printify/${external_system_hashid}/products${search}`;
+    const signatureString = `GET${backendPathWithQuery}${timestamp}${nonce}${tenantName}`;
 
     const privateKey = await keyLoader.getTenantPrivateKey(tenantName);
 
@@ -60,7 +62,7 @@ export async function GET(
       externalSystemHashid: external_system_hashid,
     });
 
-    const backendUrl = `${process.env.BACKEND_API_URL}/api/v1/external-systems/printify/${external_system_hashid}/products`;
+    const backendUrl = `${process.env.BACKEND_API_URL}${backendPathWithQuery}`;
 
     const backendResponse = await fetch(backendUrl, {
       method: 'GET',

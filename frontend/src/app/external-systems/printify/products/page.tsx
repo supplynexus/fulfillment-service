@@ -1,6 +1,20 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Search as SearchIcon,
+  Refresh as RefreshIcon,
+  Visibility as ViewIcon,
+  Inventory as InventoryIcon,
+  FilterList as FilterIcon,
+  Link as LinkIcon,
+  Sync as SyncIcon,
+  OpenInNew as OpenInNewIcon,
+  DataObject as DataObjectIcon,
+  CompareArrows as CompareArrowsIcon,
+  ChevronLeft as ChevronLeftIcon,
+  ChevronRight as ChevronRightIcon,
+  Article as ArticleIcon,
+} from '@mui/icons-material';
 import {
   Box,
   Typography,
@@ -9,12 +23,13 @@ import {
   CardMedia,
   Chip,
   Button,
-  IconButton,
   Alert,
   CircularProgress,
   LinearProgress,
-  Grid,
   Pagination,
+  FormControl,
+  Select,
+  MenuItem,
   TextField,
   InputAdornment,
   Dialog,
@@ -28,32 +43,19 @@ import {
   TableHead,
   TableRow,
   Paper,
-  Tooltip,
-  Badge,
   Checkbox,
 } from '@mui/material';
-import {
-  Search as SearchIcon,
-  Refresh as RefreshIcon,
-  Visibility as ViewIcon,
-  ShoppingCart as CartIcon,
-  Image as ImageIcon,
-  Inventory as InventoryIcon,
-  AttachMoney as PriceIcon,
-  Category as CategoryIcon,
-  FilterList as FilterIcon,
-  Sort as SortIcon,
-  Link as LinkIcon,
-  Sync as SyncIcon,
-  CheckBox as CheckBoxIcon,
-  CheckBoxOutlineBlank as CheckBoxOutlineBlankIcon,
-} from '@mui/icons-material';
-import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
-import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import DOMPurify from 'dompurify';
+import useEmblaCarousel from 'embla-carousel-react';
+import React, { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
+
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+import { JsonViewerDialog } from '@/components/common/JsonViewerDialog';
+import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { ProductMappingDialog } from '@/components/printify/ProductMappingDialog';
 import { frontendApi } from '@/lib/api';
 import { frontendLogger } from '@/lib/frontend-logger';
-import { ProductMappingDialog } from '@/components/printify/ProductMappingDialog';
 
 const TOAST_SYNC_ID = 'printify-batch-sync';
 
@@ -129,6 +131,27 @@ interface PrintifyStore {
   is_active: boolean;
 }
 
+type SyncStatus = 'in_sync' | 'different' | 'not_synced';
+
+interface CompareWithLocalResult {
+  success: boolean;
+  is_in_sync: boolean;
+  remote?: {
+    updated_at?: string;
+    visible?: boolean;
+    sales_channel_properties?: unknown;
+  };
+  local?: {
+    exists: boolean;
+    updated_at?: string;
+    last_synced_at?: string;
+    raw_data_updated_at?: string;
+    is_published?: boolean;
+    visible?: boolean;
+    sync_status?: string;
+  };
+}
+
 function PrintifyProductsPage() {
   const [products, setProducts] = useState<PrintifyProduct[]>([]);
   const [stores, setStores] = useState<PrintifyStore[]>([]);
@@ -138,17 +161,36 @@ function PrintifyProductsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [searchInput, setSearchInput] = useState('');
   /** 发布状态筛选: 'all' | 'published' | 'unpublished' */
-  const [publishedFilter, setPublishedFilter] = useState<'all' | 'published' | 'unpublished'>('all');
+  const [publishedFilter, setPublishedFilter] = useState<
+    'all' | 'published' | 'unpublished'
+  >('all');
+  const [syncStatusFilter, setSyncStatusFilter] = useState<'all' | SyncStatus>(
+    'all'
+  );
   const [filteredProducts, setFilteredProducts] = useState<PrintifyProduct[]>(
     []
   );
   const [page, setPage] = useState(1);
-  const [productsPerPage] = useState(12);
+  const [pageSize, setPageSize] = useState(20);
+  const [serverTotalPages, setServerTotalPages] = useState(1);
+  const [serverTotalCount, setServerTotalCount] = useState(0);
+  const [syncStatusMap, setSyncStatusMap] = useState<
+    Record<string, SyncStatus>
+  >({});
   const [selectedProduct, setSelectedProduct] =
     useState<PrintifyProduct | null>(null);
   const [openProductDialog, setOpenProductDialog] = useState(false);
   const [openMappingDialog, setOpenMappingDialog] = useState(false);
+  const [openJsonDialog, setOpenJsonDialog] = useState(false);
+  const [openHtmlDialog, setOpenHtmlDialog] = useState(false);
+  const [openCompareDialog, setOpenCompareDialog] = useState(false);
+  const [productJson, setProductJson] = useState<unknown>(null);
+  const [loadingProductJson, setLoadingProductJson] = useState(false);
+  const [compareResult, setCompareResult] =
+    useState<CompareWithLocalResult | null>(null);
+  const [comparingWithLocal, setComparingWithLocal] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing] = useState(false);
   /** 列表勾选中的 Printify 商品 id，用于批量同步到本地 */
@@ -158,6 +200,52 @@ function PrintifyProductsPage() {
   const [batchSyncing, setBatchSyncing] = useState(false);
   /** 当前批量同步的数量（用于同步中展示「正在同步 N 个」） */
   const [batchSyncCount, setBatchSyncCount] = useState(0);
+  const [emblaRef, emblaApi] = useEmblaCarousel({ loop: true });
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+
+  const htmlToText = (html?: string) => {
+    if (!html) return '';
+    return html
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;/gi, "'")
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+
+  const sanitizeHtml = (html?: string) => {
+    if (!html) return '';
+    return DOMPurify.sanitize(html, {
+      USE_PROFILES: { html: true },
+      FORBID_TAGS: ['script', 'iframe', 'object', 'embed'],
+      FORBID_ATTR: ['onerror', 'onclick', 'onload', 'style'],
+    });
+  };
+
+  const enabledVariants = selectedProduct
+    ? selectedProduct.variants.filter(variant => variant.is_enabled)
+    : [];
+  const handleCompareWithLocal = useCallback(async () => {
+    if (!selectedStore || !selectedProduct) return;
+    try {
+      setComparingWithLocal(true);
+      const response = await frontendApi.get(
+        `/api/external-systems/printify/${selectedStore.id_hashid}/products/${selectedProduct.id}/compare-local`
+      );
+      setCompareResult(response.data as CompareWithLocalResult);
+      setOpenCompareDialog(true);
+    } catch (error: any) {
+      frontendLogger.error('❌ 比较 Printify 商品与本地失败', {
+        error: String(error),
+        productId: selectedProduct.id,
+      });
+      toast.error(error?.response?.data?.error || '比较本地数据失败');
+    } finally {
+      setComparingWithLocal(false);
+    }
+  }, [selectedStore, selectedProduct]);
 
   // 获取 Printify 店铺列表
   const fetchStores = useCallback(async () => {
@@ -191,44 +279,200 @@ function PrintifyProductsPage() {
     }
   }, []);
 
-  // 获取商品列表
-  const fetchProducts = useCallback(async (store: PrintifyStore) => {
-    if (!store) return;
+  const fetchLocalSyncStatuses = useCallback(
+    async (store: PrintifyStore, productsData: PrintifyProduct[]) => {
+      if (!store || productsData.length === 0) {
+        setSyncStatusMap({});
+        return {} as Record<string, SyncStatus>;
+      }
+      try {
+        const response = await frontendApi.post(
+          `/api/external-systems/printify/${store.id_hashid}/products/local-sync-status`,
+          {
+            products: productsData.map(p => ({
+              id: p.id,
+              updated_at: p.updated_at,
+            })),
+          }
+        );
+        const statuses = response.data?.statuses || {};
+        const nextMap: Record<string, SyncStatus> = {};
+        Object.entries(statuses).forEach(([productId, statusInfo]: any) => {
+          nextMap[productId] = (statusInfo?.status ||
+            'not_synced') as SyncStatus;
+        });
+        setSyncStatusMap(nextMap);
+        return nextMap;
+      } catch (error) {
+        frontendLogger.warn('获取本地同步状态失败', { error: String(error) });
+        setSyncStatusMap({});
+        return {} as Record<string, SyncStatus>;
+      }
+    },
+    []
+  );
+
+  const applyPageFilters = useCallback(
+    (productsData: PrintifyProduct[]) => {
+      let list = [...productsData];
+      if (searchTerm) {
+        const kw = searchTerm.toLowerCase();
+        list = list.filter(
+          (product: PrintifyProduct) =>
+            product.title.toLowerCase().includes(kw) ||
+            product.description?.toLowerCase().includes(kw) ||
+            product.tags.some(tag => tag.toLowerCase().includes(kw))
+        );
+      }
+      if (publishedFilter === 'published') {
+        list = list.filter((p: PrintifyProduct) => p.is_published === true);
+      } else if (publishedFilter === 'unpublished') {
+        list = list.filter((p: PrintifyProduct) => p.is_published !== true);
+      }
+      return list;
+    },
+    [searchTerm, publishedFilter]
+  );
+
+  // 获取商品列表（服务端分页）
+  const fetchProducts = useCallback(
+    async (store: PrintifyStore) => {
+      if (!store) return;
+
+      try {
+        setLoading(true);
+        setError(null);
+
+        frontendLogger.info('🔍 开始获取 Printify 商品列表', {
+          storeId: store.id_hashid,
+          storeName: store.name,
+          page,
+          pageSize,
+          publishedFilter,
+          searchTerm,
+        });
+
+        const response = await frontendApi.get(
+          `/api/external-systems/printify/${store.id_hashid}/products`,
+          {
+            params: {
+              page,
+              limit: pageSize,
+            },
+          }
+        );
+
+        if (response.data.success) {
+          const productsData = applyPageFilters(response.data.products || []);
+
+          setProducts(productsData);
+          setFilteredProducts(productsData);
+
+          const pagination = response.data.pagination || {};
+          const totalCount = Number(
+            pagination.total || response.data.total_count || 0
+          );
+          const totalPages =
+            Number(pagination.last_page || 0) ||
+            Math.max(1, Math.ceil(totalCount / pageSize));
+          setServerTotalCount(totalCount);
+          setServerTotalPages(totalPages);
+
+          const statusMap = await fetchLocalSyncStatuses(store, productsData);
+          const currentPageDisplayCount =
+            syncStatusFilter === 'all'
+              ? productsData.length
+              : productsData.filter(
+                  p => (statusMap[p.id] || 'not_synced') === syncStatusFilter
+                ).length;
+
+          frontendLogger.info('✅ Printify 商品列表获取成功', {
+            count: currentPageDisplayCount,
+            totalCount,
+            totalPages,
+            storeName: store.name,
+          });
+        } else {
+          throw new Error(response.data.message || '获取商品列表失败');
+        }
+      } catch (error) {
+        frontendLogger.error('❌ 获取 Printify 商品列表失败', {
+          error: String(error),
+          storeId: store.id_hashid,
+        });
+        setError('获取商品列表失败');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [
+      applyPageFilters,
+      fetchLocalSyncStatuses,
+      page,
+      pageSize,
+      syncStatusFilter,
+    ]
+  );
+
+  const findNextPageWithData = useCallback(async () => {
+    if (!selectedStore) return;
+    if (page >= serverTotalPages) {
+      toast('已经是最后一页');
+      return;
+    }
 
     try {
       setLoading(true);
       setError(null);
+      for (
+        let targetPage = page + 1;
+        targetPage <= serverTotalPages;
+        targetPage += 1
+      ) {
+        const response = await frontendApi.get(
+          `/api/external-systems/printify/${selectedStore.id_hashid}/products`,
+          {
+            params: {
+              page: targetPage,
+              limit: pageSize,
+            },
+          }
+        );
+        if (!response.data?.success) continue;
 
-      frontendLogger.info('🔍 开始获取 Printify 商品列表', {
-        storeId: store.id_hashid,
-        storeName: store.name,
-      });
-
-      const response = await frontendApi.get(
-        `/api/external-systems/printify/${store.id_hashid}/products`
-      );
-
-      if (response.data.success) {
-        const productsData = response.data.products || [];
-        setProducts(productsData);
-        setFilteredProducts(productsData);
-        frontendLogger.info('✅ Printify 商品列表获取成功', {
-          count: productsData.length,
-          storeName: store.name,
-        });
-      } else {
-        throw new Error(response.data.message || '获取商品列表失败');
+        const productsData = applyPageFilters(response.data.products || []);
+        const statusMap = await fetchLocalSyncStatuses(
+          selectedStore,
+          productsData
+        );
+        const visibleList =
+          syncStatusFilter === 'all'
+            ? productsData
+            : productsData.filter(
+                p => (statusMap[p.id] || 'not_synced') === syncStatusFilter
+              );
+        if (visibleList.length > 0) {
+          setPage(targetPage);
+          toast.success(`已定位到第 ${targetPage} 页`);
+          return;
+        }
       }
+      toast('后续页面也没有符合当前筛选条件的数据');
     } catch (error) {
-      frontendLogger.error('❌ 获取 Printify 商品列表失败', {
-        error: String(error),
-        storeId: store.id_hashid,
-      });
-      setError('获取商品列表失败');
+      frontendLogger.error('❌ 自动翻页查找数据失败', { error: String(error) });
+      toast.error('自动翻页失败');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [
+    applyPageFilters,
+    fetchLocalSyncStatuses,
+    page,
+    pageSize,
+    selectedStore,
+    serverTotalPages,
+    syncStatusFilter,
+  ]);
 
   // 刷新商品列表
   const handleRefresh = useCallback(async () => {
@@ -245,30 +489,6 @@ function PrintifyProductsPage() {
     }
   }, [selectedStore, fetchProducts]);
 
-  // 搜索 + 发布状态筛选
-  useEffect(() => {
-    let list = products;
-    if (searchTerm) {
-      list = list.filter(
-        product =>
-          product.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          product.description
-            ?.toLowerCase()
-            .includes(searchTerm.toLowerCase()) ||
-          product.tags.some(tag =>
-            tag.toLowerCase().includes(searchTerm.toLowerCase())
-          )
-      );
-    }
-    if (publishedFilter === 'published') {
-      list = list.filter(p => p.is_published === true);
-    } else if (publishedFilter === 'unpublished') {
-      list = list.filter(p => p.is_published !== true);
-    }
-    setFilteredProducts(list);
-    setPage(1);
-  }, [searchTerm, publishedFilter, products]);
-
   // 初始化
   useEffect(() => {
     const initialize = async () => {
@@ -277,18 +497,36 @@ function PrintifyProductsPage() {
     initialize();
   }, [fetchStores]);
 
-  // 当选择店铺时获取商品和同步状态
+  // 当选择店铺、分页、筛选变化时，重新拉取当前页
   useEffect(() => {
     if (selectedStore) {
       fetchProducts(selectedStore);
     }
   }, [selectedStore, fetchProducts]);
 
-  // 分页计算
-  const totalPages = Math.ceil(filteredProducts.length / productsPerPage);
-  const startIndex = (page - 1) * productsPerPage;
-  const endIndex = startIndex + productsPerPage;
-  const currentProducts = filteredProducts.slice(startIndex, endIndex);
+  useEffect(() => {
+    setSelectedImageIndex(0);
+  }, [selectedProduct?.id]);
+
+  useEffect(() => {
+    if (!emblaApi) return;
+    const onSelect = () => setSelectedImageIndex(emblaApi.selectedScrollSnap());
+    emblaApi.on('select', onSelect);
+    onSelect();
+    return () => {
+      emblaApi.off('select', onSelect);
+    };
+  }, [emblaApi]);
+
+  // 服务端分页：当前页数据就是要展示的数据（再叠加当前页的本地同步状态筛选）
+  const totalPages = serverTotalPages;
+  const currentProducts = filteredProducts.filter(product => {
+    if (syncStatusFilter === 'all') return true;
+    const status = syncStatusMap[product.id] || 'not_synced';
+    return status === syncStatusFilter;
+  });
+  const hasPageOnlyFilter =
+    publishedFilter !== 'all' || syncStatusFilter !== 'all' || !!searchTerm;
 
   // 获取商品主图
   const getProductImage = (product: PrintifyProduct) => {
@@ -298,6 +536,19 @@ function PrintifyProductsPage() {
     );
   };
 
+  const selectedProductImages = selectedProduct
+    ? selectedProduct.images?.length
+      ? selectedProduct.images
+      : [
+          {
+            src: getProductImage(selectedProduct),
+            variant_ids: [],
+            position: 'fallback',
+            is_default: true,
+          },
+        ]
+    : [];
+
   // 获取商品价格范围（Printify API 返回分为单位，显示时除以 100 转为元）
   const getProductPriceRange = (product: PrintifyProduct) => {
     const prices = product.variants.map(v => v.price / 100).filter(p => p > 0);
@@ -305,17 +556,69 @@ function PrintifyProductsPage() {
     if (prices.length === 1) return `$${prices[0].toFixed(2)}`;
     const min = Math.min(...prices);
     const max = Math.max(...prices);
-    return min === max ? `$${min.toFixed(2)}` : `$${min.toFixed(2)} - $${max.toFixed(2)}`;
+    return min === max
+      ? `$${min.toFixed(2)}`
+      : `$${min.toFixed(2)} - $${max.toFixed(2)}`;
   };
 
-  // 获取商品变体数量
-  const getVariantCount = (product: PrintifyProduct) => {
-    return product.variants.filter(v => v.is_enabled).length;
+  const getVariantSummary = (product: PrintifyProduct) => {
+    const enabled = product.variants.filter(v => v.is_enabled).length;
+    const total = product.variants.length;
+    return `变体 ${enabled}（启用 ${enabled}/总 ${total}）`;
   };
+
+  const getSyncStatusMeta = (status: SyncStatus | undefined) => {
+    if (status === 'in_sync') {
+      return { label: '本地一致', color: 'success' as const };
+    }
+    if (status === 'different') {
+      return { label: '与本地有差异', color: 'warning' as const };
+    }
+    return { label: '未同步到本地', color: 'default' as const };
+  };
+
+  const getPrintifyProductUrl = (productId: string) =>
+    `https://printify.com/app/product-details/${productId}?fromProductsPage=1`;
+
+  const fetchPrintifyProductJson = useCallback(
+    async (product: PrintifyProduct, openJsonDialogAfterLoad = false) => {
+      if (!selectedStore) return;
+      try {
+        setLoadingProductJson(true);
+        const response = await frontendApi.get(
+          `/api/external-systems/printify/${selectedStore.id_hashid}/products/${product.id}/json`
+        );
+        const latestProduct = response.data?.product;
+        if (latestProduct) {
+          setProductJson(latestProduct);
+          setSelectedProduct(latestProduct);
+          setProducts(prev =>
+            prev.map(p => (p.id === latestProduct.id ? latestProduct : p))
+          );
+        } else {
+          setProductJson(response.data);
+        }
+
+        if (openJsonDialogAfterLoad) {
+          setOpenJsonDialog(true);
+        }
+      } catch (error: any) {
+        frontendLogger.error('❌ 获取 Printify 商品 JSON 失败', {
+          error: String(error),
+          productId: product.id,
+        });
+        toast.error(error?.response?.data?.error || '读取商品 JSON 失败');
+      } finally {
+        setLoadingProductJson(false);
+      }
+    },
+    [selectedStore]
+  );
 
   // 查看商品详情
   const handleViewProduct = (product: PrintifyProduct) => {
     setSelectedProduct(product);
+    setProductJson(null);
     setOpenProductDialog(true);
   };
 
@@ -383,7 +686,7 @@ function PrintifyProductsPage() {
   };
 
   const selectAllFiltered = () => {
-    setSelectedProductIds(new Set(filteredProducts.map(p => p.id)));
+    setSelectedProductIds(new Set(currentProducts.map(p => p.id)));
   };
 
   const clearSelection = () => {
@@ -491,7 +794,11 @@ function PrintifyProductsPage() {
                           ? 'primary'
                           : 'default'
                       }
-                      onClick={() => setSelectedStore(store)}
+                      onClick={() => {
+                        setPage(1);
+                        setSelectedProductIds(new Set());
+                        setSelectedStore(store);
+                      }}
                       variant={
                         selectedStore?.id_hashid === store.id_hashid
                           ? 'filled'
@@ -504,15 +811,28 @@ function PrintifyProductsPage() {
             </Card>
           )}
 
-          {/* 搜索和过滤 */}
+          {/* 搜索和过滤（当前页范围） */}
           <Card sx={{ mb: 3 }}>
             <CardContent>
-              <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  gap: 2,
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                }}
+              >
                 <TextField
                   fullWidth
                   placeholder='搜索商品名称、描述或标签...'
-                  value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
+                  value={searchInput}
+                  onChange={e => setSearchInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      setPage(1);
+                      setSearchTerm(searchInput.trim());
+                    }
+                  }}
                   InputProps={{
                     startAdornment: (
                       <InputAdornment position='start'>
@@ -521,35 +841,131 @@ function PrintifyProductsPage() {
                     ),
                   }}
                 />
+                <Button
+                  variant='outlined'
+                  onClick={() => {
+                    setPage(1);
+                    setSearchTerm(searchInput.trim());
+                  }}
+                >
+                  检索
+                </Button>
                 <Chip
                   icon={<FilterIcon />}
-                  label={`${filteredProducts.length} 个商品`}
+                  label={`当前页显示 ${currentProducts.length} / 页内 ${
+                    filteredProducts.length
+                  } / 总 ${serverTotalCount}`}
                   color='primary'
                   variant='outlined'
                 />
-                <Typography variant='body2' color='text.secondary' sx={{ whiteSpace: 'nowrap' }}>
+                <Chip
+                  label='范围：当前页'
+                  size='small'
+                  variant='outlined'
+                  color='default'
+                />
+                <FormControl size='small' sx={{ minWidth: 100 }}>
+                  <Select
+                    value={pageSize}
+                    onChange={e => {
+                      setPage(1);
+                      setPageSize(Number(e.target.value));
+                    }}
+                  >
+                    <MenuItem value={10}>10 / 页</MenuItem>
+                    <MenuItem value={20}>20 / 页</MenuItem>
+                    <MenuItem value={50}>50 / 页</MenuItem>
+                  </Select>
+                </FormControl>
+                <Typography
+                  variant='body2'
+                  color='text.secondary'
+                  sx={{ whiteSpace: 'nowrap' }}
+                >
                   发布状态:
                 </Typography>
                 <Chip
                   label='全部'
                   size='small'
-                  onClick={() => setPublishedFilter('all')}
+                  onClick={() => {
+                    setPage(1);
+                    setPublishedFilter('all');
+                  }}
                   color={publishedFilter === 'all' ? 'primary' : 'default'}
                   variant={publishedFilter === 'all' ? 'filled' : 'outlined'}
                 />
                 <Chip
                   label='已发布'
                   size='small'
-                  onClick={() => setPublishedFilter('published')}
-                  color={publishedFilter === 'published' ? 'primary' : 'default'}
-                  variant={publishedFilter === 'published' ? 'filled' : 'outlined'}
+                  onClick={() => {
+                    setPage(1);
+                    setPublishedFilter('published');
+                  }}
+                  color={
+                    publishedFilter === 'published' ? 'primary' : 'default'
+                  }
+                  variant={
+                    publishedFilter === 'published' ? 'filled' : 'outlined'
+                  }
                 />
                 <Chip
                   label='未发布'
                   size='small'
-                  onClick={() => setPublishedFilter('unpublished')}
-                  color={publishedFilter === 'unpublished' ? 'primary' : 'default'}
-                  variant={publishedFilter === 'unpublished' ? 'filled' : 'outlined'}
+                  onClick={() => {
+                    setPage(1);
+                    setPublishedFilter('unpublished');
+                  }}
+                  color={
+                    publishedFilter === 'unpublished' ? 'primary' : 'default'
+                  }
+                  variant={
+                    publishedFilter === 'unpublished' ? 'filled' : 'outlined'
+                  }
+                />
+                <Typography
+                  variant='body2'
+                  color='text.secondary'
+                  sx={{ whiteSpace: 'nowrap' }}
+                >
+                  同步状态:
+                </Typography>
+                <Chip
+                  label='全部'
+                  size='small'
+                  onClick={() => setSyncStatusFilter('all')}
+                  color={syncStatusFilter === 'all' ? 'primary' : 'default'}
+                  variant={syncStatusFilter === 'all' ? 'filled' : 'outlined'}
+                />
+                <Chip
+                  label='本地一致'
+                  size='small'
+                  onClick={() => setSyncStatusFilter('in_sync')}
+                  color={syncStatusFilter === 'in_sync' ? 'primary' : 'default'}
+                  variant={
+                    syncStatusFilter === 'in_sync' ? 'filled' : 'outlined'
+                  }
+                />
+                <Chip
+                  label='未同步'
+                  size='small'
+                  onClick={() => setSyncStatusFilter('not_synced')}
+                  color={
+                    syncStatusFilter === 'not_synced' ? 'primary' : 'default'
+                  }
+                  variant={
+                    syncStatusFilter === 'not_synced' ? 'filled' : 'outlined'
+                  }
+                />
+                <Chip
+                  label='有差异'
+                  size='small'
+                  onClick={() => setSyncStatusFilter('different')}
+                  color={
+                    syncStatusFilter === 'different' ? 'primary' : 'default'
+                  }
+                  variant={
+                    syncStatusFilter === 'different' ? 'filled' : 'outlined'
+                  }
                 />
               </Box>
             </CardContent>
@@ -581,15 +997,13 @@ function PrintifyProductsPage() {
                     onClick={selectAllFiltered}
                     disabled={batchSyncing}
                   >
-                    全选全部（{filteredProducts.length} 个）
+                    全选当前加载（{filteredProducts.length} 个）
                   </Button>
                   <Button
                     size='small'
                     variant='outlined'
                     onClick={clearSelection}
-                    disabled={
-                      selectedProductIds.size === 0 || batchSyncing
-                    }
+                    disabled={selectedProductIds.size === 0 || batchSyncing}
                   >
                     取消全选
                   </Button>
@@ -606,9 +1020,7 @@ function PrintifyProductsPage() {
                       )
                     }
                     onClick={handleBatchSyncToLocal}
-                    disabled={
-                      batchSyncing || selectedProductIds.size === 0
-                    }
+                    disabled={batchSyncing || selectedProductIds.size === 0}
                   >
                     {batchSyncing ? '同步中…' : '一键同步到本地'}
                   </Button>
@@ -657,17 +1069,62 @@ function PrintifyProductsPage() {
                       sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }}
                     />
                     <Typography variant='h6' color='text.secondary'>
-                      {searchTerm ? '没有找到匹配的商品' : '该店铺暂无商品'}
+                      {hasPageOnlyFilter
+                        ? '当前页没有符合筛选条件的商品'
+                        : '该店铺暂无商品'}
                     </Typography>
-                    {searchTerm && (
-                      <Button
-                        variant='outlined'
-                        onClick={() => setSearchTerm('')}
-                        sx={{ mt: 2 }}
+                    {hasPageOnlyFilter && (
+                      <Typography
+                        variant='body2'
+                        color='text.secondary'
+                        sx={{ mt: 1 }}
                       >
-                        清除搜索条件
-                      </Button>
+                        当前筛选基于「本页 20 条」计算，可翻页继续查看
+                      </Typography>
                     )}
+                    <Box
+                      sx={{
+                        mt: 2,
+                        display: 'flex',
+                        gap: 1,
+                        justifyContent: 'center',
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      {searchTerm && (
+                        <Button
+                          variant='outlined'
+                          onClick={() => {
+                            setPage(1);
+                            setSearchInput('');
+                            setSearchTerm('');
+                          }}
+                        >
+                          清除检索
+                        </Button>
+                      )}
+                      {(publishedFilter !== 'all' ||
+                        syncStatusFilter !== 'all') && (
+                        <Button
+                          variant='outlined'
+                          onClick={() => {
+                            setPage(1);
+                            setPublishedFilter('all');
+                            setSyncStatusFilter('all');
+                          }}
+                        >
+                          清除状态筛选
+                        </Button>
+                      )}
+                      {page < totalPages && (
+                        <Button
+                          variant='contained'
+                          onClick={findNextPageWithData}
+                        >
+                          自动查找下一页有结果
+                        </Button>
+                      )}
+                    </Box>
                   </CardContent>
                 </Card>
               ) : (
@@ -701,14 +1158,36 @@ function PrintifyProductsPage() {
                               top: 8,
                               right: 8,
                               zIndex: 1,
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: 0.5,
+                              alignItems: 'flex-end',
                             }}
                           >
                             <Chip
                               label={product.is_published ? '已发布' : '未发布'}
                               size='small'
-                              color={product.is_published ? 'success' : 'default'}
+                              color={
+                                product.is_published ? 'success' : 'default'
+                              }
                               variant='filled'
                               sx={{ opacity: 0.95 }}
+                            />
+                            <Chip
+                              label={
+                                getSyncStatusMeta(syncStatusMap[product.id])
+                                  .label
+                              }
+                              size='small'
+                              color={
+                                getSyncStatusMeta(syncStatusMap[product.id])
+                                  .color
+                              }
+                              variant='outlined'
+                              sx={{
+                                bgcolor: 'background.paper',
+                                opacity: 0.95,
+                              }}
                             />
                           </Box>
                           <Box
@@ -723,22 +1202,29 @@ function PrintifyProductsPage() {
                               size='small'
                               checked={selectedProductIds.has(product.id)}
                               onChange={() => toggleSelect(product.id)}
-                              sx={{ bgcolor: 'background.paper', borderRadius: 1 }}
+                              sx={{
+                                bgcolor: 'background.paper',
+                                borderRadius: 1,
+                              }}
                             />
                           </Box>
                           <CardMedia
                             component='img'
                             image={getProductImage(product)}
                             alt={product.title}
-                            sx={{ 
+                            sx={{
                               objectFit: 'cover',
                               width: '100%',
                               height: { xs: '150px', sm: '180px', md: '200px' },
                               minHeight: '150px',
                               maxHeight: '200px',
-                              maxWidth: { xs: '150px', sm: '180px', md: '200px' },
+                              maxWidth: {
+                                xs: '150px',
+                                sm: '180px',
+                                md: '200px',
+                              },
                               display: 'block',
-                              margin: '0 auto'
+                              margin: '0 auto',
                             }}
                           />
                           <CardContent
@@ -769,7 +1255,7 @@ function PrintifyProductsPage() {
                                   overflow: 'hidden',
                                 }}
                               >
-                                {product.description}
+                                {htmlToText(product.description)}
                               </Typography>
                             )}
 
@@ -809,23 +1295,58 @@ function PrintifyProductsPage() {
                               <Typography variant='h6' color='primary'>
                                 {getProductPriceRange(product)}
                               </Typography>
-                              <Badge
-                                badgeContent={getVariantCount(product)}
-                                color='secondary'
+                              <Box
+                                sx={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 0.5,
+                                  color: 'text.secondary',
+                                }}
                               >
-                                <InventoryIcon color='action' />
-                              </Badge>
+                                <InventoryIcon
+                                  fontSize='small'
+                                  color='action'
+                                />
+                                <Typography
+                                  variant='caption'
+                                  color='text.secondary'
+                                >
+                                  {getVariantSummary(product)}
+                                </Typography>
+                              </Box>
                             </Box>
 
                             <Box sx={{ display: 'flex', gap: 1, mt: 'auto' }}>
+                              <Button
+                                variant='contained'
+                                size='small'
+                                startIcon={<SyncIcon />}
+                                onClick={() => handleSyncProduct(product)}
+                                disabled={syncing}
+                              >
+                                同步到本地
+                              </Button>
                               <Button
                                 variant='outlined'
                                 size='small'
                                 startIcon={<ViewIcon />}
                                 onClick={() => handleViewProduct(product)}
-                                fullWidth
                               >
                                 查看详情
+                              </Button>
+                              <Button
+                                variant='outlined'
+                                size='small'
+                                startIcon={<OpenInNewIcon />}
+                                onClick={() =>
+                                  window.open(
+                                    getPrintifyProductUrl(product.id),
+                                    '_blank',
+                                    'noopener,noreferrer'
+                                  )
+                                }
+                              >
+                                打开 Printify
                               </Button>
                             </Box>
                           </CardContent>
@@ -864,18 +1385,83 @@ function PrintifyProductsPage() {
             <DialogContent>
               {selectedProduct && (
                 <Box>
-                  {/* 商品图片 */}
-                  <Box sx={{ mb: 3, textAlign: 'center' }}>
-                    <img
-                      src={getProductImage(selectedProduct)}
-                      alt={selectedProduct.title}
-                      style={{
-                        maxWidth: '100%',
-                        maxHeight: '300px',
-                        objectFit: 'contain',
-                        borderRadius: '8px',
+                  {/* 商品图片轮播（左右切换） */}
+                  <Box sx={{ mb: 3 }}>
+                    <Box
+                      sx={{
+                        position: 'relative',
+                        borderRadius: 2,
+                        overflow: 'hidden',
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        backgroundColor: '#fafafa',
                       }}
-                    />
+                    >
+                      <Box ref={emblaRef} sx={{ overflow: 'hidden' }}>
+                        <Box sx={{ display: 'flex' }}>
+                          {selectedProductImages.map((img, index) => (
+                            <Box
+                              key={`${img.src}-${index}`}
+                              sx={{
+                                flex: '0 0 100%',
+                                minWidth: 0,
+                                display: 'flex',
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                                py: 2,
+                                px: 1,
+                              }}
+                            >
+                              <img
+                                src={img.src}
+                                alt={`${selectedProduct.title}-${index + 1}`}
+                                style={{
+                                  maxWidth: '100%',
+                                  maxHeight: '300px',
+                                  objectFit: 'contain',
+                                }}
+                              />
+                            </Box>
+                          ))}
+                        </Box>
+                      </Box>
+                      <Button
+                        size='small'
+                        variant='contained'
+                        onClick={() => emblaApi?.scrollPrev()}
+                        sx={{
+                          minWidth: 0,
+                          position: 'absolute',
+                          top: '50%',
+                          left: 8,
+                          transform: 'translateY(-50%)',
+                        }}
+                      >
+                        <ChevronLeftIcon />
+                      </Button>
+                      <Button
+                        size='small'
+                        variant='contained'
+                        onClick={() => emblaApi?.scrollNext()}
+                        sx={{
+                          minWidth: 0,
+                          position: 'absolute',
+                          top: '50%',
+                          right: 8,
+                          transform: 'translateY(-50%)',
+                        }}
+                      >
+                        <ChevronRightIcon />
+                      </Button>
+                    </Box>
+                    <Typography
+                      variant='caption'
+                      color='text.secondary'
+                      sx={{ mt: 1, display: 'block', textAlign: 'center' }}
+                    >
+                      图片 {selectedImageIndex + 1} /{' '}
+                      {selectedProductImages.length || 1}
+                    </Typography>
                   </Box>
 
                   {/* 商品信息 */}
@@ -894,9 +1480,20 @@ function PrintifyProductsPage() {
                         variant='body2'
                         color='text.secondary'
                         paragraph
+                        sx={{ maxHeight: 260, overflow: 'auto' }}
                       >
-                        {selectedProduct.description || '暂无描述'}
+                        {htmlToText(selectedProduct.description) || '暂无描述'}
                       </Typography>
+                      <Button
+                        size='small'
+                        variant='outlined'
+                        startIcon={<ArticleIcon />}
+                        onClick={() => setOpenHtmlDialog(true)}
+                        disabled={!selectedProduct.description}
+                        sx={{ mb: 2 }}
+                      >
+                        预览 HTML 效果（已安全过滤）
+                      </Button>
 
                       <Typography variant='subtitle2' gutterBottom>
                         标签:
@@ -919,48 +1516,54 @@ function PrintifyProductsPage() {
                       <Typography variant='h6' gutterBottom>
                         变体信息
                       </Typography>
-                      <TableContainer component={Paper} variant='outlined'>
+                      <TableContainer
+                        component={Paper}
+                        variant='outlined'
+                        sx={{ maxHeight: 320, overflow: 'auto' }}
+                      >
                         <Table size='small'>
                           <TableHead>
                             <TableRow>
-                              <TableCell>SKU</TableCell>
+                              <TableCell>变体规格</TableCell>
                               <TableCell>价格</TableCell>
+                              <TableCell>库存</TableCell>
                               <TableCell>状态</TableCell>
                             </TableRow>
                           </TableHead>
                           <TableBody>
-                            {selectedProduct.variants
-                              .filter(variant => variant.is_enabled)
-                              .slice(0, 10)
-                              .map(variant => (
-                                <TableRow key={variant.id}>
-                                  <TableCell>{variant.sku}</TableCell>
-                                  <TableCell>${(variant.price / 100).toFixed(2)}</TableCell>
-                                  <TableCell>
-                                    <Chip
-                                      label='启用'
-                                      color='success'
-                                      size='small'
-                                    />
-                                  </TableCell>
-                                </TableRow>
-                              ))}
-                            {selectedProduct.variants.filter(v => v.is_enabled)
-                              .length > 10 && (
-                              <TableRow>
-                                <TableCell colSpan={3} align='center'>
-                                  ... 还有{' '}
-                                  {selectedProduct.variants.filter(
-                                    v => v.is_enabled
-                                  ).length - 10}{' '}
-                                  个启用的变体
+                            {enabledVariants.map(variant => (
+                              <TableRow key={variant.id}>
+                                <TableCell>
+                                  {variant.title || `Variant #${variant.id}`}
+                                </TableCell>
+                                <TableCell>
+                                  ${(variant.price / 100).toFixed(2)}
+                                </TableCell>
+                                <TableCell>
+                                  <Chip
+                                    label={
+                                      variant.is_available ? '有库存' : '缺货'
+                                    }
+                                    color={
+                                      variant.is_available
+                                        ? 'success'
+                                        : 'warning'
+                                    }
+                                    size='small'
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <Chip
+                                    label='启用'
+                                    color='success'
+                                    size='small'
+                                  />
                                 </TableCell>
                               </TableRow>
-                            )}
-                            {selectedProduct.variants.filter(v => v.is_enabled)
-                              .length === 0 && (
+                            ))}
+                            {enabledVariants.length === 0 && (
                               <TableRow>
-                                <TableCell colSpan={3} align='center'>
+                                <TableCell colSpan={4} align='center'>
                                   暂无启用的变体
                                 </TableCell>
                               </TableRow>
@@ -974,6 +1577,66 @@ function PrintifyProductsPage() {
               )}
             </DialogContent>
             <DialogActions>
+              <Button
+                variant='outlined'
+                startIcon={<OpenInNewIcon />}
+                onClick={() => {
+                  if (!selectedProduct) return;
+                  window.open(
+                    getPrintifyProductUrl(selectedProduct.id),
+                    '_blank',
+                    'noopener,noreferrer'
+                  );
+                }}
+                disabled={!selectedProduct}
+                sx={{ mr: 1 }}
+              >
+                打开 Printify 商品页
+              </Button>
+              <Button
+                variant='outlined'
+                startIcon={
+                  loadingProductJson ? (
+                    <CircularProgress size={16} color='inherit' />
+                  ) : (
+                    <RefreshIcon />
+                  )
+                }
+                onClick={() =>
+                  selectedProduct && fetchPrintifyProductJson(selectedProduct)
+                }
+                disabled={loadingProductJson || !selectedProduct}
+                sx={{ mr: 1 }}
+              >
+                {loadingProductJson ? '读取中…' : '重新读取商品 JSON'}
+              </Button>
+              <Button
+                variant='outlined'
+                startIcon={<DataObjectIcon />}
+                onClick={() =>
+                  selectedProduct &&
+                  fetchPrintifyProductJson(selectedProduct, true)
+                }
+                disabled={loadingProductJson || !selectedProduct}
+                sx={{ mr: 1 }}
+              >
+                查看 JSON
+              </Button>
+              <Button
+                variant='outlined'
+                startIcon={
+                  comparingWithLocal ? (
+                    <CircularProgress size={16} color='inherit' />
+                  ) : (
+                    <CompareArrowsIcon />
+                  )
+                }
+                onClick={handleCompareWithLocal}
+                disabled={comparingWithLocal || !selectedProduct}
+                sx={{ mr: 1 }}
+              >
+                {comparingWithLocal ? '比较中…' : '与本地数据库比较'}
+              </Button>
               <Button
                 variant='outlined'
                 startIcon={
@@ -1011,6 +1674,92 @@ function PrintifyProductsPage() {
               frontendLogger.info('✅ 商品映射创建成功', mapping);
               setOpenMappingDialog(false);
             }}
+          />
+
+          <Dialog
+            open={openHtmlDialog}
+            onClose={() => setOpenHtmlDialog(false)}
+            maxWidth='md'
+            fullWidth
+          >
+            <DialogTitle>HTML 预览（安全过滤）</DialogTitle>
+            <DialogContent>
+              <Box
+                sx={{
+                  mt: 1,
+                  p: 2,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  borderRadius: 1,
+                  maxHeight: '70vh',
+                  overflow: 'auto',
+                }}
+                dangerouslySetInnerHTML={{
+                  __html: sanitizeHtml(selectedProduct?.description),
+                }}
+              />
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setOpenHtmlDialog(false)}>关闭</Button>
+            </DialogActions>
+          </Dialog>
+
+          <Dialog
+            open={openCompareDialog}
+            onClose={() => setOpenCompareDialog(false)}
+            maxWidth='sm'
+            fullWidth
+          >
+            <DialogTitle>与本地数据库比较</DialogTitle>
+            <DialogContent>
+              {compareResult ? (
+                <Box sx={{ mt: 1, display: 'grid', gap: 1.5 }}>
+                  <Alert
+                    severity={compareResult.is_in_sync ? 'success' : 'warning'}
+                  >
+                    {compareResult.is_in_sync
+                      ? '远程 Printify 与本地快照一致'
+                      : '远程 Printify 与本地快照不一致'}
+                  </Alert>
+                  <Typography variant='body2'>
+                    <strong>远程 updated_at:</strong>{' '}
+                    {compareResult.remote?.updated_at || '-'}
+                  </Typography>
+                  <Typography variant='body2'>
+                    <strong>本地 raw_data.updated_at:</strong>{' '}
+                    {compareResult.local?.raw_data_updated_at || '-'}
+                  </Typography>
+                  <Typography variant='body2'>
+                    <strong>本地 last_synced_at:</strong>{' '}
+                    {compareResult.local?.last_synced_at || '-'}
+                  </Typography>
+                  <Typography variant='body2'>
+                    <strong>本地 DB updated_at:</strong>{' '}
+                    {compareResult.local?.updated_at || '-'}
+                  </Typography>
+                  <Typography variant='body2'>
+                    <strong>本地发布状态:</strong>{' '}
+                    {compareResult.local?.is_published ? '已发布' : '未发布'}
+                  </Typography>
+                </Box>
+              ) : (
+                <Box sx={{ py: 3, textAlign: 'center' }}>
+                  <CircularProgress size={24} />
+                </Box>
+              )}
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setOpenCompareDialog(false)}>关闭</Button>
+            </DialogActions>
+          </Dialog>
+
+          <JsonViewerDialog
+            open={openJsonDialog}
+            onClose={() => setOpenJsonDialog(false)}
+            title='Printify 商品 JSON'
+            subtitle={selectedProduct?.title}
+            data={productJson}
+            loading={loadingProductJson}
           />
         </Box>
       </DashboardLayout>

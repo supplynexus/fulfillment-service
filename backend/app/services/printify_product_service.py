@@ -18,7 +18,13 @@ logger = get_logger(__name__)
 
 
 def _is_published_from_api_data(product_data: Dict[str, Any]) -> bool:
-    """Printify 已发布 = 已发布到销售渠道，API 中 sales_channel_properties 非空。"""
+    """
+    Printify 是否已发布：按实际 API 响应判断，仅看 sales_channel_properties。
+    已用店铺 24981565 验证：6978c01e1868fbefd300e159 已发布（scp 为非空 dict），
+    698254feac45c6e86a0b90b0 / 69825421562ab484c806a82c 未发布（scp 为空）。
+    单商品/列表 API 可能返回 dict（如 {"collections": [...], "free_shipping": false}）或 list。
+    - 非空（dict 有 key 或 list 有元素）= 已发布；空/None = 未发布。
+    """
     scp = product_data.get("sales_channel_properties")
     if scp is None:
         return False
@@ -52,7 +58,7 @@ class PrintifyProductService:
                 title=product_data['title'],
                 description=product_data.get('description'),
                 tags=product_data.get('tags', []),
-                visible=product_data.get('visible', True),
+                visible=_is_published_from_api_data(product_data),
                 is_locked=product_data.get('is_locked', False),
                 is_published=_is_published_from_api_data(product_data),
                 external=product_data.get('external'),
@@ -206,8 +212,8 @@ class PrintifyProductService:
         Printify 未发布（visible=False）的商品不写入或从 external_products 移除，避免映射时出现多个同名未发布项。
         """
         try:
-            # Printify: visible=true 表示已发布到销售渠道，visible=false 表示未发布
-            is_published = product_data.get("visible", True)
+            # Printify: 已发布状态与 _is_published_from_api_data 一致（visible/is_visible/sales_channel_properties）
+            is_published = _is_published_from_api_data(product_data)
             ext_product_id = str(product_data["id"])
 
             stmt = select(ExternalProduct).where(
@@ -376,7 +382,7 @@ class PrintifyProductService:
                 'title': product_data.get('title', product.title),
                 'description': product_data.get('description', product.description),
                 'tags': product_data.get('tags', product.tags),
-                'visible': product_data.get('visible', product.visible),
+                'visible': _is_published_from_api_data(product_data),
                 'is_locked': product_data.get('is_locked', product.is_locked),
                 'is_published': _is_published_from_api_data(product_data),
                 'external': product_data.get('external', product.external),

@@ -133,6 +133,45 @@ class PrintifyService:
             logger.error(f"Failed to get Printify products: {e}")
             return []
 
+    async def get_products_page(
+        self, shop_id: str, page: int = 1, limit: int = 50
+    ) -> Dict[str, Any]:
+        """
+        Get one page of products from Printify shop.
+
+        Returns raw Printify response (includes `data` and pagination fields when provided).
+        """
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{self.base_url}/shops/{shop_id}/products.json",
+                    headers=self.headers,
+                    params={"page": page, "limit": limit},
+                    timeout=30.0,
+                )
+                response.raise_for_status()
+                return response.json()
+        except Exception as e:
+            logger.error(f"Failed to get Printify products page: {e}")
+            return {"data": [], "page": page, "limit": limit}
+
+    async def get_product(self, shop_id: str, product_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get a single product by ID. See Printify API: GET /v1/shops/{shop_id}/products/{product_id}.json
+        """
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{self.base_url}/shops/{shop_id}/products/{product_id}.json",
+                    headers=self.headers,
+                    timeout=30.0,
+                )
+                response.raise_for_status()
+                return response.json()
+        except Exception as e:
+            logger.error(f"Failed to get Printify product {product_id}: {e}")
+            return None
+
     async def create_order(
         self, shop_id: str, order_data: Dict[str, Any]
     ) -> Dict[str, Any]:
