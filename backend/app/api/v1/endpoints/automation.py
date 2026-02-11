@@ -255,6 +255,7 @@ async def trigger_automation_step(
             "create_printify_orders_from_scm": "app.tasks.order_automation_tasks.create_printify_orders_from_scm",
             "sync_printify_orders_to_local": "app.tasks.order_automation_tasks.sync_printify_orders_to_local",
             "sync_printify_products_to_local": "app.tasks.order_automation_tasks.sync_printify_products_to_local",
+            "auto_bind_printify_by_shopify": "app.tasks.order_automation_tasks.auto_bind_printify_by_shopify",
             "auto_create_scm_from_unbound_printify_orders": "app.tasks.order_automation_tasks.auto_create_scm_from_unbound_printify_orders",
             "sync_fulfillment_status": "app.tasks.order_automation_tasks.sync_printify_orders_status",
             "sync_to_external_fulfillment": "app.tasks.order_automation_tasks.sync_scm_to_shopify_fulfillment",
@@ -280,10 +281,11 @@ async def trigger_automation_step(
             **{k: v for k, v in task_params.items() if k != "ignore_flags"}
         }
         
-        # 发送任务到队列
+        # 发送任务到队列（与 Beat 调度一致，使用 order_automation 队列，否则 worker 仅消费该队列时收不到）
         task = celery_app.send_task(
             celery_task_name,
-            kwargs=task_kwargs
+            kwargs=task_kwargs,
+            queue="order_automation",
         )
         
         logger.info(

@@ -85,7 +85,7 @@ celery -A app.tasks.celery_app beat --loglevel=info
 ```bash
 cd backend
 source .venv/bin/activate
-celery -A app.tasks.celery_app worker --loglevel=info -Q shopify,default,orders
+celery -A app.tasks.celery_app worker --loglevel=info -Q shopify,default,orders,order_automation
 ```
 
 ## 定时任务配置
@@ -104,6 +104,7 @@ celery -A app.tasks.celery_app worker --loglevel=info -Q shopify,default,orders
 - **shopify**: Shopify 相关任务（产品同步、订单同步）
 - **default**: 默认任务队列
 - **orders**: 订单处理任务
+- **order_automation**: 自动化管理中的定时/手动任务（如 Printify 商品同步、Printify–Shopify 商品自动绑定）
 
 ## 监控和调试
 
@@ -152,7 +153,7 @@ source .venv/bin/activate
 celery -A app.tasks.celery_app beat --loglevel=info &
 
 # 启动 Worker
-celery -A app.tasks.celery_app worker --loglevel=info -Q shopify,default,orders &
+celery -A app.tasks.celery_app worker --loglevel=info -Q shopify,default,orders,order_automation,order_automation &
 ```
 
 ## 配置说明
