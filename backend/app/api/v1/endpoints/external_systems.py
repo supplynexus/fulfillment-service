@@ -3,7 +3,8 @@ External system management API endpoints
 """
 
 from typing import Any, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_async_db
@@ -12,6 +13,7 @@ from app.core.logging import get_logger
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.models.external_system import ExternalSystemType
+from app.models.printify_product import PrintifyProduct
 from app.services.external_system_service import ExternalSystemService
 from app.schemas.external_system import (
     ExternalSystemCreate,
@@ -686,6 +688,8 @@ async def test_shopify_connection(
 @router.get("/printify/{external_system_hashid}/products", response_model=dict)
 async def get_printify_products(
     external_system_hashid: str,
+    page: int = Query(1, ge=1, description="Page number"),
+    limit: int = Query(20, ge=1, le=50, description="Page size"),
     db: AsyncSession = Depends(get_async_db),
     auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
 ) -> Any:
@@ -787,8 +791,13 @@ async def get_printify_products(
 
         printify_service = PrintifyService(printify_api_token=access_token)
 
-        logger.info(f"🔍 开始调用 Printify API 获取商品列表: shop_id={shop_id}")
-        products = await printify_service.get_products(shop_id)
+        logger.info(
+            f"🔍 开始调用 Printify API 获取商品列表: shop_id={shop_id}, page={page}, limit={limit}"
+        )
+        products_response = await printify_service.get_products_page(
+            shop_id=shop_id, page=page, limit=limit
+        )
+        products = products_response.get("data", [])
 
         # 为每条商品附加 is_published（sales_channel_properties 非空），供前端筛选与角标
         def _is_published(p: dict) -> bool:
@@ -805,14 +814,30 @@ async def get_printify_products(
             {**p, "is_published": _is_published(p)} for p in products
         ]
 
-        logger.info(f"✅ Printify 商品列表获取成功: 数量={len(products)}")
+        logger.info(
+            f"✅ Printify 商品列表获取成功: 数量={len(products)}, page={page}, limit={limit}"
+        )
+
+        total_count = products_response.get("total")
+        if total_count is None:
+            total_count = len(products_with_flag)
+        current_page = products_response.get("current_page", page)
+        last_page = products_response.get("last_page")
+        if last_page is None:
+            last_page = 1 if total_count <= limit else page
 
         return {
             "success": True,
             "external_system_id": external_system_hashid,
             "shop_id": shop_id,
             "products": products_with_flag,
-            "total_count": len(products_with_flag),
+            "total_count": total_count,
+            "pagination": {
+                "current_page": current_page,
+                "last_page": last_page,
+                "per_page": products_response.get("per_page", limit),
+                "total": total_count,
+            },
             "message": "Products retrieved successfully",
         }
 
@@ -826,6 +851,313 @@ async def get_printify_products(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get products: {str(e)}",
+        )
+
+
+@router.post("/printify/{external_system_hashid}/products/local-sync-status", response_model=dict)
+async def get_printify_products_local_sync_status(
+    external_system_hashid: str,
+    payload: Optional[dict] = Body(default=None),
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
+) -> Any:
+    """
+    Batch compare remote products (id + updated_at) with local DB snapshot.
+    """
+    tenant, _ = auth
+    from app.core.hashids_utils import decode_id
+
+    external_system_id = decode_id(external_system_hashid)
+    if not external_system_id:
+        raise HTTPException(status_code=400, detail="Invalid external system ID")
+
+    service = ExternalSystemService(db)
+    external_system = await service.get_external_system(external_system_id, tenant.id)
+    if not external_system:
+        raise HTTPException(status_code=404, detail="External system not found")
+    if external_system.system_type != ExternalSystemType.PRINTIFY:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="External system is not a Printify store",
+        )
+
+    products = (payload or {}).get("products") or []
+    if not isinstance(products, list):
+        raise HTTPException(status_code=400, detail="products must be a list")
+
+    remote_updated_map = {}
+    product_ids = []
+    for p in products:
+        pid = str((p or {}).get("id") or "").strip()
+        if not pid:
+            continue
+        product_ids.append(pid)
+        remote_updated_map[pid] = (p or {}).get("updated_at")
+
+    if not product_ids:
+        return {"success": True, "statuses": {}, "summary": {"in_sync": 0, "different": 0, "not_synced": 0}}
+
+    stmt = select(PrintifyProduct).where(
+        PrintifyProduct.tenant_id == tenant.id,
+        PrintifyProduct.external_system_id == external_system.id,
+        PrintifyProduct.printify_product_id.in_(product_ids),
+    )
+    result = await db.execute(stmt)
+    local_rows = result.scalars().all()
+    local_map = {row.printify_product_id: row for row in local_rows}
+
+    statuses = {}
+    summary = {"in_sync": 0, "different": 0, "not_synced": 0}
+    for pid in product_ids:
+        remote_updated = remote_updated_map.get(pid)
+        local = local_map.get(pid)
+        if not local:
+            statuses[pid] = {"status": "not_synced", "remote_updated_at": remote_updated}
+            summary["not_synced"] += 1
+            continue
+        local_raw_updated = (local.raw_data or {}).get("updated_at")
+        if remote_updated and local_raw_updated and str(remote_updated) == str(local_raw_updated):
+            statuses[pid] = {
+                "status": "in_sync",
+                "remote_updated_at": remote_updated,
+                "local_raw_updated_at": local_raw_updated,
+            }
+            summary["in_sync"] += 1
+        else:
+            statuses[pid] = {
+                "status": "different",
+                "remote_updated_at": remote_updated,
+                "local_raw_updated_at": local_raw_updated,
+            }
+            summary["different"] += 1
+
+    return {"success": True, "statuses": statuses, "summary": summary}
+
+
+@router.get("/printify/{external_system_hashid}/products/{product_id}/json", response_model=dict)
+async def get_printify_product_json(
+    external_system_hashid: str,
+    product_id: str,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
+) -> Any:
+    """
+    Get a single Printify product full JSON by product ID.
+    """
+    logger = get_logger(__name__)
+
+    try:
+        logger.info(
+            f"🔍 开始处理 Printify 商品 JSON 请求: external_system_hashid={external_system_hashid}, product_id={product_id}"
+        )
+        tenant, user = auth
+
+        from app.core.hashids_utils import decode_id
+
+        try:
+            external_system_id = decode_id(external_system_hashid)
+            if not external_system_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid external system ID",
+                )
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Failed to decode external system ID",
+            )
+
+        service = ExternalSystemService(db)
+        external_system = await service.get_external_system(external_system_id, tenant.id)
+        if not external_system:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="External system not found",
+            )
+        if external_system.system_type != ExternalSystemType.PRINTIFY:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="External system is not a Printify store",
+            )
+
+        decrypted_credentials = await service.get_decrypted_credentials(
+            external_system.id, tenant.id
+        )
+        if not decrypted_credentials:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Failed to get decrypted credentials",
+            )
+
+        access_token = decrypted_credentials.get("access_token")
+        shop_id = (external_system.settings or {}).get(
+            "printify_shop_id"
+        ) or decrypted_credentials.get("shop_id")
+        if shop_id is not None:
+            shop_id = str(shop_id).strip() or None
+
+        if not access_token:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Access Token not configured for this store",
+            )
+        if not shop_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Shop ID not configured for this store",
+            )
+
+        from app.services.printify_service import PrintifyService
+
+        printify_service = PrintifyService(printify_api_token=access_token)
+        product = await printify_service.get_product(shop_id, product_id)
+        if not product:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Printify product not found",
+            )
+
+        return {
+            "success": True,
+            "external_system_id": external_system_hashid,
+            "shop_id": shop_id,
+            "product_id": product_id,
+            "product": product,
+            "message": "Product JSON retrieved successfully",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Printify 商品 JSON 请求失败: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get product json: {str(e)}",
+        )
+
+
+@router.get(
+    "/printify/{external_system_hashid}/products/{product_id}/compare-local",
+    response_model=dict,
+)
+async def compare_printify_product_with_local(
+    external_system_hashid: str,
+    product_id: str,
+    db: AsyncSession = Depends(get_async_db),
+    auth: tuple[Tenant, User] = Depends(verify_tenant_auth),
+) -> Any:
+    """
+    Compare Printify live product JSON with local DB snapshot.
+    """
+    logger = get_logger(__name__)
+    try:
+        tenant, _ = auth
+        from app.core.hashids_utils import decode_id
+        from app.services.printify_service import PrintifyService
+
+        external_system_id = decode_id(external_system_hashid)
+        if not external_system_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid external system ID",
+            )
+
+        service = ExternalSystemService(db)
+        external_system = await service.get_external_system(external_system_id, tenant.id)
+        if not external_system:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="External system not found",
+            )
+        if external_system.system_type != ExternalSystemType.PRINTIFY:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="External system is not a Printify store",
+            )
+
+        decrypted_credentials = await service.get_decrypted_credentials(
+            external_system.id, tenant.id
+        )
+        if not decrypted_credentials:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Failed to get decrypted credentials",
+            )
+
+        access_token = decrypted_credentials.get("access_token")
+        shop_id = (external_system.settings or {}).get(
+            "printify_shop_id"
+        ) or decrypted_credentials.get("shop_id")
+        if shop_id is not None:
+            shop_id = str(shop_id).strip() or None
+        if not access_token or not shop_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Printify credentials are incomplete",
+            )
+
+        printify_service = PrintifyService(printify_api_token=access_token)
+        remote_product = await printify_service.get_product(shop_id, product_id)
+        if not remote_product:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Printify product not found",
+            )
+
+        stmt = select(PrintifyProduct).where(
+            PrintifyProduct.tenant_id == tenant.id,
+            PrintifyProduct.external_system_id == external_system.id,
+            PrintifyProduct.printify_product_id == product_id,
+        )
+        local_result = await db.execute(stmt)
+        local_product = local_result.scalar_one_or_none()
+
+        remote_updated_at = remote_product.get("updated_at")
+        local_raw_updated_at = (
+            (local_product.raw_data or {}).get("updated_at") if local_product else None
+        )
+        local_db_updated_at = (
+            local_product.updated_at.isoformat() if local_product and local_product.updated_at else None
+        )
+        local_last_synced_at = (
+            local_product.last_synced_at.isoformat()
+            if local_product and local_product.last_synced_at
+            else None
+        )
+
+        in_sync = bool(local_product and remote_updated_at and local_raw_updated_at and remote_updated_at == local_raw_updated_at)
+
+        return {
+            "success": True,
+            "shop_id": shop_id,
+            "product_id": product_id,
+            "is_in_sync": in_sync,
+            "remote": {
+                "updated_at": remote_updated_at,
+                "visible": remote_product.get("visible"),
+                "sales_channel_properties": remote_product.get("sales_channel_properties"),
+            },
+            "local": (
+                {
+                    "exists": True,
+                    "updated_at": local_db_updated_at,
+                    "last_synced_at": local_last_synced_at,
+                    "raw_data_updated_at": local_raw_updated_at,
+                    "is_published": local_product.is_published,
+                    "visible": local_product.visible,
+                    "sync_status": local_product.sync_status,
+                }
+                if local_product
+                else {"exists": False}
+            ),
+            "message": "Compared Printify live product with local DB",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 比较 Printify 商品与本地失败: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to compare product with local: {str(e)}",
         )
 
 
