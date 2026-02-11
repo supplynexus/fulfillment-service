@@ -1,37 +1,11 @@
 ---
-description: Deployment to server, docker-compose, SSH, 部署, 生产环境, 开发环境
+description: 部署/SSH/服务器时参考——目录、Dev vs Prod、敏感文件
 globs: ["docker-compose*.yml", "deployment/**/*", "scripts/prod/**/*", "scripts/dev/**/*", "Dockerfile*"]
+alwaysApply: false
 ---
-# 服务器部署速查
 
-- **Git 操作**：禁止直接提交 develop/main，必须走 PR。详见 **git-workflow.mdc**。
+# 服务器部署（按需参考）
 
-## 服务器与目录
-
-- **SSH**: `ubuntu@133.242.179.110`
-- **Git 仓库**: `/home/ubuntu/project/fulfillment-service`（在此 `git pull`）
-- **部署目录**: `/opt/supplynexus`（rsync 同步后在此执行 docker-compose，无 .git）
-
-## 环境隔离
-
-- Dev 与 Prod **服务名/容器名/Volume/网络** 完全分离，可同时运行。
-- Dev：`postgres_dev` / `backend_dev` / `frontend_dev`，端口 Backend 8001、Frontend 3001。
-- Prod：`postgres_prod` / `backend` / `frontend`，端口 8000/3000（仅 127.0.0.1）。Volume 使用 `name:` 外部命名，避免 `down` 丢数据。
-
-## 部署命令
-
-| 环境 | 命令 |
-|------|------|
-| **Dev** | `ssh ...` 后 `cd /home/ubuntu/project/fulfillment-service && ./scripts/dev/deploy-from-git.sh` |
-| **Prod** | 同上目录执行 `./scripts/prod/deploy-from-git.sh`（或见下方文档） |
-
-脚本内已含：拉取对应分支、rsync、docker-compose up、**alembic upgrade head**（Dev/Prod 脚本均有）。
-
-## 敏感文件（不提交 Git）
-
-- `deployment/environments/env.prod`、`frontend/env.prod`、`docker-compose.prod.yml`。上传用 scp，权限 `chmod 600`。校验：`git check-ignore -v deployment/environments/env.prod`。
-
-## 故障排除
-
-- **ContainerConfig / 容器异常**：`docker rm -f $(docker ps -aq --filter 'name=supplynexus.*dev')` 后重新 `docker-compose -f docker-compose.dev.yml up -d --remove-orphans`（Prod 同理换 prod）。
-- **详细步骤、端口表、Volume 表、数据库连接等**：见 `scripts/dev/DEPLOYMENT.md`、`scripts/prod/DEPLOYMENT_STEPS.md`。
+- Git：走 PR，见 git-workflow.mdc。SSH：ubuntu@133.242.179.110。仓库：/home/ubuntu/project/fulfillment-service；部署目录：/opt/supplynexus（rsync 后 docker-compose，无 .git）。
+- **Dev**：`./scripts/dev/deploy-from-git.sh`；postgres_dev/backend_dev/frontend_dev，Backend 8001、Frontend 3001。**Prod**：`./scripts/prod/deploy-from-git.sh`；端口 8000/3000 仅 127.0.0.1。脚本含拉分支、rsync、up、alembic upgrade head。
+- 敏感文件不提交：env.prod、docker-compose.prod.yml；scp + chmod 600。容器异常：按环境 `docker rm -f` 对应 supplynexus 容器后 `docker-compose -f docker-compose.{dev|prod}.yml up -d --remove-orphans`。详见 scripts/dev/DEPLOYMENT.md、scripts/prod/DEPLOYMENT_STEPS.md。

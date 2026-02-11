@@ -316,6 +316,7 @@ const AutomationPage: React.FC = () => {
       order_sync: '订单同步',
       order_processing: '订单处理',
       status_sync: '状态同步',
+      product_sync: '商品同步',
     };
     return labels[category] || category;
   };
@@ -326,7 +327,7 @@ const AutomationPage: React.FC = () => {
     return acc;
   }, {} as Record<string, number>);
 
-  const categories = ['all', 'order_sync', 'order_processing', 'status_sync'];
+  const categories = ['all', 'order_sync', 'product_sync', 'order_processing', 'status_sync'];
 
   return (
     <ProtectedRoute>
@@ -371,6 +372,14 @@ const AutomationPage: React.FC = () => {
                   </Badge>
                 }
                 value='order_sync'
+              />
+              <Tab
+                label={
+                  <Badge badgeContent={categoryCounts['product_sync'] || 0} color='primary'>
+                    商品同步
+                  </Badge>
+                }
+                value='product_sync'
               />
               <Tab
                 label={

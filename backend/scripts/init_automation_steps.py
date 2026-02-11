@@ -1,6 +1,11 @@
 """
 初始化自动化步骤种子数据
-运行此脚本以创建系统预定义的自动化步骤和手动按钮
+运行此脚本以创建/更新系统预定义的自动化步骤和手动按钮。
+
+运行方式（须在 backend 目录下并激活 venv）:
+  cd backend && source .venv/bin/activate && python scripts/init_automation_steps.py
+  # Windows PowerShell:
+  cd backend; .\\.venv\\Scripts\\Activate.ps1; python scripts/init_automation_steps.py
 """
 
 import sys
@@ -17,14 +22,16 @@ from app.models.automation_manual_button import AutomationManualButton
 
 
 # 系统预定义的自动化步骤
+# category: order_sync=订单同步, order_processing=订单处理, status_sync=状态同步, product_sync=商品同步
 AUTOMATION_STEPS_SEED = [
+    # ----- 订单同步 -----
     {
         "step_key": "sync_external_orders",
-        "name": "外部订单同步到本地表",
-        "description": "从外部系统（如Shopify）同步订单到本地shopify_orders表",
+        "name": "Shopify 订单同步到本地表",
+        "description": "从 Shopify 拉取订单到本地 shopify_orders 表，供后续同步到核心订单使用",
         "category": "order_sync",
         "required_external_systems": ["SHOPIFY"],
-        "celery_task_name": "sync_shopify_orders_1min",  # 使用装饰器中定义的 name
+        "celery_task_name": "sync_shopify_orders_1min",
         "default_schedule": "*/30 * * * *",
         "default_enabled": True,
         "is_manual_only": False,
@@ -32,40 +39,18 @@ AUTOMATION_STEPS_SEED = [
     {
         "step_key": "sync_to_core_orders",
         "name": "外部订单同步到核心订单表",
-        "description": "从shopify_orders表同步订单到核心orders表（含地址验证）",
+        "description": "把 shopify_orders 里未同步的订单写入核心 orders 表，并做地址验证",
         "category": "order_sync",
         "required_external_systems": ["SHOPIFY"],
         "celery_task_name": "app.tasks.order_automation_tasks.sync_shopify_orders_to_core",
-        "default_schedule": "*/30 * * * *",
-        "default_enabled": False,  # 默认关闭，需要手动启用
-        "is_manual_only": False,
-    },
-    {
-        "step_key": "create_scm_orders",
-        "name": "从核心订单创建SCM订单",
-        "description": "从核心订单选择商品创建SCM订单",
-        "category": "order_processing",
-        "required_external_systems": ["SHOPIFY"],
-        "celery_task_name": "app.tasks.order_automation_tasks.process_new_orders_to_scm",
-        "default_schedule": "*/30 * * * *",
-        "default_enabled": True,
-        "is_manual_only": False,
-    },
-    {
-        "step_key": "create_printify_orders_from_scm",
-        "name": "从SCM订单创建Printify订单",
-        "description": "从SCM订单批量创建Printify订单",
-        "category": "order_processing",
-        "required_external_systems": ["PRINTIFY"],
-        "celery_task_name": "app.tasks.order_automation_tasks.create_printify_orders_from_scm",
         "default_schedule": "*/30 * * * *",
         "default_enabled": True,
         "is_manual_only": False,
     },
     {
         "step_key": "sync_printify_orders_to_local",
-        "name": "Printify订单同步到本地表",
-        "description": "从Printify API同步订单到本地printify_orders表",
+        "name": "Printify 订单同步到本地表",
+        "description": "从 Printify API 拉取订单到本地 printify_orders 表",
         "category": "order_sync",
         "required_external_systems": ["PRINTIFY"],
         "celery_task_name": "app.tasks.order_automation_tasks.sync_printify_orders_to_local",
@@ -73,10 +58,45 @@ AUTOMATION_STEPS_SEED = [
         "default_enabled": True,
         "is_manual_only": False,
     },
+    # ----- 商品同步 -----
+    {
+        "step_key": "sync_printify_products_to_local",
+        "name": "Printify 商品同步到本地（core）",
+        "description": "从 Printify API 全量同步商品到 printify_products 与 external_products，供「Printify 映射」使用。默认每日 2 次。",
+        "category": "product_sync",
+        "required_external_systems": ["PRINTIFY"],
+        "celery_task_name": "app.tasks.order_automation_tasks.sync_printify_products_to_local",
+        "default_schedule": "0 0,12 * * *",
+        "default_enabled": True,
+        "is_manual_only": False,
+    },
+    # ----- 订单处理 -----
+    {
+        "step_key": "create_scm_orders",
+        "name": "从核心订单创建 SCM 订单",
+        "description": "把核心订单中的商品生成 SCM 订单，用于后续发 Printify 等",
+        "category": "order_processing",
+        "required_external_systems": ["SHOPIFY"],
+        "celery_task_name": "app.tasks.order_automation_tasks.process_new_orders_to_scm",
+        "default_schedule": "*/30 * * * *",
+        "default_enabled": False,
+        "is_manual_only": False,
+    },
+    {
+        "step_key": "create_printify_orders_from_scm",
+        "name": "从 SCM 订单创建 Printify 订单",
+        "description": "根据 SCM 订单在 Printify 侧批量创建生产订单",
+        "category": "order_processing",
+        "required_external_systems": ["PRINTIFY"],
+        "celery_task_name": "app.tasks.order_automation_tasks.create_printify_orders_from_scm",
+        "default_schedule": "*/30 * * * *",
+        "default_enabled": False,
+        "is_manual_only": False,
+    },
     {
         "step_key": "auto_create_scm_from_unbound_printify_orders",
-        "name": "未绑定Printify订单自动创建SCM",
-        "description": "对未绑定SCM的Printify同步订单自动创建SCM订单并绑定，补全「Printify→SCM」流程",
+        "name": "未绑定 Printify 订单自动创建 SCM",
+        "description": "对未绑定 SCM 的 Printify 同步订单自动创建 SCM 订单并绑定，补全「Printify→SCM」流程",
         "category": "order_processing",
         "required_external_systems": ["PRINTIFY"],
         "celery_task_name": "app.tasks.order_automation_tasks.auto_create_scm_from_unbound_printify_orders",
@@ -84,10 +104,11 @@ AUTOMATION_STEPS_SEED = [
         "default_enabled": True,
         "is_manual_only": False,
     },
+    # ----- 状态同步 -----
     {
         "step_key": "sync_fulfillment_status",
-        "name": "履约订单状态同步到SCM",
-        "description": "从printify_orders本地表同步发货信息到SCM订单",
+        "name": "履约订单状态同步到 SCM",
+        "description": "把 printify_orders 的发货/物流状态回写到 SCM 订单",
         "category": "status_sync",
         "required_external_systems": ["PRINTIFY"],
         "celery_task_name": "app.tasks.order_automation_tasks.sync_printify_orders_status",
@@ -97,19 +118,19 @@ AUTOMATION_STEPS_SEED = [
     },
     {
         "step_key": "sync_to_external_fulfillment",
-        "name": "SCM状态同步到外部履约（如Shopify）",
-        "description": "将SCM订单状态同步回外部履约系统（如Shopify履约信息）",
+        "name": "SCM 状态同步到外部履约（如 Shopify）",
+        "description": "把 SCM 的发货状态同步回 Shopify 履约信息",
         "category": "status_sync",
         "required_external_systems": ["SHOPIFY"],
         "celery_task_name": "app.tasks.order_automation_tasks.sync_scm_to_shopify_fulfillment",
         "default_schedule": "*/30 * * * *",
-        "default_enabled": True,
+        "default_enabled": False,
         "is_manual_only": False,
     },
     {
         "step_key": "sync_shopify_fulfillment_to_local",
-        "name": "Shopify发货信息同步到本地表",
-        "description": "从Shopify API同步发货信息到shopify_orders本地表",
+        "name": "Shopify 发货信息同步到本地表",
+        "description": "从 Shopify API 拉取履约/物流信息到 shopify_orders",
         "category": "status_sync",
         "required_external_systems": ["SHOPIFY"],
         "celery_task_name": "app.tasks.order_automation_tasks.sync_shopify_fulfillment_to_local",
@@ -119,8 +140,8 @@ AUTOMATION_STEPS_SEED = [
     },
     {
         "step_key": "sync_shopify_local_fulfillment_to_core",
-        "name": "Shopify本地发货信息同步到核心订单",
-        "description": "从shopify_orders本地表同步发货信息到核心订单表",
+        "name": "Shopify 本地发货信息同步到核心订单",
+        "description": "把 shopify_orders 的物流信息写入核心 orders 表",
         "category": "status_sync",
         "required_external_systems": ["SHOPIFY"],
         "celery_task_name": "app.tasks.order_automation_tasks.sync_shopify_local_fulfillment_to_core",
@@ -197,22 +218,28 @@ MANUAL_BUTTONS_SEED = [
 
 
 def init_automation_steps(db: Session):
-    """初始化自动化步骤"""
+    """初始化自动化步骤；已存在的步骤会更新 name/description/category/default_schedule 以保持与种子一致"""
     print("🔍 开始初始化自动化步骤...")
-    
+
     for step_data in AUTOMATION_STEPS_SEED:
         existing = db.query(AutomationStep).filter(
             AutomationStep.step_key == step_data["step_key"]
         ).first()
-        
+
         if existing:
-            print(f"  ⚠️  步骤已存在，跳过: {step_data['step_key']}")
+            existing.name = step_data["name"]
+            existing.description = step_data["description"]
+            existing.category = step_data["category"]
+            existing.default_schedule = step_data["default_schedule"]
+            existing.celery_task_name = step_data["celery_task_name"]
+            existing.required_external_systems = step_data.get("required_external_systems")
+            print(f"  📝 更新步骤: {step_data['name']} ({step_data['step_key']})")
             continue
-        
+
         step = AutomationStep(**step_data)
         db.add(step)
         print(f"  ✅ 创建步骤: {step_data['name']} ({step_data['step_key']})")
-    
+
     db.commit()
     print("✅ 自动化步骤初始化完成")
 

@@ -19,11 +19,9 @@ logger = get_logger(__name__)
 
 def _is_published_from_api_data(product_data: Dict[str, Any]) -> bool:
     """
-    Printify 是否已发布：按实际 API 响应判断，仅看 sales_channel_properties。
-    已用店铺 24981565 验证：6978c01e1868fbefd300e159 已发布（scp 为非空 dict），
-    698254feac45c6e86a0b90b0 / 69825421562ab484c806a82c 未发布（scp 为空）。
-    单商品/列表 API 可能返回 dict（如 {"collections": [...], "free_shipping": false}）或 list。
-    - 非空（dict 有 key 或 list 有元素）= 已发布；空/None = 未发布。
+    Printify 是否已发布：按 API 响应中的 sales_channel_properties 判断。
+    - 非空 dict / list 视为已发布；
+    - 空值、None 视为未发布。
     """
     scp = product_data.get("sales_channel_properties")
     if scp is None:
