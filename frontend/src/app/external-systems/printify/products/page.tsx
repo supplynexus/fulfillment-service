@@ -132,6 +132,7 @@ interface PrintifyStore {
 }
 
 type SyncStatus = 'in_sync' | 'different' | 'not_synced';
+type SyncStatusFilter = 'all' | SyncStatus | 'needs_sync';
 
 interface CompareWithLocalResult {
   success: boolean;
@@ -166,9 +167,8 @@ function PrintifyProductsPage() {
   const [publishedFilter, setPublishedFilter] = useState<
     'all' | 'published' | 'unpublished'
   >('all');
-  const [syncStatusFilter, setSyncStatusFilter] = useState<'all' | SyncStatus>(
-    'all'
-  );
+  const [syncStatusFilter, setSyncStatusFilter] =
+    useState<SyncStatusFilter>('all');
   const [filteredProducts, setFilteredProducts] = useState<PrintifyProduct[]>(
     []
   );
@@ -379,12 +379,14 @@ function PrintifyProductsPage() {
           setServerTotalPages(totalPages);
 
           const statusMap = await fetchLocalSyncStatuses(store, productsData);
-          const currentPageDisplayCount =
-            syncStatusFilter === 'all'
-              ? productsData.length
-              : productsData.filter(
-                  p => (statusMap[p.id] || 'not_synced') === syncStatusFilter
-                ).length;
+          const currentPageDisplayCount = productsData.filter(p => {
+            if (syncStatusFilter === 'all') return true;
+            const status = statusMap[p.id] || 'not_synced';
+            if (syncStatusFilter === 'needs_sync') {
+              return status === 'not_synced' || status === 'different';
+            }
+            return status === syncStatusFilter;
+          }).length;
 
           frontendLogger.info('✅ Printify 商品列表获取成功', {
             count: currentPageDisplayCount,
@@ -445,12 +447,14 @@ function PrintifyProductsPage() {
           selectedStore,
           productsData
         );
-        const visibleList =
-          syncStatusFilter === 'all'
-            ? productsData
-            : productsData.filter(
-                p => (statusMap[p.id] || 'not_synced') === syncStatusFilter
-              );
+        const visibleList = productsData.filter(p => {
+          if (syncStatusFilter === 'all') return true;
+          const status = statusMap[p.id] || 'not_synced';
+          if (syncStatusFilter === 'needs_sync') {
+            return status === 'not_synced' || status === 'different';
+          }
+          return status === syncStatusFilter;
+        });
         if (visibleList.length > 0) {
           setPage(targetPage);
           toast.success(`已定位到第 ${targetPage} 页`);
@@ -523,6 +527,9 @@ function PrintifyProductsPage() {
   const currentProducts = filteredProducts.filter(product => {
     if (syncStatusFilter === 'all') return true;
     const status = syncStatusMap[product.id] || 'not_synced';
+    if (syncStatusFilter === 'needs_sync') {
+      return status === 'not_synced' || status === 'different';
+    }
     return status === syncStatusFilter;
   });
   const hasPageOnlyFilter =
@@ -943,6 +950,17 @@ function PrintifyProductsPage() {
                   color={syncStatusFilter === 'in_sync' ? 'primary' : 'default'}
                   variant={
                     syncStatusFilter === 'in_sync' ? 'filled' : 'outlined'
+                  }
+                />
+                <Chip
+                  label='待同步'
+                  size='small'
+                  onClick={() => setSyncStatusFilter('needs_sync')}
+                  color={
+                    syncStatusFilter === 'needs_sync' ? 'primary' : 'default'
+                  }
+                  variant={
+                    syncStatusFilter === 'needs_sync' ? 'filled' : 'outlined'
                   }
                 />
                 <Chip
