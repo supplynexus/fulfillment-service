@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Box,
   Card,
@@ -147,6 +147,21 @@ interface PrintifyProduct {
   updated_at?: string;
 }
 
+function hasSalesChannelPublication(value: unknown): boolean {
+  if (value == null) return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value as Record<string, unknown>).length > 0;
+  return false;
+}
+
+function isPrintifyProductPublished(product: PrintifyProduct): boolean {
+  const scp = product?.raw_data?.sales_channel_properties;
+  if (scp !== undefined) {
+    return hasSalesChannelPublication(scp);
+  }
+  return product.is_published === true;
+}
+
 interface PrintifyVariant {
   id: number;
   sku: string;
@@ -175,6 +190,83 @@ interface MappingValidation {
 
 function normalizeTitle(s: string): string {
   return (s || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function tokenizeTitle(s: string): string[] {
+  return normalizeTitle(s)
+    .replace(/[^a-z0-9\s|]/g, ' ')
+    .split(/\s+|\|/)
+    .map(t => t.trim())
+    .filter(Boolean);
+}
+
+function titleSimilarityScore(a: string, b: string): number {
+  const ta = tokenizeTitle(a);
+  const tb = tokenizeTitle(b);
+  if (ta.length === 0 || tb.length === 0) return 0;
+
+  const sa = new Set(ta);
+  const sb = new Set(tb);
+  let overlap = 0;
+  sa.forEach(token => {
+    if (sb.has(token)) overlap += 1;
+  });
+
+  const jaccard = overlap / new Set([...sa, ...sb]).size;
+  const containsBoost =
+    normalizeTitle(a).includes(normalizeTitle(b)) ||
+    normalizeTitle(b).includes(normalizeTitle(a))
+      ? 0.2
+      : 0;
+  return Math.min(1, jaccard + containsBoost);
+}
+
+/** 业务版相似度：标题 60% + vendor 10% + 变体数 15% + 价格带 15%，用于左侧核心商品排序 */
+const BUSINESS_WEIGHTS = {
+  title: 0.6,
+  vendor: 0.1,
+  variantCount: 0.15,
+  priceRange: 0.15,
+};
+const SIMILARITY_FLOOR = 0.2; // 低于此分不参与置顶，排到后面
+
+function businessSimilarityScore(
+  core: CoreProduct,
+  printify: PrintifyProduct
+): number {
+  const titleScore = titleSimilarityScore(core.title, printify.title);
+
+  const vendorScore =
+    (core.vendor || '').toLowerCase().includes('printify') ? 1 : 0;
+
+  const coreCount = core.variants?.length ?? 0;
+  const printifyCount = printify.variants?.length ?? 0;
+  const maxCount = Math.max(coreCount, printifyCount, 1);
+  const minCount = Math.min(coreCount, printifyCount);
+  const variantScore =
+    coreCount === printifyCount ? 1 : minCount / maxCount >= 0.8 ? 0.5 : 0;
+
+  let priceScore = 0;
+  const corePrices = (core.variants || []).map(v => Number(v.price)).filter(n => !Number.isNaN(n));
+  const printifyPrices = (printify.variants || []).map(v => Number(v.price) / 100).filter(n => !Number.isNaN(n));
+  if (corePrices.length > 0 && printifyPrices.length > 0) {
+    const avgCore = corePrices.reduce((a, b) => a + b, 0) / corePrices.length;
+    const avgPrintify = printifyPrices.reduce((a, b) => a + b, 0) / printifyPrices.length;
+    const lo = Math.min(avgCore, avgPrintify);
+    const hi = Math.max(avgCore, avgPrintify);
+    const ratio = hi > 0 ? lo / hi : 1;
+    if (ratio >= 0.85) priceScore = 1;
+    else if (ratio >= 0.7) priceScore = 0.5;
+  } else {
+    priceScore = 0.5; // 缺数据时中性
+  }
+
+  return (
+    titleScore * BUSINESS_WEIGHTS.title +
+    vendorScore * BUSINESS_WEIGHTS.vendor +
+    variantScore * BUSINESS_WEIGHTS.variantCount +
+    priceScore * BUSINESS_WEIGHTS.priceRange
+  );
 }
 
 function computeMappingValidation(
@@ -333,9 +425,14 @@ interface ProductMapping {
 interface PrintifyMappingProps {
   /** 从订单详情等跳转时传入，预选该核心商品以便绑定 Printify */
   initialCoreProductIdHashid?: string;
+  /** 从本地 Printify 商品列表跳转时传入，预选该 Printify 商品 */
+  initialPrintifyProductId?: string;
 }
 
-export function PrintifyMapping({ initialCoreProductIdHashid }: PrintifyMappingProps = {}) {
+export function PrintifyMapping({
+  initialCoreProductIdHashid,
+  initialPrintifyProductId,
+}: PrintifyMappingProps = {}) {
   const [coreProducts, setCoreProducts] = useState<CoreProduct[]>([]);
   const [printifyProducts, setPrintifyProducts] = useState<PrintifyProduct[]>(
     []
@@ -388,6 +485,7 @@ export function PrintifyMapping({ initialCoreProductIdHashid }: PrintifyMappingP
 
   // 同步状态
   const [syncing, setSyncing] = useState(false);
+  const [targetPrintifyLoaded, setTargetPrintifyLoaded] = useState(false);
 
   // 分页状态
   const [corePage, setCorePage] = useState(1);
@@ -484,8 +582,18 @@ export function PrintifyMapping({ initialCoreProductIdHashid }: PrintifyMappingP
         });
 
       if (response.data && response.data.products) {
-        const productsData = response.data.products || [];
-        setPrintifyProducts(productsData);
+        const productsData = (response.data.products || []) as PrintifyProduct[];
+        setPrintifyProducts(prev => {
+          if (!initialPrintifyProductId) return productsData;
+          const pinned = prev.find(
+            p => p.printify_product_id === initialPrintifyProductId
+          );
+          if (!pinned) return productsData;
+          const existsInNext = productsData.some(
+            p => p.printify_product_id === initialPrintifyProductId
+          );
+          return existsInNext ? productsData : [pinned, ...productsData];
+        });
         frontendLogger.info('✅ Printify 商品列表获取成功（本地数据库）', {
           count: productsData.length,
           storeName: store.name,
@@ -501,6 +609,40 @@ export function PrintifyMapping({ initialCoreProductIdHashid }: PrintifyMappingP
       setError('获取商品列表失败');
     }
   }, []);
+
+  const fetchTargetPrintifyProduct = useCallback(
+    async (store: PrintifyStore, printifyProductId: string) => {
+      try {
+        const response = await frontendApi.get('/api/printify-products/', {
+          params: {
+            external_system_id: store.id_hashid,
+            printify_product_id: printifyProductId,
+            limit: 100,
+            offset: 0,
+            visible_only: false,
+          },
+        });
+        const list = (response.data?.products || []) as PrintifyProduct[];
+        if (list.length === 0) return null;
+
+        setPrintifyProducts(prev => {
+          const exists = prev.some(
+            p => p.printify_product_id === printifyProductId
+          );
+          if (exists) return prev;
+          return [...list, ...prev];
+        });
+        return list[0];
+      } catch (error) {
+        frontendLogger.warn('⚠️ 按 Printify ID 精确拉取失败', {
+          printifyProductId,
+          error: String(error),
+        });
+        return null;
+      }
+    },
+    []
+  );
 
   // 获取映射关系
   const fetchMappings = useCallback(async () => {
@@ -598,9 +740,13 @@ export function PrintifyMapping({ initialCoreProductIdHashid }: PrintifyMappingP
 
   // 仅显示未映射的筛选（默认开启，便于补齐映射）
   const [showOnlyUnmappedCore, setShowOnlyUnmappedCore] = useState(true);
-  const [showOnlyUnmappedPrintify, setShowOnlyUnmappedPrintify] = useState(true);
+  const [showOnlyUnmappedPrintify, setShowOnlyUnmappedPrintify] = useState(
+    !initialPrintifyProductId
+  );
   // Printify 右侧列表：默认仅已发布（避免未发布/店铺不一致混入）
-  const [printifyPublishedOnly, setPrintifyPublishedOnly] = useState(true);
+  const [printifyPublishedOnly, setPrintifyPublishedOnly] = useState(
+    !initialPrintifyProductId
+  );
 
   // 当选择店铺或「仅已发布」变更时重新获取 Printify 商品
   useEffect(() => {
@@ -608,6 +754,41 @@ export function PrintifyMapping({ initialCoreProductIdHashid }: PrintifyMappingP
       fetchPrintifyProducts(selectedStore, printifyPublishedOnly);
     }
   }, [selectedStore, printifyPublishedOnly, fetchPrintifyProducts]);
+
+  useEffect(() => {
+    if (!initialPrintifyProductId || !selectedStore || targetPrintifyLoaded) return;
+
+    const run = async () => {
+      setPrintifySearchTerm(initialPrintifyProductId);
+
+      const hit = printifyProducts.find(
+        p => p.printify_product_id === initialPrintifyProductId
+      );
+      if (!hit) {
+        const loaded = await fetchTargetPrintifyProduct(
+          selectedStore,
+          initialPrintifyProductId
+        );
+        if (!loaded) {
+          setTargetPrintifyLoaded(true);
+          return;
+        }
+        setSelectedPrintifyProducts([loaded.id]);
+      } else {
+        setSelectedPrintifyProducts([hit.id]);
+      }
+
+      setTargetPrintifyLoaded(true);
+    };
+
+    run();
+  }, [
+    initialPrintifyProductId,
+    selectedStore,
+    targetPrintifyLoaded,
+    printifyProducts,
+    fetchTargetPrintifyProduct,
+  ]);
 
   // 映射列表变化时，若当前页无数据则回到第 1 页
   useEffect(() => {
@@ -629,35 +810,97 @@ export function PrintifyMapping({ initialCoreProductIdHashid }: PrintifyMappingP
     mappings.map(m => m.external_product_id)
   );
 
-  // 过滤商品：搜索 + 可选「仅未映射」
-  const filteredCoreProducts = coreProducts
-    .filter(
-      product =>
-        product.title.toLowerCase().includes(coreSearchTerm.toLowerCase()) ||
-        (product.vendor || '').toLowerCase().includes(coreSearchTerm.toLowerCase())
-    )
-    .filter(
-      product =>
-        !showOnlyUnmappedCore || product.has_printify_mapping !== true
+  const targetPrintifyProduct = useMemo(() => {
+    if (selectedPrintifyProducts.length === 0) return null;
+    return (
+      printifyProducts.find(p => p.id === selectedPrintifyProducts[0]) || null
     );
+  }, [printifyProducts, selectedPrintifyProducts]);
 
-  const filteredPrintifyProducts = printifyProducts
-    .filter(
-      product =>
-        product.title.toLowerCase().includes(printifySearchTerm.toLowerCase()) ||
-        (product.description &&
-          product.description
+  // 过滤 + 相似度排序（当右侧选中 Printify 商品时，左侧核心商品按标题相似度自动置顶）
+  const filteredCoreProducts = useMemo(() => {
+    const kw = coreSearchTerm.toLowerCase();
+    const list = coreProducts
+      .filter(
+        product =>
+          product.title.toLowerCase().includes(kw) ||
+          (product.vendor || '').toLowerCase().includes(kw)
+      )
+      .filter(product => !showOnlyUnmappedCore || product.has_printify_mapping !== true);
+
+    if (!targetPrintifyProduct) return list;
+
+    return [...list].sort((a, b) => {
+      const scoreA = businessSimilarityScore(a, targetPrintifyProduct);
+      const scoreB = businessSimilarityScore(b, targetPrintifyProduct);
+      const aboveA = scoreA >= SIMILARITY_FLOOR;
+      const aboveB = scoreB >= SIMILARITY_FLOOR;
+      if (!aboveA && !aboveB) return a.title.localeCompare(b.title);
+      if (!aboveA) return 1;
+      if (!aboveB) return -1;
+      if (scoreB !== scoreA) return scoreB - scoreA;
+      return a.title.localeCompare(b.title);
+    });
+  }, [
+    coreProducts,
+    coreSearchTerm,
+    showOnlyUnmappedCore,
+    targetPrintifyProduct,
+  ]);
+
+  // 选中的核心商品对象（用于右侧按相似度排序）
+  const targetCoreProducts = useMemo(() => {
+    return selectedCoreProducts
+      .map(id => coreProducts.find(p => p.id_hashid === id))
+      .filter((p): p is CoreProduct => p != null);
+  }, [coreProducts, selectedCoreProducts]);
+
+  const filteredPrintifyProducts = useMemo(() => {
+    const list = printifyProducts
+      .filter(
+        product =>
+          product.title.toLowerCase().includes(printifySearchTerm.toLowerCase()) ||
+          product.printify_product_id
             .toLowerCase()
-            .includes(printifySearchTerm.toLowerCase())) ||
-        (product.tags || []).some(tag =>
-          tag.toLowerCase().includes(printifySearchTerm.toLowerCase())
-        )
-    )
-    .filter(
-      product =>
-        !showOnlyUnmappedPrintify ||
-        !mappedPrintifyProductIds.has(product.printify_product_id)
-    );
+            .includes(printifySearchTerm.toLowerCase()) ||
+          (product.description &&
+            product.description
+              .toLowerCase()
+              .includes(printifySearchTerm.toLowerCase())) ||
+          (product.tags || []).some(tag =>
+            tag.toLowerCase().includes(printifySearchTerm.toLowerCase())
+          )
+      )
+      .filter(
+        product =>
+          !showOnlyUnmappedPrintify ||
+          !mappedPrintifyProductIds.has(product.printify_product_id)
+      );
+
+    if (targetCoreProducts.length === 0) return list;
+
+    return [...list].sort((a, b) => {
+      const scoreA = Math.max(
+        ...targetCoreProducts.map(c => businessSimilarityScore(c, a))
+      );
+      const scoreB = Math.max(
+        ...targetCoreProducts.map(c => businessSimilarityScore(c, b))
+      );
+      const aboveA = scoreA >= SIMILARITY_FLOOR;
+      const aboveB = scoreB >= SIMILARITY_FLOOR;
+      if (!aboveA && !aboveB) return a.title.localeCompare(b.title);
+      if (!aboveA) return 1;
+      if (!aboveB) return -1;
+      if (scoreB !== scoreA) return scoreB - scoreA;
+      return a.title.localeCompare(b.title);
+    });
+  }, [
+    printifyProducts,
+    printifySearchTerm,
+    showOnlyUnmappedPrintify,
+    mappedPrintifyProductIds,
+    targetCoreProducts,
+  ]);
 
   // 检查商品是否已映射
   const isProductMapped = (
@@ -1292,6 +1535,11 @@ export function PrintifyMapping({ initialCoreProductIdHashid }: PrintifyMappingP
                     （仅未映射 {filteredCoreProducts.length}）
                   </Typography>
                 )}
+                {targetPrintifyProduct && (
+                  <Typography component='span' variant='body2' color='primary.main' sx={{ ml: 1 }}>
+                    （已按右侧商品业务相似度排序：标题/供应商/变体数/价格带）
+                  </Typography>
+                )}
               </Typography>
 
               <TextField
@@ -1377,6 +1625,11 @@ export function PrintifyMapping({ initialCoreProductIdHashid }: PrintifyMappingP
                 {showOnlyUnmappedPrintify && (
                   <Typography component='span' variant='body2' color='text.secondary' sx={{ ml: 1 }}>
                     （仅未映射 {filteredPrintifyProducts.length}）
+                  </Typography>
+                )}
+                {targetCoreProducts.length > 0 && (
+                  <Typography component='span' variant='body2' color='primary.main' sx={{ ml: 1 }}>
+                    （已按左侧选中核心商品业务相似度排序）
                   </Typography>
                 )}
               </Typography>
@@ -1465,8 +1718,8 @@ export function PrintifyMapping({ initialCoreProductIdHashid }: PrintifyMappingP
                         </TableCell>
                         <TableCell>
                           <Chip
-                            label={product.is_published !== false ? '已发布' : '未发布'}
-                            color={product.is_published !== false ? 'success' : 'default'}
+                            label={isPrintifyProductPublished(product) ? '已发布' : '未发布'}
+                            color={isPrintifyProductPublished(product) ? 'success' : 'default'}
                             size='small'
                           />
                           {product.printify_shop_id && (

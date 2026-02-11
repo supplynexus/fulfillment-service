@@ -9,16 +9,20 @@ export const metadata: Metadata = {
 };
 
 type PageProps = {
-  searchParams: Promise<{ core_product_id?: string }>;
+  searchParams: Promise<{ core_product_id?: string; printify_product_id?: string }>;
 };
 
 export default async function PrintifyMappingPage({ searchParams }: PageProps) {
   const params = await searchParams;
   const initialCoreProductIdHashid = params?.core_product_id?.trim() || undefined;
+  const initialPrintifyProductId = params?.printify_product_id?.trim() || undefined;
   return (
     <ProtectedRoute>
       <DashboardLayout>
-        <PrintifyMapping initialCoreProductIdHashid={initialCoreProductIdHashid} />
+        <PrintifyMapping
+          initialCoreProductIdHashid={initialCoreProductIdHashid}
+          initialPrintifyProductId={initialPrintifyProductId}
+        />
       </DashboardLayout>
     </ProtectedRoute>
   );

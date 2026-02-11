@@ -48,6 +48,7 @@ export async function GET(request: NextRequest) {
     const coreProductId = searchParams.get('core_product_id');
     const coreProductTitle = searchParams.get('core_product_title');
     const externalSystemId = searchParams.get('external_system_id');
+    const externalProductIds = searchParams.get('external_product_ids');
     const systemType = searchParams.get('system_type');
     const syncStatus = searchParams.get('sync_status');
     const mappingType = searchParams.get('mapping_type');
@@ -66,6 +67,9 @@ export async function GET(request: NextRequest) {
     }
     if (externalSystemId) {
       backendParams.append('external_system_id', externalSystemId);
+    }
+    if (externalProductIds && externalProductIds.trim()) {
+      backendParams.append('external_product_ids', externalProductIds.trim());
     }
     if (systemType) {
       backendParams.append('system_type', systemType);

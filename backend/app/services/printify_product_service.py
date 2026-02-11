@@ -4,7 +4,7 @@ Printify Product Service
 """
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete, and_
+from sqlalchemy import select, update, delete, and_, or_, cast, Text
 from sqlalchemy.orm import selectinload
 from typing import List, Optional, Dict, Any
 from datetime import datetime
@@ -322,26 +322,43 @@ class PrintifyProductService:
         offset: int = 0,
         published_only: Optional[bool] = None,
         printify_shop_id: Optional[str] = None,
+        printify_product_id: Optional[str] = None,
     ) -> List[PrintifyProduct]:
-        """获取租户的 Printify 商品列表。published_only: True=仅已发布, False=仅未发布, None=全部。printify_shop_id 有值时只返回该店铺商品（避免多店铺混显）。"""
+        """获取租户的 Printify 商品列表。published_only: True=仅已发布, False=仅未发布, None=全部。printify_shop_id 有值时只返回该店铺商品（避免多店铺混显）。printify_product_id 可用于精确命中某个商品。"""
         try:
             shop_id_normalized = str(printify_shop_id).strip() if printify_shop_id else None
+            product_id_normalized = (
+                str(printify_product_id).strip() if printify_product_id else None
+            )
             logger.info(" 开始获取 Printify 商品列表",
                        tenant_id=tenant_id,
                        external_system_id=external_system_id,
                        limit=limit,
                        offset=offset,
                        published_only=published_only,
-                       printify_shop_id=shop_id_normalized)
+                       printify_shop_id=shop_id_normalized,
+                       printify_product_id=product_id_normalized)
             
             stmt = select(PrintifyProduct).where(PrintifyProduct.tenant_id == tenant_id)
             
             if external_system_id:
                 stmt = stmt.where(PrintifyProduct.external_system_id == external_system_id)
             if published_only is not None:
-                stmt = stmt.where(PrintifyProduct.is_published == published_only)
+                # Use raw_data.sales_channel_properties as source of truth:
+                # non-empty object/array => published; empty/NULL => unpublished.
+                _scp = PrintifyProduct.raw_data.op("->")("sales_channel_properties")
+                _published_expr = and_(
+                    _scp.isnot(None),
+                    cast(_scp, Text).notin_(["[]", "{}"]),
+                )
+                if published_only:
+                    stmt = stmt.where(_published_expr)
+                else:
+                    stmt = stmt.where(or_(~_published_expr, _scp.is_(None)))
             if shop_id_normalized:
                 stmt = stmt.where(PrintifyProduct.printify_shop_id == shop_id_normalized)
+            if product_id_normalized:
+                stmt = stmt.where(PrintifyProduct.printify_product_id == product_id_normalized)
             
             stmt = stmt.offset(offset).limit(limit).order_by(PrintifyProduct.created_at.desc())
             

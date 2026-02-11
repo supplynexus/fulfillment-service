@@ -26,9 +26,11 @@ export async function GET(request: NextRequest) {
     // 获取查询参数
     const { searchParams } = new URL(request.url);
     const external_system_id = searchParams.get('external_system_id');
+    const printify_product_id = searchParams.get('printify_product_id');
     const limit = searchParams.get('limit') || '100';
     const offset = searchParams.get('offset') || '0';
     const visible_only = searchParams.get('visible_only') || 'false';
+    const published_only = searchParams.get('published_only');
 
     // 构建后端 API 路径
     const backendPath = `/api/v1/printify-products/`;
@@ -36,7 +38,16 @@ export async function GET(request: NextRequest) {
     // 生成后端签名
     const timestamp = Math.floor(Date.now() / 1000);
     const nonce = Math.random().toString(36).substring(2, 15);
-    const queryString = `external_system_id=${external_system_id}&limit=${limit}&offset=${offset}&visible_only=${visible_only}`;
+    const backendParams = new URLSearchParams();
+    if (external_system_id) backendParams.set('external_system_id', external_system_id);
+    if (printify_product_id) backendParams.set('printify_product_id', printify_product_id);
+    backendParams.set('limit', limit);
+    backendParams.set('offset', offset);
+    backendParams.set('visible_only', visible_only);
+    if (published_only !== null) {
+      backendParams.set('published_only', published_only);
+    }
+    const queryString = backendParams.toString();
     
     // 构建签名字符串 - 必须包含查询参数以匹配后端签名验证逻辑
     const fullPath = queryString
