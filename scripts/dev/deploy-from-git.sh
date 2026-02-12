@@ -81,6 +81,12 @@ docker-compose -f docker-compose.dev.yml exec -T backend_dev alembic upgrade hea
 echo "✅ 数据库迁移完成"
 echo ""
 
+# 步骤 6b: 初始化自动化步骤（种子数据，与 local 一致）
+echo "📋 步骤 6b: 初始化自动化步骤..."
+docker-compose -f docker-compose.dev.yml exec -T backend_dev python scripts/init_automation_steps.py 2>&1 || echo "⚠️ 自动化步骤初始化跳过（可手动运行）"
+
+echo ""
+
 # 步骤 7: 检查服务状态
 echo "📊 步骤 7: 检查服务状态..."
 docker-compose -f docker-compose.dev.yml ps
